@@ -37,7 +37,7 @@ Tool nhận cổng CDP từ ProfileInUse khi đúng ID và cổng hợp lệ, ch
 
 Dừng extension trước khi chạy tool trong cùng profile. Tool dùng AutoRunner, DOM selector, AI lọc bài tiếng Việt ưu tiên mua sắm và lịch sử chống trùng của extension. Không dùng API Threads.
 
-Lượt ảnh có 2 ảnh ngẫu nhiên + app_store.png ở giữa, gửi riêng lẻ. Lượt ảnh cách nhau 6–8 phút; giữa các lượt dùng chữ + @hoanxu.app. Ảnh bài gốc gửi AI gộp ngang tối đa 3 ảnh. Bộ mặc định có 13 ảnh. Folder tùy chỉnh cần app_store.png và ít nhất 2 ảnh khác, hỗ trợ PNG/JPEG/WebP, tối đa 200 file, 10 MB/file, 200 MB/folder.
+Lượt ảnh có 2 ảnh ngẫu nhiên + app_store.png ở giữa, gửi riêng lẻ. Lượt ảnh cách nhau 6–8 phút; giữa các lượt dùng chữ, mặc định không tag. Bật tùy chọn Tag @hoanxu.app rồi Lưu: sau mỗi 4 lượt bình luận có ảnh đã bấm gửi, lượt tiếp theo dùng chữ có tag một lần. Bộ đếm lưu riêng từng profile, giữ khi khởi động lại; lượt lỗi không tính. Ảnh bài gốc gửi AI gộp ngang tối đa 3 ảnh. Bộ mặc định có 13 ảnh. Folder tùy chỉnh cần app_store.png và ít nhất 2 ảnh khác, hỗ trợ PNG/JPEG/WebP, tối đa 200 file, 10 MB/file, 200 MB/folder.
 
 Sau Post chờ 30–40 giây, về trang chủ, nghỉ mặc định 120–180 giây. Mỗi phiên 25 lần gửi rồi đóng tab Threads, nghỉ 3 giờ và mở tab tiếp tục. Giữ tab trống trước khi đóng tab cuối để bảo vệ cửa sổ. Stop hủy lịch tiếp theo.
 

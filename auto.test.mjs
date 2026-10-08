@@ -241,3 +241,23 @@ test('image posts spaced six minutes apart with text-only posts between and pers
  assert.deepEqual(modes,[true,false,false,true]);assert.deepEqual(generationModes,modes);assert.equal(f.saved().stats.sent,4);
  assert.ok(f.saved().nextImageAt>deadline);const resumed=new AutoRunner(f.deps);assert.equal((await resumed.load()).nextImageAt,f.saved().nextImageAt);
 });
+
+test('optional tag defaults off and cycles after four image sends across restarts',async()=>{
+ assert.equal(autoConfig().tagHoanxu,false);assert.throws(()=>autoConfig({tagHoanxu:'true'}));
+ const f=fixture(),modes=[];let index=0;
+ f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});
+ f.deps.generate=async(post,images,tag)=>{modes.push({images,tag});};
+ await f.runner.start({tagHoanxu:true});
+ for(let i=0;i<4;i++){f.advance();await f.runner.tick();}
+ assert.equal(f.saved().imageRepliesSinceTag,4);
+ await f.runner.stop();f.runner=new AutoRunner(f.deps);await f.runner.start({tagHoanxu:true});
+ f.advance();await f.runner.tick();assert.deepEqual(modes[4],{images:false,tag:true});assert.equal(f.saved().imageRepliesSinceTag,0);
+ for(let i=0;i<5;i++){f.advance();await f.runner.tick();}
+ assert.deepEqual(modes.map(m=>m.tag),[false,false,false,false,true,false,false,false,false,true]);
+ f.runner.state.config.tagHoanxu=false;f.runner.state.imageRepliesSinceTag=4;f.advance();await f.runner.tick();assert.equal(modes.at(-1).tag,false);
+});
+
+test('failed image send does not advance optional tag counter',async()=>{
+ const f=fixture();f.deps.post=async()=>{throw Error('HTTP 403');};
+ await f.runner.start({tagHoanxu:true});f.advance();await f.runner.tick();assert.equal(f.saved().imageRepliesSinceTag,0);
+});

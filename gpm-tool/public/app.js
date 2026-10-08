@@ -1,9 +1,9 @@
 import {exportProfileList} from './profile-list.js';
 const $=id=>document.getElementById(id);
 let settingsSaving=false;let snapshot,toolToken,loaded=false,requestBusy=false,refreshing=false,savedForm='',stream,focusedProfile=null,editingProfile=null,logProfile=null,importPreview=null,importFilename='';const checkedProfiles=new Set();let profileFilter='all',addedProfileIds=[],openingBatch=false,cancelOpening=false;
-const fields=['gpm-address','key','model','prompt','typing','search','step','restAverage','idle','idle-engagement','topics','imagesFolder'];
+const fields=['gpm-address','key','model','prompt','typing','search','step','restAverage','idle','idle-engagement','tag-hoanxu','topics','imagesFolder'];
 const date=value=>value?new Date(value).toLocaleString('vi-VN'):'—';
-function form(){return {scope:'all',cdp:snapshot.settings.cdp,gpmApi:$('gpm-address').value.trim()||snapshot.settings.gpmApi||'http://localhost:9495',profileId:snapshot.settings.profileId||'',proxy:snapshot.settings.proxy||'',apiKey:$('key').value,model:$('model').value.trim(),prompt:$('prompt').value,imagesFolder:$('imagesFolder').value,runConfig:{...snapshot.defaults,typingDelayMs:Number($('typing').value),searchDelaySeconds:Number($('search').value),stepSeconds:Number($('step').value),restAverageSeconds:Number($('restAverage').value),idleScroll:$('idle').checked,idleEngagement:$('idle-engagement').checked,keywords:$('topics').value}};}
+function form(){return {scope:'all',cdp:snapshot.settings.cdp,gpmApi:$('gpm-address').value.trim()||snapshot.settings.gpmApi||'http://localhost:9495',profileId:snapshot.settings.profileId||'',proxy:snapshot.settings.proxy||'',apiKey:$('key').value,model:$('model').value.trim(),prompt:$('prompt').value,imagesFolder:$('imagesFolder').value,runConfig:{...snapshot.defaults,typingDelayMs:Number($('typing').value),searchDelaySeconds:Number($('search').value),stepSeconds:Number($('step').value),restAverageSeconds:Number($('restAverage').value),idleScroll:$('idle').checked,idleEngagement:$('idle-engagement').checked,tagHoanxu:$('tag-hoanxu').checked,keywords:$('topics').value}};}
 function dirty(){return loaded&&JSON.stringify(form())!==savedForm;}
 const pendingRequests=new Map();let requestSerial=0;
 const loadingLabels={'profiles-transfer-export':'Đang đọc cookie và phiên từ các profile GPM…','profiles-start':'Đang mở và chạy các profile đã chọn…','profiles-close':'Đang dừng các profile GPM đã chọn…','state':'Đang tải dữ liệu…','settings':'Đang lưu cài đặt…','models':'Đang gọi API tải danh sách model…','assets':'Đang kiểm tra ảnh…','profiles-import-preview':'Đang tải và đối chiếu profile GPM…','profiles-import':'Đang nhập profile đã chọn…','profile-open':'Đang mở profile GPM…','profile-close':'Đang dừng profile GPM…','profile-start':'Đang khởi chạy profile…','profile-create':'Đang tạo profile GPM…','profile-edit':'Đang lưu profile…','profile-delete':'Đang xoá profile…','profile-settings':'Đang tải cài đặt profile…'};
@@ -22,7 +22,7 @@ function renderControls(){renderLoading();renderImportSelection();renderActionCo
  for(const id of fields)$(id).disabled=busy;renderExportScope();
 }
 function loadForm(settings){snapshot.settings=settings;$('gpm-address').value=settings.gpmApi||'http://127.0.0.1:9495';for(const id of ['model','prompt','imagesFolder'])$(id).value=settings[id]||'';const c=settings.runConfig||snapshot.defaults;
- for(const [id,key] of [['typing','typingDelayMs'],['search','searchDelaySeconds'],['step','stepSeconds'],['topics','keywords']])$(id).value=c[key];$('restAverage').value=c.restAverageSeconds??((c.minRestSeconds+c.maxRestSeconds)/2);$('idle').checked=c.idleScroll;$('idle-engagement').checked=c.idleEngagement??true;
+ for(const [id,key] of [['typing','typingDelayMs'],['search','searchDelaySeconds'],['step','stepSeconds'],['topics','keywords']])$(id).value=c[key];$('restAverage').value=c.restAverageSeconds??((c.minRestSeconds+c.maxRestSeconds)/2);$('idle').checked=c.idleScroll;$('idle-engagement').checked=c.idleEngagement??true;$('tag-hoanxu').checked=c.tagHoanxu===true;
  $('key').value='';loaded=true;savedForm=JSON.stringify(form());markDirty();
 }
 function logEntries(profile){

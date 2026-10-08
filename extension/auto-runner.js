@@ -1,11 +1,12 @@
 const LEGACY_TOPICS='mua sắm, mua đồ, mua quà, shopping, shopee, săn sale, đồ ăn, ăn gì, đặt đồ ăn, quán ăn, nhà hàng, trà sữa, thời trang, quần áo, outfit, phối đồ, váy, giày, túi xách';
-export const AUTO_DEFAULTS={minRestSeconds:120,maxRestSeconds:180,searchDelaySeconds:30,stepSeconds:2,idleScroll:true,typingDelayMs:60,keywords:'mua sắm online, hỏi mua đồ, xin review, đánh giá sản phẩm, so sánh sản phẩm, săn sale, mã giảm giá, voucher, freeship, giỏ hàng, chốt đơn, shopee, sàn S, tiktok shop, tíc tóc, lazada, mua quà, đồ gia dụng, đồ dùng học tập, phụ kiện điện thoại, mỹ phẩm, skincare, quần áo, thời trang, outfit, váy, giày, túi xách, đồ ăn đặt online'};
+export const AUTO_DEFAULTS={minRestSeconds:120,maxRestSeconds:180,searchDelaySeconds:30,stepSeconds:2,idleScroll:true,tagHoanxu:false,typingDelayMs:60,keywords:'mua sắm online, hỏi mua đồ, xin review, đánh giá sản phẩm, so sánh sản phẩm, săn sale, mã giảm giá, voucher, freeship, giỏ hàng, chốt đơn, shopee, sàn S, tiktok shop, tíc tóc, lazada, mua quà, đồ gia dụng, đồ dùng học tập, phụ kiện điện thoại, mỹ phẩm, skincare, quần áo, thời trang, outfit, váy, giày, túi xách, đồ ăn đặt online'};
 export function autoConfig(input={}){
  const c={...AUTO_DEFAULTS,...input};if(c.keywords===LEGACY_TOPICS)c.keywords=AUTO_DEFAULTS.keywords;delete c.maxComments;delete c.minMinutes;delete c.maxMinutes;
  const average=input.restAverageSeconds;
  if(average!==undefined){if(!Number.isFinite(average)||average<0||!Number.isFinite(average*1.2))throw Error('Thời gian nghỉ trung bình cần là số không âm hợp lệ.');c.minRestSeconds=Math.round(average*.8);c.maxRestSeconds=Math.round(average*1.2);}
  if(average===undefined&&Number.isFinite(c.minRestSeconds)&&Number.isFinite(c.maxRestSeconds)&&c.minRestSeconds>=40&&c.minRestSeconds<=c.maxRestSeconds&&c.maxRestSeconds<=60){c.minRestSeconds=120;c.maxRestSeconds=180;}
  for(const [key,min,max] of [['minRestSeconds',120,180],['maxRestSeconds',120,180],['searchDelaySeconds',1,180],['stepSeconds',.5,10],['typingDelayMs',0,500]])if(!(['minRestSeconds','maxRestSeconds'].includes(key)&&average!==undefined)&&(!Number.isFinite(c[key])||c[key]<min||c[key]>max))throw Error('Cấu hình tự động không hợp lệ: '+key);
+ if(typeof c.tagHoanxu!=='boolean')throw Error('Tùy chọn tag không hợp lệ.');
  if(typeof c.idleScroll!=='boolean')throw Error('Chế độ cuộn khi nghỉ không hợp lệ.');
  if(c.idleEngagement!==undefined&&typeof c.idleEngagement!=='boolean')throw Error('Chế độ Thả tim khi nghỉ không hợp lệ.');
  if(c.maxRestSeconds<c.minRestSeconds||typeof c.keywords!=='string'||!c.keywords.trim()||c.keywords.length>1000)throw Error('Kiểm tra khoảng nghỉ và từ khóa.');
@@ -83,7 +84,7 @@ export class AutoRunner{
  async start(input){
   await this.load();if(this.starting||this.running||['running','stopping'].includes(this.state.status))throw Error('Phiên tự động đang chạy.');
   const config=autoConfig(input);this.starting=true;try{await this.d.prepare();const source=await this.d.source();
-  this.state={status:'running',config,source,current:null,queue:[],selectionBatch:null,needsScroll:false,idleEngagementHistory:this.state.idleEngagementHistory||{},history:Object.fromEntries(Object.entries(this.state.history||{}).filter(([,v])=>v.state!=='queued')),events:[],stats:{scanned:0,selected:0,posted:0,failed:0,unknown:0},authors:[],emptyScans:0,nextAt:this.d.now()+15000,startedAt:new Date(this.d.now()).toISOString()};
+  this.state={imageRepliesSinceTag:this.state.imageRepliesSinceTag||0,status:'running',config,source,current:null,queue:[],selectionBatch:null,needsScroll:false,idleEngagementHistory:this.state.idleEngagementHistory||{},history:Object.fromEntries(Object.entries(this.state.history||{}).filter(([,v])=>v.state!=='queued')),events:[],stats:{scanned:0,selected:0,posted:0,failed:0,unknown:0},authors:[],emptyScans:0,nextAt:this.d.now()+15000,startedAt:new Date(this.d.now()).toISOString()};
   this.event('Bắt đầu phiên tự động');await this.activity('waiting','Đang chờ trang chủ Threads tải xong');await this.scheduleNext();return this.state;}finally{this.starting=false;}
  }
  async stop(){await this.load();this.state.status=this.running?'stopping':'stopped';await this.activity(this.running?'stopping':'stopped',this.running?'Đã yêu cầu dừng · đang kết thúc thao tác hiện tại':'Đã dừng');await this.d.clear();return this.state;}
@@ -136,9 +137,14 @@ export class AutoRunner{
  }
  async settle(receipt){
   const s=this.state,item=s.current;
+  if(!item.tagCycleCounted&&['posted','sent_unverified'].includes(receipt.state)){
+   if(item.tagHoanxu)s.imageRepliesSinceTag=0;
+   else if(item.withImages&&s.config.tagHoanxu)s.imageRepliesSinceTag=Math.min(4,(s.imageRepliesSinceTag||0)+1);
+   item.tagCycleCounted=true;
+  }
   if(item.withImages&&item.imageGapMs&&['posted','sent_unverified'].includes(receipt.state)){
    const clicked=Date.parse(receipt.clicked_at||receipt.created_at||'');
-   if(!item.imageScheduled){s.nextImageAt=Math.max(s.nextImageAt||0,(Number.isFinite(clicked)?clicked:this.d.now())+item.imageGapMs);item.imageScheduled=true;this.event('Lượt ảnh tiếp theo sau khoảng '+Math.round((s.nextImageAt-this.d.now())/60000)+' phút · các lượt giữa dùng chữ + @hoanxu.app');}
+   if(!item.imageScheduled){s.nextImageAt=Math.max(s.nextImageAt||0,(Number.isFinite(clicked)?clicked:this.d.now())+item.imageGapMs);item.imageScheduled=true;this.event('Lượt ảnh tiếp theo sau khoảng '+Math.round((s.nextImageAt-this.d.now())/60000)+' phút · các lượt giữa dùng chữ');}
   }
   if(receipt.state==='posted'&&receipt.comment_url){if(item.rechecks||item.receiptCounted)s.stats.unknown=Math.max(0,s.stats.unknown-1);s.stats.posted++;s.authors.push(item.post.author);s.history[item.post.url]={state:'posted',comment_url:receipt.comment_url,time:receipt.verified_at};this.event('Đã đăng: '+receipt.comment_url);}
   else if(receipt.state==='sent_unverified'){s.stats.sent=(s.stats.sent||0)+1;if(!item.receiptCounted&&!item.rechecks)s.stats.unknown++;s.history[item.post.url]={state:'sent_unverified',time:receipt.clicked_at};this.event('Đã bấm Post · chưa xác minh: '+item.post.url);}
@@ -221,11 +227,13 @@ export class AutoRunner{
    const post=s.current.post;
    await this.activity('ai','Đang gọi AI lấy response cho @'+post.author);
    s.current.withImages??=!s.nextImageAt||this.d.now()>=s.nextImageAt;
-   await this.d.generate(post,s.current.withImages);this.event('Đã nhận response AI cho @'+post.author);
+   s.current.tagHoanxu=s.config.tagHoanxu===true&&(s.imageRepliesSinceTag||0)>=4;
+   if(s.current.tagHoanxu)s.current.withImages=false;
+   await this.d.generate(post,s.current.withImages,s.current.tagHoanxu);this.event('Đã nhận response AI cho @'+post.author);
    if(!this.active())return;
    s.current.phase='posting';
    if(s.current.withImages){s.current.imageGapMs=360000+Math.floor(this.d.random()*120001);s.nextImageAt=this.d.now()+s.current.imageGapMs;}
-   await this.activity('commenting',(s.current.withImages?'Đang chuẩn bị comment + 3 ảnh: ':'Đang chuẩn bị comment chữ + @hoanxu.app: ')+post.url);
+   await this.activity('commenting',(s.current.withImages?'Đang chuẩn bị comment + 3 ảnh: ':s.current.tagHoanxu?'Đang chuẩn bị comment chữ + @hoanxu.app: ':'Đang chuẩn bị comment chữ: ')+post.url);
    if(!this.active())return;
    const result=await this.d.post(post.url,s.config.stepSeconds*1000,()=>this.active(),s.config.typingDelayMs,s.current.withImages);
    await this.settle(result);

@@ -111,6 +111,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         addWide(row([field("Nghỉ trung bình · giây (±20%)","restAverageSeconds"),field("Gõ mỗi ký tự · ms","typingDelayMs"),field("Chờ giữa thao tác · giây","stepSeconds")]),to:form)
         addWide(row([field("Chờ tìm bài mới · giây","searchDelaySeconds"),field("Folder ảnh · trống dùng ảnh đi kèm","imagesFolder",width:330),button("Chọn folder…","choose-images",#selector(chooseImages))]),to:form)
         let idle = NSButton(checkboxWithTitle:"Cuộn nhẹ khi nghỉ",target:self,action:#selector(settingsEdited)), likes = NSButton(checkboxWithTitle:"Thả tim khi chờ · tối đa 3 bài",target:self,action:#selector(settingsEdited)); checks["idleScroll"] = idle; checks["idleEngagement"] = likes; addWide(row([idle,likes]),to:form)
+        let tag = NSButton(checkboxWithTitle:"Tag @hoanxu.app · sau mỗi 4 bài ảnh, thêm 1 bài chữ có tag",target:self,action:#selector(settingsEdited)); checks["tagHoanxu"] = tag; addWide(tag,to:form)
         form.addArrangedSubview(label("Hướng dẫn cho AI (prompt)")); prompt.identifier = NSUserInterfaceItemIdentifier("prompt"); prompt.font = .systemFont(ofSize:13); prompt.isRichText = false; prompt.isAutomaticQuoteSubstitutionEnabled = false
         NotificationCenter.default.addObserver(self,selector:#selector(settingsEdited),name:NSText.didChangeNotification,object:prompt)
         addWide(scroll(prompt,height:230),to:form)

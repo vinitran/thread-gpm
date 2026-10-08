@@ -23,7 +23,7 @@ test('GPM rating and generation tolerate responses beyond the former 25-second d
   const timer=setTimeout(()=>{options.signal.removeEventListener('abort',abort);const body=JSON.parse(options.body),isRating=body.max_tokens===1600;resolve({ok:true,json:async()=>({choices:[{message:{content:isRating?JSON.stringify({ratings:[{url:post.url,language:'vi',eligible:true,score:80}]}):'Response @hoanxu.app'}}]})});},20);
   options.signal.addEventListener('abort',abort,{once:true});
  });
- try{assert.deepEqual(await selectPosts([post],settings,'topics'),[post.url]);assert.equal((await generate(post,settings,false)).text,'Response @hoanxu.app');}finally{globalThis.fetch=originalFetch;AbortSignal.timeout=originalTimeout;}
+ try{assert.deepEqual(await selectPosts([post],settings,'topics'),[post.url]);assert.equal((await generate(post,settings,false)).text,'Response');}finally{globalThis.fetch=originalFetch;AbortSignal.timeout=originalTimeout;}
 });
 
 test('GPM accepts partial and empty ratings across AI batches',async()=>{

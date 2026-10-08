@@ -19,12 +19,17 @@ export async function collage(post){
  const jpg=await sharp({create:{width:layout.width,height:layout.height,channels:3,background:'#ffffff'}}).composite(layers).jpeg({quality:85}).toBuffer();
  return {data_url:'data:image/jpeg;base64,'+jpg.toString('base64'),image_count:sources.length};
 }
-export async function generate(post,settings,withImages){
- const configured={...settings};if(!withImages)configured.prompt+='\nLượt này chỉ có chữ, giữ giọng văn trên và thêm đúng @hoanxu.app một lần khi giới thiệu tài khoản Threads Hoàn Xu. Không nói có ảnh đính kèm. Tối đa 450 ký tự.';
+export async function generate(post,settings,withImages,tagHoanxu=false){
+ const configured={...settings};
+ const tag=tagHoanxu&&settings.runConfig?.tagHoanxu===true;
+ configured.prompt+='\n'+(tag?'Lượt này thêm đúng @hoanxu.app một lần.':'Lượt này không được nhắc hay tag @hoanxu.app, kể cả khi hướng dẫn trước yêu cầu.');
+ if(!withImages)configured.prompt+='\nLượt này chỉ có chữ. Không nói có ảnh đính kèm. Tối đa 450 ký tự.';
  const merged=await collage(post),body=requestBody(post,configured,merged);
  const r=await fetch(API_BASE+'/chat/completions',{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+configured.apiKey,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(AI_TIMEOUT_MS)});
  if(!r.ok)throw Error('Hoàn Xu AI HTTP '+r.status);
  const data=await r.json();let text=data.choices?.[0]?.message?.content;if(typeof text!=='string'||!text.trim())throw Error('AI chưa trả response chữ');
- if(!withImages&&!text.includes('@hoanxu.app'))text=[...text].slice(0,475).join('').trimEnd()+' @hoanxu.app';
+ text=text.replace(/@hoanxu\.app\b/gi,'').trim();
+ if(!text.trim())throw Error('AI chưa trả nội dung bình luận hợp lệ');
+ if(tag)text=[...text].slice(0,475).join('').trimEnd()+' @hoanxu.app';
  return {text,model:configured.model,created_at:new Date().toISOString()};
 }
