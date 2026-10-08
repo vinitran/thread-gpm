@@ -47,7 +47,7 @@ test('GPM colon-auth SOCKS5 proxies validate without changing stored values or e
  for(const scheme of ['socks5','http','https']){const raw=scheme+'://127.0.0.1:4320:testuser:testpass';assert.equal(proxy(raw),raw);assert.equal(proxyLabel(raw),scheme+'://127.0.0.1:4320');}
  assert.equal(proxy('socks5://testuser:testpass@127.0.0.1:4320'),'socks5://testuser:testpass@127.0.0.1:4320');
  assert.equal(proxyLabel('socks5://testuser:testpass@127.0.0.1:4320'),'socks5://127.0.0.1:4320');
- for(const bad of ['socks5://host:99999:u:p','socks5://host:0:u:p','socks5://host:80:u','ftp://host:80:u:p','socks5://host:80:u:p\n'])assert.throws(()=>proxy(bad));
+ for(const bad of ['socks5://host:99999:u:p','socks5://host:0:u:p','socks5://host:80:u','ftp://host:80:u:p','socks5://host:80:u:p\nsecond'])assert.throws(()=>proxy(bad));
  assert.equal(proxyLabel('socks5://host:bad:u:p'),'Proxy không hợp lệ');
  const raw='socks5://127.0.0.1:4320:testuser:testpass',calls=[];const api=new GpmApi('http://127.0.0.1:19995',async url=>{calls.push(url);return new Response(JSON.stringify({success:true,data:url.includes('/start/')?{profile_id:'a',remote_debugging_address:'127.0.0.1:54321'}:{id:'a',name:'A',raw_proxy:raw}}));});
  assert.equal((await api.applyAndOpen('a',raw)).profileId,'a');assert.equal(calls.some(url=>url.includes('/update/')),false);
@@ -65,4 +65,20 @@ test('GPM discovery tries both API versions on a custom port before switching po
  const {checkGpmConnection}=await import('./gpm-api.mjs');const urls=[];
  const result=await checkGpmConnection('127.0.0.1:23456',{request:async(url,options)=>{assert.equal(options.method,'GET');urls.push(url);return url.includes('/api/v3/')?new Response(JSON.stringify({success:true,data:[]})):new Response('{}',{status:404});}});
  assert.equal(result.gpmApi,'http://127.0.0.1:23456/api/v3');assert.equal(result.discovered,true);assert.equal(urls.length,2);assert.ok(urls.every(url=>new URL(url).port==='23456'));
+});
+
+test('create automatically finds Chrome beyond first profile and accepts pasted proxy whitespace',async()=>{
+ const {proxy}=await import('./gpm-api.mjs');const raw='160.30.21.144:32025:fixtureUser:fixturePassword';assert.equal(proxy('  '+raw+'\n'),raw);let payload;
+ const api=new GpmApi('http://localhost:9495',async(url,options)=>({ok:true,json:async()=>({success:true,data:url.includes('/create')?(payload=JSON.parse(options.body),{id:'new'}):[{id:'firefox',browser:{name:'firefox',version:'154.0.2'}},{id:'chrome',browser:{name:'chrome',version:'152.0.7977.140'}}]})}));
+ await api.create({name:'Fixture',rawProxy:raw});assert.equal(payload.browser_version,'152.0.7977.140');assert.equal(payload.raw_proxy,raw);
+});
+test('Global can create first profile by discovering Chromium versions',async()=>{
+ let payload;const api=new GpmApi('http://localhost:9495',async(url,options)=>({ok:true,json:async()=>({success:true,data:url.includes('/create')?(payload=JSON.parse(options.body),{id:'new'}):url.includes('/browsers/versions')?{chromium:['152.0.7977.140'],firefox:['154.0.2']}:[]})}));
+ await api.create({name:'Fixture'});assert.equal(payload.browser_version,'152.0.7977.140');
+});
+test('empty version uses GPM defaults when discovery has no version',async()=>{
+ for(const base of ['http://localhost:9495','http://localhost:19995']){
+  let payload;const api=new GpmApi(base,async(url,options)=>({ok:true,json:async()=>({success:true,data:url.includes('/create')?(payload=JSON.parse(options.body),{id:'new'}):[]})}));
+  await api.create({name:'Fixture'});assert.equal(Object.hasOwn(payload,'browser_version'),false);assert.equal(Object.hasOwn(payload,'is_random_browser_version'),false);
+ }
 });

@@ -236,7 +236,7 @@ sealed class MainWindow : Window
     }
     void CreateProfile()
     {
-        var values = FormDialog.Ask(this, "Tạo profile GPM", ("Tên profile", ""), ("Proxy · trống nếu không dùng", ""), ("Phiên bản Chrome · tùy chọn", "")); if (values == null) return;
+        var values = FormDialog.Ask(this, "Tạo profile GPM", ("Tên profile", ""), ("Proxy · IP:port:user:pass (trống = không dùng)", ""), ("Chrome · để trống tự chọn", "")); if (values == null) return;
         Perform("Đang tạo profile GPM…", async api => { var r = await api.Request("profile-create", new() { ["name"] = values[0], ["proxy"] = values[1], ["browserVersion"] = values[2] }); await Refresh(); SelectOnly([J.S(J.O(r["profile"])["id"])]); return "Đã tạo profile. Bấm Mở trình duyệt để kiểm tra đăng nhập."; });
     }
     void EditProfile()

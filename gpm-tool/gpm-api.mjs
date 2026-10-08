@@ -15,7 +15,7 @@ function proxyUrl(raw){
  return url;
 }
 export function proxy(value){
- if(typeof value!=='string'||!value.trim()||value.length>2000||/[\r\n]/.test(value))throw Error('Proxy không hợp lệ.');
+ if(typeof value!=='string'||!value.trim()||value.length>2000||/[\r\n]/.test(value.trim()))throw Error('Proxy không hợp lệ.');
  const raw=value.trim();try{proxyUrl(raw);}catch{throw Error('Proxy cần IP:port:user:pass, scheme://IP:port:user:pass hoặc URL http/socks5.');}
  return raw;
 }
@@ -27,7 +27,7 @@ export class GpmApi{
   if(this.version==='v3'){
    mapped=route.replace('/profiles/stop/','/profiles/close/').replace('mode=soft','mode=1');
    if(body){payload={...body};if(payload.name!==undefined){payload.profile_name=payload.name;delete payload.name;}
-    if(route==='/profiles/create'){payload={profile_name:body.name,browser_core:'chromium',browser_name:'Chrome',browser_version:body.browser_version,is_random_browser_version:false,raw_proxy:body.raw_proxy||''};}
+    if(route==='/profiles/create'){payload={profile_name:body.name,browser_core:'chromium',browser_name:'Chrome',...(body.browser_version?{browser_version:body.browser_version,is_random_browser_version:false}:{}),raw_proxy:body.raw_proxy||''};}
    }
   }
   const options={method:payload?'POST':'GET',...(payload?{headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}:{}),redirect:'error',signal:AbortSignal.timeout(30000)};
@@ -54,13 +54,22 @@ export class GpmApi{
   if(typeof rawProxy!=='string')throw Error('Proxy không hợp lệ.');const raw=rawProxy.trim();if(raw)proxy(raw);
   if(typeof browserVersion!=='string'||!Number.isInteger(osType)||![1,2,3,4,5].includes(osType))throw Error('Cấu hình trình duyệt không hợp lệ.');
   let version=browserVersion.trim();
-  if(!version){
-   let id=sourceProfileId;
-   if(!id){const rows=await this.list();id=rows[0]?.id;}
-   if(id){if(!/^[-\w]{1,100}$/.test(id))throw Error('Profile tham chiếu không hợp lệ.');const source=await this.call('/profiles/'+encodeURIComponent(id));if(source?.browser?.name?.toLowerCase()==='chrome')version=source.browser.version;}
+  const validVersion=v=>typeof v==='string'&&/^\d+\.\d+\.\d+\.\d+$/.test(v);
+  const chromeVersion=p=>!(/firefox/i.test(p?.browser?.name||p?.browser_type||''))&&(p?.browser?.version||p?.browser_version);
+  if(version&&!validVersion(version))throw Error('Phiên bản Chrome không hợp lệ; để trống để GPM tự chọn hoặc nhập đủ dạng 152.0.7977.140.');
+  if(!version&&sourceProfileId){
+   if(!/^[-\w]{1,100}$/.test(sourceProfileId))throw Error('Profile tham chiếu không hợp lệ.');
+   try{const candidate=chromeVersion(await this.call('/profiles/'+encodeURIComponent(sourceProfileId)));if(validVersion(candidate))version=candidate;}catch{}
   }
-  if(typeof version!=='string'||!/^\d+\.\d+\.\d+\.\d+$/.test(version))throw Error('Nhập phiên bản Chrome đã cài trong GPM, ví dụ 152.0.7977.140.');
-  const created=await this.call('/profiles/create',{name:name.trim(),group_id:null,raw_proxy:raw,browser_type:1,browser_version:version,os_type:osType});
+  if(!version){
+   const rows=await this.list({metadata:true});
+   version=rows.map(chromeVersion).find(validVersion)||'';
+  }
+  if(!version&&this.version==='v1'){
+   try{const versions=await this.call('/browsers/versions');version=(versions?.chromium||[]).find(validVersion)||'';}catch{}
+  }
+  // Both adapters allow GPM to choose its default when no explicit version is available.
+  const created=await this.call('/profiles/create',{name:name.trim(),group_id:null,raw_proxy:raw,browser_type:1,...(version?{browser_version:version}:{}),os_type:osType});
   if(typeof created?.id!=='string'||!/^[-\w]{1,100}$/.test(created.id))throw Error('GPM chưa trả ID profile mới hợp lệ; kiểm tra danh sách trước khi tạo lại.');
   return {id:created.id,name:created.name||name.trim(),proxy:raw,browserVersion:version};
  }

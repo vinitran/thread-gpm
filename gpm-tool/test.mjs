@@ -116,7 +116,7 @@ test('AI image input merges only three original post images and never uses promo
 test('proxy validation never leaks credentials into labels',async()=>{
  const {proxy,proxyLabel,localApi}=await import('./gpm-api.mjs');
  assert.equal(proxy('10.0.0.1:8080:user:pass'),'10.0.0.1:8080:user:pass');assert.equal(proxyLabel('10.0.0.1:8080:user:pass'),'10.0.0.1:8080');assert.equal(proxyLabel('http://user:pass@10.0.0.1:8080'),'http://10.0.0.1:8080');
- assert.throws(()=>proxy('x:99999:u:p'));assert.throws(()=>proxy('x:8080:u:p\n'));assert.throws(()=>localApi('http://remote.example:9495'));assert.equal(localApi('http://localhost:9495'),'http://localhost:9495');
+ assert.throws(()=>proxy('x:99999:u:p'));assert.equal(proxy('x:8080:u:p\n'),'x:8080:u:p');assert.throws(()=>localApi('http://remote.example:9495'));assert.equal(localApi('http://localhost:9495'),'http://localhost:9495');
 });
 test('GPM proxy workflow updates only selected profile and obtains its CDP after restart',async()=>{
  const {GpmApi}=await import('./gpm-api.mjs');const calls=[];let updated=false;
@@ -202,7 +202,7 @@ test('create profile uses installed Chrome version and includes optional proxy b
  const api=new GpmApi('http://localhost:9495',async(url,opts)=>{calls.push({path:new URL(url).pathname,opts});return {ok:true,json:async()=>({success:true,data:url.includes('/create')?{id:'new',name:'Hoàn Xu 02'}:{id:'old',browser:{name:'chrome',version:'152.0.7977.140'}}})};});
  const created=await api.create({name:' Hoàn Xu 02 ',sourceProfileId:'old',rawProxy:'host:80:u:p',osType:3});assert.equal(created.id,'new');const body=JSON.parse(calls[1].opts.body);assert.deepEqual(body,{name:'Hoàn Xu 02',group_id:null,raw_proxy:'host:80:u:p',browser_type:1,browser_version:'152.0.7977.140',os_type:3});assert.equal(calls[1].opts.method,'POST');assert.equal(calls.some(c=>c.path.includes('/start/')),false);
  await api.create({name:'No proxy',browserVersion:'152.0.7977.140',osType:3});assert.equal(JSON.parse(calls.at(-1).opts.body).raw_proxy,'');
- await assert.rejects(()=>api.create({name:'',browserVersion:'152.0.7977.140'}),/Tên profile/);await assert.rejects(()=>api.create({name:'n',browserVersion:'bad'}),/phiên bản Chrome/);await assert.rejects(()=>api.create({name:'n',browserVersion:'152.0.7977.140',rawProxy:'invalid'}),/Proxy/);
+ await assert.rejects(()=>api.create({name:'',browserVersion:'152.0.7977.140'}),/Tên profile/);await assert.rejects(()=>api.create({name:'n',browserVersion:'bad'}),/phiên bản Chrome/i);await assert.rejects(()=>api.create({name:'n',browserVersion:'152.0.7977.140',rawProxy:'invalid'}),/Proxy/);
 });
 
 test('profile edit verifies persisted name/proxy and stops only when proxy changes; deletion is soft',async()=>{
