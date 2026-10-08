@@ -48,6 +48,18 @@ func installUpdate(_ args: [String]) throws {
 }
 
 
+func nativeEditMenu() -> NSMenuItem {
+    let item = NSMenuItem(title:"Edit",action:nil,keyEquivalent:""), menu = NSMenu(title:"Edit")
+    for (title,action,key) in [("Undo","undo:","z"),("Redo","redo:","Z"),("Cut","cut:","x"),("Copy","copy:","c"),("Paste","paste:","v"),("Select All","selectAll:","a")] {
+        let command = NSMenuItem(title:title,action:NSSelectorFromString(action),keyEquivalent:key)
+        command.keyEquivalentModifierMask = key == "Z" ? [.command,.shift] : [.command]
+        command.target = nil // Resolve the active field editor through AppKit's responder chain.
+        menu.addItem(command)
+        if title == "Redo" { menu.addItem(.separator()) }
+    }
+    item.submenu = menu; return item
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var server: Process?, window: NSWindow!, status: NSTextField!, address: String?, quitting = false
     var data: URL!, app: URL!, output = "", reused = false
@@ -73,7 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func makeUI() {
         let menu = NSMenu(), main = NSMenuItem(); menu.addItem(main)
         let submenu = NSMenu(); submenu.addItem(withTitle: "Hiện cửa sổ", action: #selector(openDashboard), keyEquivalent: "o").target = self
-        submenu.addItem(NSMenuItem.separator()); submenu.addItem(withTitle: "Thoát Hoàn Xu", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); main.submenu = submenu; NSApp.mainMenu = menu
+        submenu.addItem(NSMenuItem.separator()); submenu.addItem(withTitle: "Thoát Hoàn Xu", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); main.submenu = submenu; menu.addItem(nativeEditMenu()); NSApp.mainMenu = menu
         tray = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength); tray.button?.title = "H · GPM"; tray.menu = submenu.copy() as? NSMenu
         window = NSWindow(contentRect: NSRect(x:0,y:0,width:1120,height:820), styleMask:[.titled,.closable,.miniaturizable,.resizable], backing:.buffered, defer:false)
         window.title = "Hoàn Xu · GPM Tool"; window.center(); window.isReleasedWhenClosed = false

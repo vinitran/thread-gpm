@@ -4,6 +4,11 @@ import Cocoa
 @main struct LogRenderingCheck {
     static func main() {
         let app = NSApplication.shared; app.setActivationPolicy(.accessory)
+        let edit = nativeEditMenu().submenu!
+        for (title,key,action) in [("Paste","v","paste:"),("Copy","c","copy:"),("Cut","x","cut:"),("Select All","a","selectAll:")] {
+            let command = edit.items.first { $0.title == title }!
+            assert(command.keyEquivalent == key && command.action == NSSelectorFromString(action) && command.target == nil)
+        }
         let controller = DesktopController()
         let window = NSWindow(contentRect:NSRect(x:0,y:0,width:1100,height:800),styleMask:[.titled,.resizable],backing:.buffered,defer:false)
         window.contentViewController = controller
