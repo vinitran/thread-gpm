@@ -19,6 +19,21 @@ export function proxy(value){
  const raw=value.trim();try{proxyUrl(raw);}catch{throw Error('Proxy cần IP:port:user:pass, scheme://IP:port:user:pass hoặc URL http/socks5.');}
  return raw;
 }
+export function parseProxy(value){
+ const raw=proxy(value),url=proxyUrl(raw);
+ const auth=url.username?':'+decodeURIComponent(url.username)+':'+decodeURIComponent(url.password):'';
+ const port=url.port||(url.protocol==='https:'?'443':url.protocol==='http:'?'80':'');
+ if(!port)throw Error('Proxy cần có port.');
+ const normalized=(url.protocol==='http:'?'':url.protocol+'//')+url.hostname+':'+port+auth;
+ return {proxy:/[@\s/?#]/.test(auth)?url.href.replace(/\/$/,''):normalized,label:url.protocol+'//'+url.hostname+':'+port,authenticated:!!url.username};
+}
+function gpmFailure(result){
+ const error=typeof result.error==='object'?result.error?.message:result.error;
+ return [result.message,error,result.code].filter(v=>typeof v==='string'||typeof v==='number').join(' · ').slice(0,1000)
+  .replace(/([a-z]+:\/\/)[^\s/@]+@/gi,'$1[ẩn]@')
+  .replace(/([^\s/:]+:\d+):[^\s:]+:[^\s]+/g,'$1:[ẩn]')
+  .replace(/sk-[A-Za-z0-9_-]+/g,'[ẩn key]');
+}
 export function proxyLabel(raw){if(!raw)return '';try{const url=proxyUrl(raw.trim());return (raw.includes('://')?url.protocol+'//':'')+url.host;}catch{return 'Proxy không hợp lệ';}}
 export class GpmApi{
  constructor(base,request=fetch){const u=new URL(localApi(base));this.version=(u.pathname.includes('/v3')||!u.pathname.includes('/v1')&&u.port==='19995')?'v3':'v1';this.base=u.origin;this.request=request;}
@@ -45,7 +60,7 @@ export class GpmApi{
   }
   const inUse=/^\/profiles\/start\/[-\w]+$/.test(route)&&result.message==='ProfileInUse'&&result.data?.profile_id===decodeURIComponent(route.split('/').at(-1))&&Number.isInteger(Number(result.data.remote_debugging_port))&&Number(result.data.remote_debugging_port)>0&&Number(result.data.remote_debugging_port)<=65535;
   const alreadyStopped=/^\/profiles\/stop\/[-\w]+$/.test(route)&&(result.message==='ProfileNotRunning'||result.message==='OK'&&result.data===null);
-  if(result.success!==true&&!inUse&&!alreadyStopped)throw Error('GPM từ chối thao tác '+route.split('/')[2]+'. Kiểm tra trạng thái profile trong GPM.');return result.data;
+  if(result.success!==true&&!inUse&&!alreadyStopped)throw Error('GPM từ chối thao tác '+route.split('/')[2]+': '+(gpmFailure(result)||'GPM không trả nguyên nhân chi tiết. Kiểm tra thông báo trong GPM.'));return result.data;
  }
  async list({metadata=false,search='',groupId='',limit=Infinity}={}){const profiles=[];const query=String(search).normalize('NFC').toLocaleLowerCase();for(let page=1;page<=100;page++){const data=await this.call('/profiles?page='+page+'&page_size=100&per_page=100');const rows=Array.isArray(data)?data:data?.data;if(!Array.isArray(rows))throw Error('GPM trả danh sách profile không hợp lệ.');profiles.push(...rows.filter(p=>(!groupId||String(p.group_id??'')===String(groupId))&&(!query||[p.name,p.id].some(value=>String(value??'').normalize('NFC').toLocaleLowerCase().includes(query)))).map(p=>metadata?{id:p.id,name:p.name,proxy:p.raw_proxy??'',groupId:p.group_id??null,browser:p.browser||(p.browser_version?{name:/firefox/i.test(p.browser_type||'')?'firefox':'chrome',version:p.browser_version}:undefined),os:p.os,updatedAt:p.updated_at,tags:p.tags}:({id:p.id,name:p.name})));if(profiles.length>=limit||Array.isArray(data)||page>=(data.last_page||1))break;}return profiles.slice(0,limit);}
  async groups(){const groups=[];for(let page=1;page<=100;page++){const data=await this.call('/groups?page='+page+'&page_size=100&per_page=100');const rows=Array.isArray(data)?data:data?.data;if(!Array.isArray(rows))throw Error('GPM trả danh sách nhóm không hợp lệ.');groups.push(...rows.map(g=>({id:String(g.id),name:String(g.name??g.id)})));if(Array.isArray(data)||page>=(data.last_page||1))break;}return groups;}

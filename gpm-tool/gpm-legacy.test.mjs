@@ -82,3 +82,13 @@ test('empty version uses GPM defaults when discovery has no version',async()=>{
   await api.create({name:'Fixture'});assert.equal(Object.hasOwn(payload,'browser_version'),false);assert.equal(Object.hasOwn(payload,'is_random_browser_version'),false);
  }
 });
+test('Parse normalizes URL and colon proxies without network requests',async()=>{
+ const {parseProxy}=await import('./gpm-api.mjs');
+ assert.deepEqual(parseProxy('  http://user:pass@127.0.0.1:8080\n'),{proxy:'127.0.0.1:8080:user:pass',label:'http://127.0.0.1:8080',authenticated:true});
+ assert.equal(parseProxy('socks5://127.0.0.1:1080:user:pass').proxy,'socks5://127.0.0.1:1080:user:pass');
+ assert.throws(()=>parseProxy('not a proxy'));
+});
+test('GPM refusal includes actionable reason with credentials masked',async()=>{
+ const api=new GpmApi('http://localhost:9495',async()=>({ok:true,json:async()=>({success:false,message:'BrowserNotFound',error:'proxy http://user:secret@host:80 host:80:user:secret',code:'START_FAILED'})}));
+ await assert.rejects(api.open('fixture'),e=>e.message.includes('BrowserNotFound')&&e.message.includes('START_FAILED')&&!e.message.includes('secret'));
+});

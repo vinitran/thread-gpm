@@ -177,10 +177,10 @@ sealed class MainWindow : Window
     }
     public async Task Refresh()
     {
-        if (api == null || refreshing || closing) return; refreshing = true;
+        if (api == null || refreshing || closing || EditingProfileForm) return; refreshing = true;
         try
         {
-            snapshot = await api.Request("state"); if (!loaded) { FillSettings(J.O(snapshot["settings"])); loaded = true; Message("Sẵn sàng · dữ liệu được lưu trên máy"); }
+            snapshot = await api.Request("state"); if (EditingProfileForm) return; if (!loaded) { FillSettings(J.O(snapshot["settings"])); loaded = true; Message("Sẵn sàng · dữ liệu được lưu trên máy"); }
             var ids = new HashSet<string>(); foreach (var data in J.Rows(snapshot["profiles"])) { var id = J.S(data["id"]); ids.Add(id); if (!allRows.TryGetValue(id, out var row)) { row = new(); row.PropertyChanged += (_, e) => { if (e.PropertyName == "Selected") { Controls(); RenderLogs(); } }; allRows[id] = row; } row.Data = data; row.Changed(); }
             foreach (var id in allRows.Keys.Except(ids).ToArray()) allRows.Remove(id);
             Filter(); RenderLogs(); Controls();
@@ -234,6 +234,8 @@ sealed class MainWindow : Window
         var ids = Ids; var epoch = ++openEpoch;
         Perform("Đang mở trình duyệt GPM…", async api => { var names = new List<string>(); foreach (var id in ids) { if (epoch != openEpoch) return "Đã hủy các lượt mở còn lại do Dừng."; var r = await api.Request("profile-open", new() { ["profileId"] = id, ["useCurrentProxy"] = true }); if (J.B(r["cancelled"])) return "Đã hủy yêu cầu mở do Dừng."; names.Add(J.S(r["profileName"])); } return "Đã mở: " + string.Join(", ", names) + ". Chưa chạy tự động."; });
     }
+    public bool EditingProfileForm { get; set; }
+    public Task<JsonObject> ParseProxy(string value) => api!.Request("proxy-parse", new() { ["proxy"] = value });
     void CreateProfile()
     {
         var values = FormDialog.Ask(this, "Tạo profile GPM", ("Tên profile", ""), ("Proxy · IP:port:user:pass (trống = không dùng)", ""), ("Chrome · để trống tự chọn", "")); if (values == null) return;
@@ -314,8 +316,14 @@ sealed class FormDialog : Window
 {
     public static string[]? Ask(Window owner, string title, params (string Label, string Value)[] fields)
     {
-        var dialog = new FormDialog { Owner = owner, Title = title, Width = 510, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var page = new StackPanel { Margin = new(22) }; dialog.Content = page; var inputs = new List<TextBox>();
-        foreach (var (label, value) in fields) { page.Children.Add(MainWindow.Note(label)); var input = new TextBox { Text = value, MinHeight = 30, Padding = new(6) }; inputs.Add(input); page.Children.Add(input); }
-        var ok = new Button { Content = "Lưu", IsDefault = true, Margin = new(0, 20, 10, 0), Padding = new(18, 6, 18, 6) }; ok.Click += (_, _) => dialog.DialogResult = true; var cancel = new Button { Content = "Hủy", IsCancel = true, Margin = new(0, 20, 0, 0), Padding = new(18, 6, 18, 6) }; page.Children.Add(MainWindow.Row(ok, cancel)); return dialog.ShowDialog() == true ? inputs.Select(i => i.Text).ToArray() : null;
+        var dialog = new FormDialog { Owner = owner, Title = title, Width = 510, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var page = new StackPanel { Margin = new(22) }; dialog.Content = page; var inputs = new List<TextBox>(); var parsing = false;
+        foreach (var (label, value) in fields) { page.Children.Add(MainWindow.Note(label)); var input = new TextBox { Text = value, MinHeight = 30, Padding = new(6) }; inputs.Add(input);
+            if (label.StartsWith("Proxy") && owner is MainWindow main) {
+                var line = new DockPanel(); var parse = new Button { Content = "Parse", Padding = new(12, 5, 12, 5), Margin = new(8, 0, 0, 0) }; DockPanel.SetDock(parse, Dock.Right); line.Children.Add(parse); line.Children.Add(input); page.Children.Add(line);
+                var note = MainWindow.Note("Parse chuẩn hóa định dạng · không kiểm tra kết nối"); page.Children.Add(note);
+                parse.Click += async (_, _) => { parsing = true; parse.IsEnabled = false; note.Text = "Đang parse proxy…"; try { var r = await main.ParseProxy(input.Text); input.Text = J.S(r["proxy"]); note.Text = "Hợp lệ · " + J.S(r["label"]); } catch (Exception e) { note.Text = e.Message; } finally { parsing = false; parse.IsEnabled = true; } };
+            } else page.Children.Add(input);
+        }
+        var ok = new Button { Content = "Lưu", IsDefault = true, Margin = new(0, 20, 10, 0), Padding = new(18, 6, 18, 6) }; ok.Click += (_, _) => { if (!parsing) dialog.DialogResult = true; }; var cancel = new Button { Content = "Hủy", IsCancel = true, Margin = new(0, 20, 0, 0), Padding = new(18, 6, 18, 6) }; page.Children.Add(MainWindow.Row(ok, cancel)); if (owner is MainWindow editing) editing.EditingProfileForm = true; try { return dialog.ShowDialog() == true ? inputs.Select(i => i.Text).ToArray() : null; } finally { if (owner is MainWindow finished) finished.EditingProfileForm = false; }
     }
 }

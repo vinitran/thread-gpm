@@ -6,7 +6,7 @@ import {Store} from './store.mjs';
 import {GpmBrowser} from './browser.mjs';
 import {createRunner,root} from './runner.mjs';
 import {dryRunProfile} from './dry-run.mjs';
-import {GpmApi,checkGpmConnection} from './gpm-api.mjs';
+import {GpmApi,checkGpmConnection,parseProxy} from './gpm-api.mjs';
 import {AUTO_DEFAULTS,autoConfig} from '../extension/auto-runner.js';
 import {autoPage} from '../extension/auto-dom.js';
 import {models} from '../extension/ai.js';
@@ -70,6 +70,7 @@ const server=http.createServer(async(req,res)=>{
    pendingPosts++;trackedPost=true;
    const input=await body(req,['/api/profiles-import-preview','/api/profile-session-import'].includes(url.pathname)?6*1024*1024:100000);
    if(operation==='cài bản cập nhật'&&!['/api/stop','/api/profile-close','/api/profiles-stop','/api/profiles-close'].includes(url.pathname))throw Error('Đang cài cập nhật. Đợi tool mở lại trước khi thao tác.');
+   if(url.pathname==='/api/proxy-parse')return json(res,parseProxy(input.proxy));
    if(updater&&url.pathname==='/api/update-check')return json(res,await updater.check());
    if(!isWorker&&url.pathname==='/api/app-quit'){json(res,{ok:true});setTimeout(()=>shutdown(),100);return;}
    if(updater&&url.pathname==='/api/update-install'){

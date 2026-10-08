@@ -28,6 +28,12 @@ final class ToolAPI {
     }
 }
 
+final class CallbackButton: NSButton {
+    var callback: (() -> Void)?
+    init(_ title: String, callback: @escaping () -> Void) { super.init(frame:.zero); self.title = title; self.callback = callback; bezelStyle = .rounded; target = self; action = #selector(invoke) }
+    required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
+    @objc func invoke() { callback?() }
+}
 final class FormStack: NSStackView { override var isFlipped: Bool { true } }
 
 final class ToggleTable: NSTableView {
@@ -48,7 +54,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     var inputs: [String: NSTextField] = [:], checks: [String: NSButton] = [:], buttons: [String: NSButton] = [:]
     let updateBanner = NSStackView(), updateWarning = NSTextField(wrappingLabelWithString:""), versionText = NSTextField(labelWithString:"Phiên bản…")
     var updateChecking = false, lastUpdateCheck = Date.distantPast
-    var tableSignature = ""
+    var tableSignature = "", editingProfileForm = false
     var picker: ProfilePicker?, updater: JSONObject = [:]
     override func loadView() {
         view = NSView(); view.identifier = NSUserInterfaceItemIdentifier("native-workspace")
@@ -167,8 +173,8 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         }
     }
     func refresh() async {
-        guard let api = api, !refreshing else { return }; refreshing = true; defer { refreshing = false }
-        do { snapshot = try await api.request("state"); profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; renderProfiles(); renderLogs(); controls()
+        guard let api = api, !refreshing, !editingProfileForm else { return }; refreshing = true; defer { refreshing = false }
+        do { snapshot = try await api.request("state"); if editingProfileForm { return }; profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; renderProfiles(); renderLogs(); controls()
             let download = object(snapshot["updateDownload"])
             if ["downloading","verifying","ready"].contains(string(download["phase"])) { let text = string(download["message"]); showMessage(text); updateText.stringValue = text; updateWarning.stringValue = text }
         }
@@ -227,11 +233,28 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     @objc func startSelected() { let ids = Array(selected); perform("Đang chạy profile…") { [weak self] api in self?.results(try await api.request("profiles-start",["ids":ids])) ?? "Đã xử lý" } }
     @objc func stopSelected() { openEpoch += 1; let ids = Array(selected); perform("Đang gửi lệnh dừng tới GPM…") { [weak self] api in self?.results(try await api.request("profiles-close",["ids":ids])) ?? "Đã dừng" } }
     func showForm(_ title: String, values: [(String,String)], done: @escaping ([String]) -> Void) {
+        editingProfileForm = true
         let alert = NSAlert(); alert.messageText = title; alert.addButton(withTitle:"Lưu"); alert.addButton(withTitle:"Hủy")
         let content = column(); var fields:[NSTextField] = []
-        for (label,value) in values { content.addArrangedSubview(self.label(label)); let f = NSTextField(string:value); f.widthAnchor.constraint(equalToConstant:430).isActive = true; fields.append(f); content.addArrangedSubview(f) }
-        content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:450,height:CGFloat(values.count)*65); alert.accessoryView = content
-        alert.beginSheetModal(for:view.window!) { response in if response == .alertFirstButtonReturn { done(fields.map { $0.stringValue }) } }
+        for (label,value) in values {
+            content.addArrangedSubview(self.label(label)); let f = NSTextField(string:value); f.isAutomaticTextCompletionEnabled = false; f.usesSingleLineMode = true; fields.append(f)
+            if label.hasPrefix("Proxy") {
+                f.widthAnchor.constraint(equalToConstant:340).isActive = true
+                let note = self.label("Parse chuẩn hóa định dạng · không kiểm tra kết nối")
+                let parse = CallbackButton("Parse") {}
+                parse.callback = { [weak self, weak parse, weak alert] in
+                    guard let api = self?.api else { return }; parse?.isEnabled = false; alert?.buttons.first?.isEnabled = false; note.stringValue = "Đang parse proxy…"
+                    Task { @MainActor in
+                        defer { parse?.isEnabled = true; alert?.buttons.first?.isEnabled = true }
+                        do { let r = try await api.request("proxy-parse",["proxy":f.stringValue]); f.stringValue = string(r["proxy"]); note.stringValue = "Hợp lệ · " + string(r["label"]) }
+                        catch { note.stringValue = error.localizedDescription }
+                    }
+                }
+                content.addArrangedSubview(row([f,parse])); content.addArrangedSubview(note)
+            } else { f.widthAnchor.constraint(equalToConstant:430).isActive = true; content.addArrangedSubview(f) }
+        }
+        content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:450,height:CGFloat(values.count)*65+40); alert.accessoryView = content
+        alert.beginSheetModal(for:view.window!) { response in self.editingProfileForm = false; if response == .alertFirstButtonReturn { done(fields.map { $0.stringValue }) } }
     }
     @objc func createProfile() { showForm("Tạo profile GPM mới",values:[("Tên profile",""),("Proxy · IP:port:user:pass (trống = không dùng)",""),("Chrome · để trống tự chọn","")]) { [weak self] values in self?.perform("Đang tạo profile GPM…") { api in let r = try await api.request("profile-create",["name":values[0],"proxy":values[1],"browserVersion":values[2]]); self?.selected = [string(object(r["profile"])["id"])]; return "Đã tạo profile. Chọn Mở trình duyệt để kiểm tra đăng nhập." } } }
     @objc func editProfile() { guard let id = selected.first, let p = profiles.first(where:{string($0["id"]) == id}) else { return }; showForm("Sửa profile",values:[("Tên",string(p["name"])),("Proxy",string(p["proxy"]))]) { [weak self] values in self?.perform("Đang cập nhật GPM…") { api in _ = try await api.request("profile-edit",["id":id,"name":values[0],"proxy":values[1]]); return "Đã cập nhật tên và proxy." } } }
