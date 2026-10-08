@@ -1,0 +1,150 @@
+# Hướng dẫn GPM Tool cho người mới
+
+## 1. Mở GPM và tool
+
+Mở GPM trên máy chạy tool. GPMLogin v4 trên Windows thường dùng `http://127.0.0.1:19995/api/v3`; GPMLogin Global dùng cổng trong cài đặt GPM và `/api/v1`. Địa chỉ được chỉnh trong **Cài đặt → Kết nối GPM**. Nếu báo không kết nối được GPM, kiểm tra GPM đã mở và Local API hoạt động đúng cổng.
+
+Mở dashboard tại http://127.0.0.1:4317. Đây là địa chỉ trên máy đang chạy tool.
+
+Nếu chưa chạy dashboard, mở Terminal trong thư mục `gpm-tool`, chạy `npm start`. Lần đầu cài trên máy mới cần Node.js 20 trở lên và chạy `npm ci` trước. Giữ Terminal đang chạy; nếu hiện thông báo tool đã chạy, mở dashboard hiện tại thay vì khởi động thêm bản khác.
+
+### Lệnh khởi động trên máy hiện tại (macOS)
+
+Mở GPMLogin Global trước. Nếu tool chưa chạy, mở Terminal và chạy:
+
+```sh
+cd "/Users/vinhtran/Documents/Codex/2026-10-06/ba/outputs/thread-tool/gpm-tool"
+npm start
+```
+
+Khi Terminal hiện `GPM tool UI: http://127.0.0.1:4317`, mở địa chỉ đó trong trình duyệt. Giữ cửa sổ Terminal hoạt động trong khi chạy tool.
+
+Nếu là lần đầu cài lại và chưa có dependencies, chạy trước:
+
+```sh
+cd "/Users/vinhtran/Documents/Codex/2026-10-06/ba/outputs/thread-tool/gpm-tool"
+npm ci
+npm start
+```
+
+Không cần chạy `npm ci` mỗi lần mở tool. Nếu báo tool đang chạy hoặc cổng 4317 đã được dùng, mở dashboard hiện tại; không khởi động thêm một bản.
+
+Để dừng hẳn: xoá bộ lọc, tích **Chọn đang hiển thị** rồi bấm **Dừng & đóng**, đợi các profile dừng/đóng xong, rồi bấm `Ctrl+C` ở Terminal. Chỉ bấm `Ctrl+C` khi phiên còn chạy sẽ giữ checkpoint để khôi phục lần sau.
+
+## 2. Thêm profile
+
+### Dùng profile đã có trong GPM
+
+1. Bấm **+ Thêm profile → Có sẵn trong GPM**.
+2. Tìm bằng tên/ID hoặc chọn nhóm GPM. Bấm dòng hoặc ô tích để chọn; danh sách không tự chọn sẵn.
+3. Bấm **Thêm N profile vào tool**. Có thể dùng **Chọn tất cả profile có thể thêm** nếu muốn lấy cả danh sách đang hiển thị.
+4. Tool chọn các profile vừa thêm và hiện hướng dẫn bước tiếp theo.
+
+Nếu dùng file, chọn **+ Thêm profile → Nhập file danh sách**, chọn file JSON/CSV/TXT hoặc dán danh sách, rồi **Xem trước danh sách**, chọn profile và thêm vào tool.
+
+Profile đã có trong tool được bỏ qua, giữ cấu hình/lịch sử. Chỉ có tên thì cần khớp duy nhất trong GPM; khi trùng tên, dùng ID. Tên và proxy được đọc từ GPM hiện tại. Nhập danh sách chưa mở profile và chưa chạy automation. File Excel/gói backup chưa hỗ trợ qua luồng này.
+
+Profile mới nhập dùng cấu hình AI, nhịp chạy và folder ảnh đã lưu của tool; nháp chưa lưu không được dùng. Sau khi nhập, kiểm tra cài đặt chung.
+
+### Tạo profile GPM mới
+
+1. Bấm **+ Thêm profile → Tạo profile mới**.
+2. Nhập tên dễ nhận biết, ví dụ `Threads 01`.
+3. Nhập proxy nếu dùng; nếu không, để trống.
+4. Có thể để trống phiên bản Chrome để tool lấy phiên bản từ profile Chrome hiện có trong GPM. Nếu không có profile tham chiếu, nhập đúng phiên bản Chrome đã cài trong GPM.
+5. Bấm **Tạo và thêm vào tool**. Tool chọn đúng profile vừa tạo, chưa mở trình duyệt hoặc chạy tự động.
+
+## 3. Nhập hoặc đổi proxy
+
+Trong hàng profile, bấm **Sửa profile**. Nhập proxy rồi bấm **Lưu profile**.
+
+Ví dụ định dạng (không phải proxy sử dụng được):
+
+```text
+203.0.113.10:8080:username:password
+```
+
+Dùng địa chỉ, cổng, tài khoản và mật khẩu do bên cung cấp proxy đưa. Để trống ô proxy nghĩa là bỏ proxy. Tool cũng nhận proxy dạng URL HTTP/HTTPS/SOCKS5.
+
+Nếu profile đang chạy, bấm **Dừng profile** trước khi sửa. Đổi proxy sẽ đóng trình duyệt profile đó; sau khi lưu, bấm **Mở** để mở lại. Tên và proxy thay đổi bên GPM được cập nhật lên bảng khoảng mỗi 3 giây. Khi mở/chạy, tool đọc lại proxy hiện tại từ GPM.
+
+## 4. Mở profile và đăng nhập Threads
+
+1. Bấm thẻ để chọn một hoặc nhiều profile, rồi bấm **Mở trình duyệt**. Hoặc bấm **Mở** ngay trên một thẻ.
+2. Trong cửa sổ GPM vừa mở, đăng nhập Threads bằng tài khoản của profile đó.
+3. Kiểm tra đã xem được bảng tin, xử lý xong các yêu cầu đăng nhập/xác minh và đóng popup còn mở.
+
+Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile; chưa bắt đầu phiên comment. Không cần tự nhập cổng CDP.
+
+## 5. Cài đặt AI và nhịp chạy
+
+1. Mở phần **Cài đặt**; phạm vi mặc định là tất cả profile.
+2. Điền API key của dịch vụ AI mà tool đang dùng: `https://ai.hoanxu.com/v1`. Không tự thay bằng key của một dịch vụ khác.
+3. Chọn model được key đó hỗ trợ; có thể dùng **Tải danh sách model**. Khi đổi key, lưu trước rồi tải danh sách vì nút tải dùng key đã lưu.
+4. Kiểm tra **Hướng dẫn cho AI (prompt)** và **Chủ đề muốn tìm** để phù hợp nội dung muốn xử lý.
+5. Người mới có thể giữ mặc định: gõ 60ms, chờ giữa bước 2 giây, nghỉ tìm bài 30 giây, nghỉ trung bình 150 giây (tự dao động 120–180 giây).
+6. Chọn bật/tắt **Cuộn nhẹ lên/xuống khi nghỉ** và **Thả tim khi chờ**.
+7. Ảnh: để trống folder để dùng ảnh đi kèm. Folder riêng cần `app_store.png` và ít nhất 2 ảnh khác; bấm **Kiểm tra folder** trước khi lưu.
+8. Bấm **Lưu cho tất cả profile**, đợi báo đã lưu.
+
+Để trống API key khi sửa cài đặt sẽ giữ key đã lưu. AI, model, prompt, ảnh, chủ đề và nhịp chạy dùng chung cho tất cả profile. Proxy, kết nối và lịch sử được giữ riêng. Có thể đổi nhịp chạy, chủ đề và AI khi đang chạy: bấm **Lưu cho tất cả profile**, bước tiếp theo dùng cài đặt mới; thao tác đang thực hiện tiếp tục hoàn tất. Đổi kết nối hoặc proxy cần dừng profile trước.
+
+## 6. Chạy tool
+
+Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở profile nếu cần, bắt đầu tìm bài, gọi AI và đăng bình luận bằng cài đặt chung đã lưu. Nên chạy một profile trước để quan sát kết quả.
+
+Muốn chạy nhiều profile, kiểm tra đăng nhập từng profile và lưu cài đặt chung trước, rồi chọn các profile cần chạy. Thanh thao tác giữ trên màn hình khi cuộn; **Bỏ chọn** xoá toàn bộ lựa chọn. Nếu chọn profile nằm ngoài bộ lọc hiện tại, tool báo số lượng cạnh phần chọn.
+
+Theo dõi **Xem log** ở từng hàng, trạng thái phiên, **Phiên /25**, **Hôm nay / Tổng**, lượt tiếp theo và lịch sử. “Chưa xác minh” nghĩa là đã ghi nhận gửi nhưng chưa xác nhận được comment; kiểm tra bài gốc trước khi thao tác thủ công để tránh trùng.
+
+Mỗi phiên có 25 lần gửi, sau đó nghỉ 3 giờ rồi tiếp tục. Mỗi profile có bộ đếm, lịch nghỉ và lịch sử riêng. Thả tim khi nghỉ tối đa 3 bài, cách nhau 20–45 giây; các bước tương tác mặc định cách nhau khoảng 2–3.5 giây. Bỏ qua tương tác nếu không đủ thời gian nghỉ, không rút ngắn nhịp bấm để kịp.
+
+Giữ máy, GPM và dashboard hoạt động để tiếp tục đúng lịch. Không chạy automation của extension đồng thời với tool trên cùng profile.
+
+## 7. Dừng và xử lý lỗi
+
+- **Dừng profile**: gửi lệnh dừng ngay tới GPM và hủy lịch của profile đó.
+- **Dừng & đóng**: dừng và đóng nhóm được chọn; hủy các lượt mở còn chờ trong hàng đợi.
+- Muốn dừng toàn bộ: xoá bộ lọc, tích **Chọn đang hiển thị**, bấm **Dừng & đóng**.
+- Chỉ đóng trang dashboard không phải yêu cầu dừng. Muốn dừng hẳn, dùng các nút dừng trước khi tắt tool.
+- **Mở/Chạy bị khóa**: chưa chọn profile, tất cả profile được chọn đang chạy/dừng hoặc tool đang xử lý yêu cầu khác.
+- **AI timeout**: mỗi request chờ tối đa 90 giây; lỗi thì nghỉ 120 giây và thử lại tối đa 3 lần sau lần đầu. Nếu hết lượt, xem nguyên nhân trong log, kiểm tra key/model/kết nối rồi chạy lại.
+- **GPM chưa đồng bộ**: kiểm tra GPM và Local API. CDP chưa kết nối không chứng minh profile đã đóng; trạng thái mở/đóng có thể chưa xác định.
+- **Invalid origin/token**: tải lại dashboard ở đúng địa chỉ `http://127.0.0.1:4317`, tránh mở nhiều bản tool cùng dữ liệu. Tool có cơ chế tải lại token khi token cũ bị từ chối.
+
+Luồng lần đầu: mở GPM → thêm/nhập profile → nhập proxy → Mở trình duyệt → đăng nhập Threads → Cài đặt AI → Lưu và áp dụng → chọn profile → Chạy tự động → theo dõi log.
+
+Thời gian nghỉ sau bình luận dùng một giá trị trung bình: mặc định 150 giây, mỗi lượt dao động ngẫu nhiên ±20% (120–180 giây). Bấm Lưu và áp dụng để dùng giá trị mới từ lượt nghỉ tiếp theo.
+
+Đổi model rồi bấm **Lưu cho tất cả profile** sẽ áp dụng chính model đang chọn (Sol, Luna hoặc model khác) cho mọi profile đã thêm và profile mới. Lượt AI đang thực hiện hoàn tất; lần gọi AI tiếp theo dùng model mới. Nhật ký ghi model được dùng khi lọc bài và tạo bình luận. Nếu một profile chưa áp dụng được, giao diện báo lỗi để bấm Lưu thử lại.
+
+## 8. Chuyển profile sang máy khác, giữ cookie/phiên Threads
+
+### Trên máy nguồn
+
+1. Bấm **Mở** cho các profile cần chuyển; kiểm tra Threads vẫn đang đăng nhập trong GPM.
+2. Trong tool, bấm **Xuất / Chuyển máy**.
+3. Chọn **Chuyển máy · kèm cookie/phiên Threads**. Chọn tất cả hoặc chỉ các profile đang tích, tối đa 50 profile / 5 MB mỗi file.
+4. Bấm **Tải file JSON**. Chuyển file `hoanxu-transfer-....json` sang máy đích.
+
+### Trên máy đích
+
+1. Cài và mở GPM, bật Local API. Mở tool, kiểm tra địa chỉ GPM trong Cài đặt đúng máy đích.
+2. Bấm **+ Thêm profile → Nhập file danh sách**, chọn file chuyển máy rồi **Xem trước danh sách**.
+3. Nếu cần, nhập **Phiên bản Chrome trên máy đích** (phiên bản đã cài trong GPM) rồi xem trước lại. Để trống sẽ dùng phiên bản trong file.
+4. Chọn profile cần nhập rồi xác nhận. Tool tạo profile GPM khi chưa có ID tương ứng, đặt tên/proxy, mở trình duyệt và khôi phục cookie, local storage của Threads/Meta.
+5. Kiểm tra đăng nhập trong GPM trước khi bấm **Chạy tự động**. Cài đặt AI và nhịp chạy dùng cấu hình chung của tool trên máy đích.
+
+Profile đã có trong tool được bỏ qua để giữ phiên hiện tại. Nếu nhập lỗi, profile đã tạo được đánh dấu để lần nhập lại thử khôi phục tiếp, không tạo trùng. Import không tự chạy automation.
+
+File chứa proxy và dữ liệu đăng nhập; giữ riêng tư như tài khoản của bạn. File không chứa API key hay lịch sử gửi của tool. Đây là gói cookie/local storage cho Threads/Meta, không phải bản backup đầy đủ GPM: không sao chép toàn bộ fingerprint, mật khẩu lưu, extension, IndexedDB hoặc dữ liệu trình duyệt khác. Threads có thể yêu cầu đăng nhập/xác minh lại nếu phiên hết hạn hoặc kiểm tra khi đổi máy. Chưa xác minh trên hai máy với tài khoản thật.
+
+### Chỉ chuyển danh sách
+
+Chọn **Chỉ danh sách ID và tên** để tải file `hoanxu-profiles-....json`. Trên máy đích, các profile tương ứng cần có sẵn trong GPM. Nhập file, xem trước, chọn và thêm các profile còn thiếu. Tên/proxy lấy lại từ GPM; các profile đã có được bỏ qua.
+
+File danh sách từ tool hỗ trợ tối đa 10.000 profile / 5 MB, tự nhập theo từng đợt 500 profile. JSON/CSV/TXT thông thường giữ giới hạn 500 profile / 1 MB. File danh sách không chứa cookie, proxy, API key, cài đặt hay lịch sử.
+
+## Lưu dữ liệu từ bản 0.4.1
+
+App lưu dữ liệu trong SQLite `tool.sqlite` bên ngoài thư mục cài đặt. Mỗi profile có namespace riêng; lịch sử chống gửi trùng, cấu hình và trạng thái chạy được giữ khi cập nhật app. JSON cũ tự chuyển và được giữ dưới tên `state.pre-sqlite.json`. Muốn sao lưu, thoát app trước rồi copy toàn bộ thư mục data. Không ghi lại bằng phiên bản trước 0.4.1 sau khi chuyển SQLite.

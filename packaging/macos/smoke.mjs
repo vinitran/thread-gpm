@@ -1,0 +1,36 @@
+import {readPersistedState} from '../../gpm-tool/store.mjs';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {fileURLToPath} from 'node:url';
+import {Updater} from '../../gpm-tool/updates.mjs';
+const exec=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..'),arch=process.env.BUILD_ARCH||process.arch;
+const app=path.join(root,'.build/macos-'+arch,'HoanXu GPM.app'),resources=path.join(app,'Contents/Resources');
+const manifest=JSON.parse(await fs.readFile(path.join(root,`release/hoanxu-macos-${arch}.json`),'utf8'));
+await assert.rejects(fs.access(path.join(resources,'bundled-keys.json')));
+const entries=await fs.readdir(resources,{recursive:true});assert(!entries.some(p=>/(^|\/)(data|state\.json|process\.lock|\.env)(\/|$)/.test(p)));assert(!entries.some(p=>p.endsWith('.exe')||p.includes('sharp-win32')));
+await exec('/usr/bin/codesign',['--verify','--deep','--strict',app]);
+await exec(path.join(resources,'node'),['--input-type=module','-e',"import sharp from 'sharp'; const v=await sharp({create:{width:2,height:2,channels:3,background:'white'}}).png().toBuffer();if(!v.length)process.exit(1);"],{cwd:path.join(resources,'gpm-tool')});
+const fixture=await fs.mkdtemp(path.join(os.tmpdir(),'hoanxu-mac-smoke-')),data=path.join(fixture,'data');let child;
+try{
+ await fs.mkdir(data);child=spawn(path.join(resources,'node'),[path.join(resources,'gpm-tool/server.mjs')],{cwd:resources,env:{...process.env,PORT:'0',GPM_TOOL_DATA:data},stdio:['ignore','pipe','pipe']});let output='';
+ const exited=new Promise(resolve=>child.once('exit',code=>resolve(code)));
+ const address=await new Promise((resolve,reject)=>{const t=setTimeout(()=>reject(Error('Startup timeout')),20000);child.stdout.on('data',b=>{output+=b;const match=output.match(/GPM tool UI: (http:\/\/127\.0\.0\.1:\d+)/);if(match){clearTimeout(t);resolve(match[1]);}});child.stderr.on('data',b=>output+=b);child.once('exit',()=>{clearTimeout(t);reject(Error('Bundled server exited: '+output));});});
+ const state=await fetch(address+'/api/state').then(r=>r.json());assert.equal(state.version,manifest.version);assert.equal(state.profiles.length,0);assert.equal(state.counts.total,0);
+ const html=await fetch(address).then(r=>r.text());assert(html.includes('install-update'));
+ const update=await fetch(address+'/api/update-status').then(r=>r.json());assert.equal(update.repository,null);assert(!update.installSupported);
+ const forbidden=await fetch(address+'/api/update-install',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(forbidden.status,403);
+ child.kill('SIGTERM');assert.equal(await exited,0);child=null;await assert.rejects(fs.access(path.join(data,'process.lock')));
+ const saved=JSON.stringify(await readPersistedState(data));const installed=path.join(fixture,'HoanXu GPM.app');await fs.cp(app,installed,{recursive:true,verbatimSymlinks:true});
+ const dmg=await fs.readFile(path.join(root,'release',path.basename(manifest.url)));
+ const u=new Updater({dir:data,repo:new URL(manifest.url).pathname.split('/').slice(1,3).join('/'),appPath:installed,version:'0.0.1',arch,fetcher:async url=>new Response(url.endsWith('.json')?JSON.stringify(manifest):dmg)});
+ await u.check();await u.stage();const request=JSON.parse(await fs.readFile(path.join(data,'update-install.json'),'utf8'));
+ assert(request.source.startsWith(path.join(data,'updates')));assert.equal(request.target,installed);
+ const helper=path.join(fixture,'helper');await fs.copyFile(path.join(installed,'Contents/MacOS/HoanXuGPM'),helper);
+ await exec(helper,['--install-update',request.source,installed,'2147483647',data,manifest.version,'no-open'],{timeout:30000});
+ await exec('/usr/bin/codesign',['--verify','--deep','--strict',installed]);assert.deepEqual(JSON.stringify(await readPersistedState(data)),saved);await assert.rejects(fs.access(path.join(data,'update-install.json')));
+ console.log('PASS: signed bundle, native Node/Sharp, isolated server, token guard, DMG stage, native helper replacement and preserved data. No GPM profile or Threads action was run.');
+}finally{if(child){child.kill('SIGTERM');await new Promise(r=>child.once('exit',r));}await fs.rm(fixture,{recursive:true,force:true});}

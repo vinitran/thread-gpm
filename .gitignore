@@ -1,0 +1,20 @@
+.DS_Store
+node_modules/
+.env
+.env.*
+*.zip
+*.log
+gpm-tool/data/
+
+.build/
+release/
+desktop/**/bin/
+desktop/**/obj/
+
+# Local database, migration backup and packaged credentials
+tool.sqlite*
+state.pre-sqlite.json
+bundled-keys.json
+
+# Public configuration template; never commit filled .env files
+!.env.example

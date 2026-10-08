@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Threads Data Inspector",
+  "version": "0.11.30",
+  "description": "Read Threads data, merge up to three images horizontally, and generate responses with Hoan Xu AI.",
+  "permissions": ["storage", "scripting", "debugger", "alarms"],
+  "host_permissions": ["https://www.threads.com/*", "https://ai.hoanxu.com/*", "https://*.cdninstagram.com/*", "https://*.fbcdn.net/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "Lấy dữ liệu Threads" }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "thread-tool-gpm",
+  "version": "0.4.2",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test.mjs gpm-legacy.test.mjs profile-import.test.mjs profile-transfer.test.mjs profile-manager.test.mjs idle-engagement.test.mjs updates.test.mjs store.test.mjs dry-run.test.mjs",
+    "test:ui": "node ui-smoke.mjs && node import-ui-smoke.mjs",
+    "test:all": "npm test && npm run test:ui"
+  },
+  "dependencies": {
+    "playwright": "^1.56.0",
+    "sharp": "^0.35.5"
+  }
+}
