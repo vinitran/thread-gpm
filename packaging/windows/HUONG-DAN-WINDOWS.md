@@ -18,7 +18,7 @@ Cấu hình và lịch sử ở `%LOCALAPPDATA%\HoanXu-GPM\data`. Cookie trình 
 
 **Cài đặt chung → Kiểm tra cập nhật** đọc GitHub Releases. Dừng profile và lưu cài đặt trước khi **Cài bản mới & mở lại**. Tool kiểm tra checksum và EXE x64, thay EXE rồi mở lại; giữ nguyên data. Nếu lỗi, xem `app.log` / `update-error.txt` trong thư mục data hoặc tải EXE mới thủ công.
 
-Bản Windows đã biên dịch và kiểm tra đóng gói trên macOS; kiểm thử chạy WPF thực tế được cấu hình trong CI Windows. EXE chưa ký số.
+CI build bản Windows x64; các bước test trong CI đang tắt theo cấu hình hiện tại. EXE chưa ký số.
 
 Từ 0.4.1, app kiểm tra bản mới lúc mở và mỗi giờ. Nút **Kiểm tra cập nhật** có ngay đầu cửa sổ; khi có bản mới sẽ hiện cảnh báo **Bạn chưa dùng phiên bản mới nhất** cùng nút **Cập nhật & mở lại**, không cần vào Cài đặt. Không tự cài bản mới khi đang chạy profile.
 

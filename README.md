@@ -1,5 +1,7 @@
 # thread-gpm
 
+Người mới bắt đầu: [Hướng dẫn cài đặt và sử dụng](HUONG-DAN-CHO-NGUOI-MOI.md).
+
 # thread-tool
 
 Dự án gồm Chrome extension **0.11.30** và tool riêng điều khiển GPM **0.3.2**. Cả hai dùng chung bộ chạy phiên, đọc DOM Threads, lọc bài bằng AI và logic comment. Không dùng API Threads.
