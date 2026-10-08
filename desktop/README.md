@@ -22,3 +22,10 @@ Windows thoát backend bằng `/api/app-quit` có kiểm tra Origin/token để 
 Build, CI, cập nhật và hướng dẫn sử dụng: xem `../packaging/README.md`, `../packaging/macos/HUONG-DAN-MAC.md`, `../packaging/windows/HUONG-DAN-WINDOWS.md`.
 
 Kiểm thử trên Mac sử dụng thư mục data và GPM giả lập riêng. CI Windows chạy `HoanXuDesktop.exe --smoke-test` với data tạm, kiểm tra lưu cài đặt và thoát sạch, không dùng tài khoản thật. Chưa chạy WPF trực tiếp trên Mac.
+
+
+## Kiểm tra kết nối Windows
+
+`dotnet run --project desktop/tests/ConnectionChecks.csproj` chạy client C# thật với backend HTTP giả lập trên loopback: kiểm tra Origin/token, retry token hết hạn, bỏ qua proxy hệ thống, mở bằng proxy hiện có trong GPM, dừng đúng profile và lưu cài đặt chung. Bài kiểm tra này không mở GPM hay Threads; chạy được trên máy có .NET 10 SDK, không thay thế kiểm thử giao diện WPF trên Windows.
+
+Kiểm thử backend `npm --prefix gpm-tool test` bao gồm GPM API v1/v3, dò API trên cổng tùy chỉnh và đóng worker qua IPC để lưu dữ liệu trước khi thoát trên Windows. CI vẫn chỉ build/phát hành, không bật lại bước test.

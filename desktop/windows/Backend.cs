@@ -16,7 +16,8 @@ static class J
 
 sealed class ToolApi(string address) : IDisposable
 {
-    readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(6) };
+    // This client talks only to the bundled loopback backend, never through a system proxy.
+    readonly HttpClient http = new(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(6) };
     string token = "";
     public string Address { get; } = address.TrimEnd('/');
     public async Task<JsonObject> Request(string route, JsonObject? body = null, bool retry = true)
@@ -61,7 +62,8 @@ sealed class Backend
         p.OutputDataReceived += (_, e) => Output(e.Data); p.ErrorDataReceived += (_, e) => Output(e.Data);
         p.Exited += (_, _) => { ready.TrySetException(new Exception("Backend đã thoát. Xem app.log trong thư mục dữ liệu.")); Exited?.Invoke(p.ExitCode); };
         if (!p.Start()) throw new Exception("Không khởi động được backend."); p.BeginOutputReadLine(); p.BeginErrorReadLine();
-        Api = new ToolApi(await ready.Task.WaitAsync(TimeSpan.FromSeconds(30)));
+        try { Api = new ToolApi(await ready.Task.WaitAsync(TimeSpan.FromSeconds(30))); }
+        catch { if (!p.HasExited) { p.Kill(entireProcessTree: true); await p.WaitForExitAsync(); } throw; }
     }
     public async Task Close()
     {

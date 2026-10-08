@@ -112,9 +112,10 @@ sealed class MainWindow : Window
     void Controls()
     {
         progress.Visibility = busy > 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var (id, b) in buttons) b.IsEnabled = api != null && busy == 0;
+        var ready = api != null && loaded;
+        foreach (var (id, b) in buttons) b.IsEnabled = ready && busy == 0;
         foreach (var id in new[] { "open-selected", "start-selected" }) buttons[id].IsEnabled &= Selected.Any();
-        buttons["stop-selected"].IsEnabled = api != null && Selected.Any();
+        buttons["stop-selected"].IsEnabled = ready && Selected.Any();
         foreach (var id in new[] { "edit-profile", "delete-profile", "load-history", "dry-run-selected" }) buttons[id].IsEnabled &= Selected.Count() == 1;
         foreach (var id in new[] { "install-update", "install-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.B(update["available"]) && J.B(update["installSupported"]);
         foreach (var id in new[] { "check-update", "check-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.S(update["repository"]).Length > 0;

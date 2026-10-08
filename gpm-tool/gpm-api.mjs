@@ -1,5 +1,5 @@
 import {endpoint} from './browser.mjs';
-export function localApi(value){const u=new URL(endpoint(value));if(!['http:','https:'].includes(u.protocol)||!['/','/api/v1','/api/v1/','/api/v3','/api/v3/'].includes(u.pathname)||u.search||u.hash)throw Error('Local API phải là http://127.0.0.1:PORT, có thể kèm /api/v1 hoặc /api/v3.');return u.origin+(u.pathname.startsWith('/api/')?u.pathname.replace(/\/$/,''):'');}
+export function localApi(value){if(typeof value==='string'){value=value.trim();if(/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/api\/v[13])?\/?$/.test(value))value='http://'+value;}const u=new URL(endpoint(value));if(!['http:','https:'].includes(u.protocol)||!['/','/api/v1','/api/v1/','/api/v3','/api/v3/'].includes(u.pathname)||u.search||u.hash)throw Error('Local API phải là http://127.0.0.1:PORT, có thể kèm /api/v1 hoặc /api/v3.');return u.origin+(u.pathname.startsWith('/api/')?u.pathname.replace(/\/$/,''):'');}
 function proxyUrl(raw){
  const scheme=raw.match(/^([a-z][a-z0-9+.-]*):\/\//i),protocol=scheme?scheme[1].toLowerCase():'http';
  if(!['http','https','socks5'].includes(protocol))throw Error();
@@ -33,7 +33,7 @@ export class GpmApi{
   const options={method:payload?'POST':'GET',...(payload?{headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}:{}),redirect:'error',signal:AbortSignal.timeout(30000)};
   let r;try{r=await this.request(this.base+'/api/'+this.version+mapped,options);
    if(this.version==='v3'&&r.status===404&&/^\/profiles\/[-\w]+$/.test(route))r=await this.request(this.base+'/api/v3'+mapped.replace('/profiles/','/profile/'),options);
-  }catch(e){const code=e.cause?.code||e.code||(/timeout/i.test(e.name)?'TIMEOUT':'NETWORK');throw Error('Không kết nối được GPM Local API tại '+this.base+' ('+this.version+' · '+code+'). Mở GPM và kiểm tra cổng Local API; GPMLogin v4 thường dùng 19995/API v3, Global dùng API v1.');}
+  }catch(e){const code=/timeout/i.test(e.name)?'TIMEOUT':e.cause?.code||e.code||'NETWORK';throw Object.assign(Error('Không kết nối được GPM Local API tại '+this.base+' ('+this.version+' · '+code+'). Mở GPM và kiểm tra cổng Local API; GPMLogin v4 thường dùng 19995/API v3, Global dùng API v1.'),{code});}
   if(!r.ok)throw Error('GPM Local API '+this.version+' tại '+this.base+' trả HTTP '+r.status+'. Kiểm tra phiên bản API và cổng.');
   const result=await r.json();
   if(this.version==='v3'&&result.success===true){
@@ -106,12 +106,13 @@ export class GpmApi{
 
 // Read-only probes. Discovery is shown in the settings draft, never silently saved.
 export async function checkGpmConnection(base,{request=fetch}={}){
- const configured=localApi(base),candidates=[configured,'http://127.0.0.1:9495/api/v1','http://127.0.0.1:19995/api/v3'];
- const failures=[];
+ const configured=localApi(base),initial=new GpmApi(configured),candidates=[configured,initial.base+'/api/'+(initial.version==='v1'?'v3':'v1'),'http://127.0.0.1:9495/api/v1','http://127.0.0.1:19995/api/v3'];
+ const failures=[],unreachable=new Set();
  for(const address of [...new Set(candidates)]){
   const api=new GpmApi(address,(url,options)=>request(url,{...options,signal:AbortSignal.timeout(3000)}));
+  if(unreachable.has(api.base))continue;
   try{await api.list({limit:1});return {ok:true,gpmApi:address,version:api.version,discovered:address!==configured,message:'Đã kết nối GPM '+api.version+' tại '+address+'. '+(address!==configured?'Bấm Lưu để áp dụng địa chỉ này cho tất cả profile.':'')};}
-  catch(e){failures.push(e.message);}
+  catch(e){failures.push(e.message);if(['ECONNREFUSED','ENOTFOUND','EHOSTUNREACH','TIMEOUT'].includes(e.code))unreachable.add(api.base);}
  }
  throw Error(failures.join('\n'));
 }

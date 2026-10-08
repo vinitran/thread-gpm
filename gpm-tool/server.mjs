@@ -185,5 +185,5 @@ async function shutdown(exitCode=0){
  const deadline=Date.now()+5000;while(runner.running&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));
  await store.pending;await fs.unlink(lockPath).catch(()=>{});process.exit(exitCode);
 }
-if(isWorker)process.on('disconnect',shutdown);
+if(isWorker){process.on('disconnect',()=>shutdown());process.on('message',message=>{if(message?.type==='shutdown')shutdown();});}
 process.on('SIGINT',()=>shutdown());process.on('SIGTERM',()=>shutdown());

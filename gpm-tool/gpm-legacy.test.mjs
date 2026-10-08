@@ -60,3 +60,9 @@ test('connection check probes only GET and reports discovery without saving',asy
  const custom=await checkGpmConnection('http://127.0.0.1:23456/api/v1',{request:async()=>new Response(JSON.stringify({success:true,data:[]}))});assert.equal(custom.discovered,false);assert.equal(custom.gpmApi,'http://127.0.0.1:23456/api/v1');
  await assert.rejects(()=>checkGpmConnection('http://remote.example:9495'),/localhost/);
 });
+
+test('GPM discovery tries both API versions on a custom port before switching ports',async()=>{
+ const {checkGpmConnection}=await import('./gpm-api.mjs');const urls=[];
+ const result=await checkGpmConnection('127.0.0.1:23456',{request:async(url,options)=>{assert.equal(options.method,'GET');urls.push(url);return url.includes('/api/v3/')?new Response(JSON.stringify({success:true,data:[]})):new Response('{}',{status:404});}});
+ assert.equal(result.gpmApi,'http://127.0.0.1:23456/api/v3');assert.equal(result.discovered,true);assert.equal(urls.length,2);assert.ok(urls.every(url=>new URL(url).port==='23456'));
+});

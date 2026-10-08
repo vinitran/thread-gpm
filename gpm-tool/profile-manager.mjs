@@ -18,7 +18,18 @@ export class ProfileWorker{
   });return this.ready;
  }
  async call(route,input,timeoutMs=90000){await this.boot();const r=await fetch(this.base+'/api/'+route,{...(input===undefined?{}:{method:'POST',headers:{Origin:this.base,'X-Tool-Token':this.token,'Content-Type':'application/json'},body:JSON.stringify(input)}),signal:AbortSignal.timeout(timeoutMs)});const result=await r.json();if(!r.ok)throw Error(result.error||'Bộ chạy profile báo lỗi.');if(route==='state'){const {token,settings,assets,defaults,...view}=result;return view;}return result;}
- async close({force=false}={}){if(!this.child||this.child.exitCode!==null)return;const child=this.child;await new Promise(resolve=>{let killTimer;const timer=setTimeout(()=>{if(force){child.kill('SIGKILL');killTimer=setTimeout(resolve,1000);}else resolve();},force?5000:10000);child.once('exit',()=>{clearTimeout(timer);clearTimeout(killTimer);resolve();});child.kill('SIGTERM');});}
+ async close({force=false}={}){
+  if(!this.child||this.child.exitCode!==null||this.child.signalCode!==null)return;
+  const child=this.child;
+  await new Promise(resolve=>{
+   let killTimer;
+   const timer=setTimeout(()=>{if(force){child.kill('SIGKILL');killTimer=setTimeout(resolve,1000);}else resolve();},force?5000:10000);
+   child.once('exit',()=>{clearTimeout(timer);clearTimeout(killTimer);resolve();});
+   // Windows terminates immediately on SIGTERM; IPC lets the worker flush SQLite and remove its lock first.
+   if(child.connected)child.send({type:'shutdown'},error=>{if(error&&child.exitCode===null)child.kill('SIGTERM');});
+   else child.kill('SIGTERM');
+  });
+ }
 }
 export class ProfileManager{
  constructor(store,{workerFactory=(dir,onView)=>new ProfileWorker(dir,onView),onChange=()=>{},gpmFactory=base=>new GpmApi(base)}={}){this.gpmFactory=gpmFactory;this.store=store;this.workerFactory=workerFactory;this.onChange=onChange;this.workers=new Map();this.views=new Map();this.locks=new Map();this.cancelled=new Map();this.closing=false;this.live=new Map();this.syncing=null;this.endpoints=new Map();this.stoppingProfiles=new Map();}
