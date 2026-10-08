@@ -26,4 +26,4 @@ Bản build không nhúng API key. Điền key trong **Cài đặt chung → API
 
 CI chỉ dùng `GITHUB_TOKEN` do GitHub cấp để tạo release. Không cần secret AI trong Actions. Không đưa `.env`, SQLite, file export phiên Threads hay bản build cũ đã nhúng key vào repository.
 
-Cập nhật từ xa hiện tắt theo cấu hình; CI vẫn build và tạo release để tải thủ công.
+Cập nhật từ xa được bật cho GitHub Releases công khai. App kiểm tra khi mở và định kỳ, hiện cảnh báo khi có bản mới, cài khi người dùng bấm nút. Có thể build với `GPM_UPDATES_ENABLED=0` để tắt.

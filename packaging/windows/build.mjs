@@ -7,7 +7,7 @@ async function copy(relative){const dest=path.join(app,relative);await fs.mkdir(
 await fs.mkdir(work,{recursive:true});await fs.mkdir(out,{recursive:true});await fs.rm(app,{recursive:true,force:true});await fs.mkdir(app,{recursive:true});
 const version=JSON.parse(await fs.readFile(path.join(root,'gpm-tool/package.json'),'utf8')).version;
 const updateRepo=repository(process.env.GPM_UPDATE_REPOSITORY||'vinitran/thread-gpm');
-await fs.writeFile(path.join(app,'release-config.json'),JSON.stringify({repository:updateRepo,updatesEnabled:false}));
+await fs.writeFile(path.join(app,'release-config.json'),JSON.stringify({repository:updateRepo,updatesEnabled:process.env.GPM_UPDATES_ENABLED!=='0'}));
 for(const name of await fs.readdir(path.join(root,'gpm-tool'))){if(name.endsWith('.mjs')&&!/test|smoke/.test(name))await copy('gpm-tool/'+name);}
 for(const name of ['package.json','package-lock.json'])await copy('gpm-tool/'+name);
 let windowsGuide=await fs.readFile(path.join(root,'packaging/windows/HUONG-DAN-WINDOWS.md'),'utf8');

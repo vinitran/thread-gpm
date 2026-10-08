@@ -21,7 +21,7 @@ try{
  const address=await new Promise((resolve,reject)=>{const t=setTimeout(()=>reject(Error('Startup timeout')),20000);child.stdout.on('data',b=>{output+=b;const match=output.match(/GPM tool UI: (http:\/\/127\.0\.0\.1:\d+)/);if(match){clearTimeout(t);resolve(match[1]);}});child.stderr.on('data',b=>output+=b);child.once('exit',()=>{clearTimeout(t);reject(Error('Bundled server exited: '+output));});});
  const state=await fetch(address+'/api/state').then(r=>r.json());assert.equal(state.version,manifest.version);assert.equal(state.profiles.length,0);assert.equal(state.counts.total,0);
  const html=await fetch(address).then(r=>r.text());assert(html.includes('install-update'));
- const update=await fetch(address+'/api/update-status').then(r=>r.json());assert.equal(update.repository,null);assert(!update.installSupported);
+ const update=await fetch(address+'/api/update-status').then(r=>r.json());assert(update.repository);assert(!update.installSupported);
  const forbidden=await fetch(address+'/api/update-install',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(forbidden.status,403);
  child.kill('SIGTERM');assert.equal(await exited,0);child=null;await assert.rejects(fs.access(path.join(data,'process.lock')));
  const saved=JSON.stringify(await readPersistedState(data));const installed=path.join(fixture,'HoanXu GPM.app');await fs.cp(app,installed,{recursive:true,verbatimSymlinks:true});

@@ -28,4 +28,4 @@ Cài đặt, lịch sử và trạng thái chạy được lưu trong `tool.sqli
 
 Mở GPM, vào **Cài đặt chung → Kiểm tra / tìm GPM**. App thử địa chỉ đã nhập, rồi hai cổng phổ biến 9495 (Global/API v1) và 19995 (v4/API v3). Nếu tìm được địa chỉ khác, bấm **Lưu cho tất cả profile** để áp dụng. Với cổng tùy chỉnh, nhập địa chỉ đúng trong Cài đặt GPM trước khi kiểm tra. Dừng các profile đang chạy trước khi đổi địa chỉ GPM; đổi AI và nhịp chạy vẫn áp dụng từ bước tiếp theo.
 
-Bản 0.4.2 tắt cập nhật từ xa vì repository riêng tư. CI vẫn tạo bản release; đăng nhập GitHub để tải thủ công. **Chạy thử · không đăng** kiểm tra Threads và AI, chỉ tạo bản xem trước, không gửi comment hoặc thả tim.
+Từ bản 0.4.3, cập nhật từ xa được bật cho repository công khai `vinitran/thread-gpm`. App hiện cảnh báo bản mới và nút kiểm tra/cài cập nhật. Bản 0.4.2 đã tắt cập nhật cần tải bản mới thủ công một lần. **Chạy thử · không đăng** kiểm tra Threads và AI, chỉ tạo bản xem trước, không gửi comment hoặc thả tim.

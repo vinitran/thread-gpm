@@ -32,7 +32,7 @@ Không điền key thật vào `.env.example`. `.env` và thư mục dữ liệu
 | CDP của trình duyệt GPM | Không | Tool lấy khi mở profile |
 | Proxy có xác thực | Có username/password nếu nhà cung cấp yêu cầu | Nhập riêng cho từng profile |
 | GitHub Actions tạo release | `GITHUB_TOKEN` do GitHub tự cấp | Không cần tự điền token vào code |
-| Cập nhật từ xa trong app | Đang tắt | App không lưu GitHub token |
+| Cập nhật từ xa trong app | Không | Đọc GitHub Releases công khai; không lưu GitHub token |
 
 ## Chuẩn bị repository công khai
 
