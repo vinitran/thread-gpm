@@ -92,3 +92,12 @@ test('GPM refusal includes actionable reason with credentials masked',async()=>{
  const api=new GpmApi('http://localhost:9495',async()=>({ok:true,json:async()=>({success:false,message:'BrowserNotFound',error:'proxy http://user:secret@host:80 host:80:user:secret',code:'START_FAILED'})}));
  await assert.rejects(api.open('fixture'),e=>e.message.includes('BrowserNotFound')&&e.message.includes('START_FAILED')&&!e.message.includes('secret'));
 });
+test('quoted multiline clipboard proxy is cleaned for Parse and GPM create payload',async()=>{
+ const {proxy,parseProxy}=await import('./gpm-api.mjs');
+ const raw='160.30.21.144:32025:fixtureUser:fixturePassword';
+ for(const pasted of ['"'+raw+'\n"',"'"+raw+"\r\n'",'“'+raw+'\n”','\u200b '+raw+' \u2060']){assert.equal(proxy(pasted),raw);assert.equal(parseProxy(pasted).proxy,raw);}
+ assert.throws(()=>proxy('"'+raw+'\n'+raw+'"'));
+ assert.equal(proxy('host:80:user:pass"word'),'host:80:user:pass"word');
+ let payload;const api=new GpmApi('http://localhost:9495',async(url,options)=>({ok:true,json:async()=>({success:true,data:(payload=JSON.parse(options.body),{id:'new'})})}));
+ await api.create({name:'Fixture',browserVersion:'152.0.7977.140',rawProxy:'"'+raw+'\n"'});assert.equal(payload.raw_proxy,raw);
+});

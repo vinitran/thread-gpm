@@ -15,8 +15,13 @@ function proxyUrl(raw){
  return url;
 }
 export function proxy(value){
- if(typeof value!=='string'||!value.trim()||value.length>2000||/[\r\n]/.test(value.trim()))throw Error('Proxy không hợp lệ.');
- const raw=value.trim();try{proxyUrl(raw);}catch{throw Error('Proxy cần IP:port:user:pass, scheme://IP:port:user:pass hoặc URL http/socks5.');}
+ if(typeof value!=='string'||value.length>2000)throw Error('Proxy không hợp lệ.');
+ const trim=raw=>raw.replace(/^[\s\u200b\u2060]+|[\s\u200b\u2060]+$/g,'');
+ let raw=trim(value);
+ const pairs={'"':'"',"'":"'",'“':'”','‘':'’'};
+ if(pairs[raw[0]]&&raw.at(-1)===pairs[raw[0]])raw=trim(raw.slice(1,-1));
+ if(!raw||/[\r\n]/.test(raw))throw Error('Proxy không hợp lệ. Dán một proxy trên một dòng.');
+ try{proxyUrl(raw);}catch{throw Error('Proxy cần IP:port:user:pass, scheme://IP:port:user:pass hoặc URL http/socks5.');}
  return raw;
 }
 export function parseProxy(value){
@@ -66,7 +71,7 @@ export class GpmApi{
  async groups(){const groups=[];for(let page=1;page<=100;page++){const data=await this.call('/groups?page='+page+'&page_size=100&per_page=100');const rows=Array.isArray(data)?data:data?.data;if(!Array.isArray(rows))throw Error('GPM trả danh sách nhóm không hợp lệ.');groups.push(...rows.map(g=>({id:String(g.id),name:String(g.name??g.id)})));if(Array.isArray(data)||page>=(data.last_page||1))break;}return groups;}
  async create({name,rawProxy='',browserVersion='',sourceProfileId='',osType=process.platform==='darwin'?(process.arch==='arm64'?3:2):process.platform==='win32'?1:4}){
   if(typeof name!=='string'||!name.trim()||name.trim().length>100||/[\x00-\x1f]/.test(name))throw Error('Tên profile cần 1–100 ký tự.');
-  if(typeof rawProxy!=='string')throw Error('Proxy không hợp lệ.');const raw=rawProxy.trim();if(raw)proxy(raw);
+  if(typeof rawProxy!=='string')throw Error('Proxy không hợp lệ.');const raw=rawProxy.trim()?proxy(rawProxy):'';
   if(typeof browserVersion!=='string'||!Number.isInteger(osType)||![1,2,3,4,5].includes(osType))throw Error('Cấu hình trình duyệt không hợp lệ.');
   let version=browserVersion.trim();
   const validVersion=v=>typeof v==='string'&&/^\d+\.\d+\.\d+\.\d+$/.test(v);
@@ -91,7 +96,7 @@ export class GpmApi{
  async edit(id,{name,rawProxy=''}){
   if(typeof id!=='string'||!/^[-\w]{1,100}$/.test(id))throw Error('Profile ID không hợp lệ.');
   if(typeof name!=='string'||!name.trim()||name.trim().length>100||/[\x00-\x1f]/.test(name))throw Error('Tên profile cần 1–100 ký tự.');
-  if(typeof rawProxy!=='string')throw Error('Proxy không hợp lệ.');const raw=rawProxy.trim();if(raw)proxy(raw);
+  if(typeof rawProxy!=='string')throw Error('Proxy không hợp lệ.');const raw=rawProxy.trim()?proxy(rawProxy):'';
   const old=await this.call('/profiles/'+encodeURIComponent(id));if(old?.id!==id)throw Error('Profile không khớp ID.');
   if((old.raw_proxy||'')!==raw)await this.call('/profiles/stop/'+encodeURIComponent(id));
   await this.call('/profiles/update/'+encodeURIComponent(id),{name:name.trim(),raw_proxy:raw});
@@ -114,7 +119,7 @@ export class GpmApi{
   return {cdp:'http://127.0.0.1:'+port,profileId:id,profileName:selected.name};
  }
  async applyAndOpen(id,raw){
-  if(typeof id!=='string'||!/^[-\w]{1,100}$/.test(id))throw Error('Chọn đúng Profile ID trước.');if(raw)proxy(raw);
+  if(typeof id!=='string'||!/^[-\w]{1,100}$/.test(id))throw Error('Chọn đúng Profile ID trước.');if(raw)raw=proxy(raw);
   const selected=await this.call('/profiles/'+encodeURIComponent(id));if(selected?.id!==id)throw Error('GPM trả profile không khớp ID đã chọn.');
   if((selected.raw_proxy||'')===raw)return this.open(id);
   // Explicit UI action: apply proxy and restart exactly this profile, not other profiles.
