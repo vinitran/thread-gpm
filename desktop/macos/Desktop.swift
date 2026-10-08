@@ -146,7 +146,10 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     func refresh() async {
         guard let api = api, !refreshing else { return }; refreshing = true; defer { refreshing = false }
-        do { snapshot = try await api.request("state"); profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; renderProfiles(); renderLogs(); controls() }
+        do { snapshot = try await api.request("state"); profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; renderProfiles(); renderLogs(); controls()
+            let download = object(snapshot["updateDownload"])
+            if ["downloading","verifying","ready"].contains(string(download["phase"])) { let text = string(download["message"]); showMessage(text); updateText.stringValue = text; updateWarning.stringValue = text }
+        }
         catch { if busy == 0 { showMessage("Mất kết nối · đang thử lại: " + error.localizedDescription,error:true) } }
     }
     func loadSettings(_ value: JSONObject) {

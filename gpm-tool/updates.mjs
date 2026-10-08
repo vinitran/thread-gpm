@@ -71,7 +71,7 @@ export class Updater{
   if(this.busy)throw Error('Đang tải bản cập nhật.');
   if(!this.value.installSupported)throw Error('Mở bản app đã đóng gói để cập nhật trong app.');
   if(!this.candidate||!newer(this.candidate.version,this.version))throw Error('Chưa có bản mới. Bấm Kiểm tra cập nhật trước.');
-  this.busy=true;let work,mounted=false,ready=false;
+  this.busy=true;this.value.download={phase:'downloading',receivedBytes:0,totalBytes:this.candidate.bytes,percent:0,message:'Đang tải bản cập nhật · 0%'};let work,mounted=false,ready=false;
   try{
    const candidate=this.candidate;
    const windows=this.platform==='win32';
@@ -81,8 +81,9 @@ export class Updater{
    const file=path.join(work,windows?'update.exe':'update.dmg'),volume=path.join(work,'volume'),app=path.join(work,'HoanXu GPM.app');
    const r=await githubFetch(this.fetcher,candidate.url,AbortSignal.timeout(180000));if(!r.ok)throw Error('Tải bản cập nhật thất bại · HTTP '+r.status);
    const hash=createHash('sha256'),handle=await fs.open(file,'wx',0o600);let size=0;
-   try{for await(const raw of r.body){const chunk=Buffer.from(raw);size+=chunk.length;if(size>candidate.bytes)throw Error('Kích thước tải xuống vượt manifest.');hash.update(chunk);await handle.writeFile(chunk);}}finally{await handle.close();}
+   try{for await(const raw of r.body){const chunk=Buffer.from(raw);size+=chunk.length;if(size>candidate.bytes)throw Error('Kích thước tải xuống vượt manifest.');hash.update(chunk);await handle.writeFile(chunk);this.value.download={phase:'downloading',receivedBytes:size,totalBytes:candidate.bytes,percent:Math.floor(size/candidate.bytes*100),message:`Đang tải bản cập nhật · ${Math.floor(size/candidate.bytes*100)}% · ${(size/1048576).toFixed(1)} / ${(candidate.bytes/1048576).toFixed(1)} MB`};}}finally{await handle.close();}
    if(size!==candidate.bytes||hash.digest('hex')!==candidate.sha256)throw Error('Bản tải về sai checksum hoặc thiếu dữ liệu. Chưa thay đổi app.');
+   this.value.download={...this.value.download,phase:'verifying',message:'Đã tải 100% · đang xác minh và chuẩn bị cài đặt…'};
    if(windows){
     const h=await fs.open(file,'r'),header=Buffer.alloc(4096);let n;
     try{n=(await h.read(header,0,header.length,0)).bytesRead;}finally{await h.close();}
@@ -109,6 +110,7 @@ export class Updater{
   }
   finally{if(mounted){try{await this.execute('/usr/bin/hdiutil',['detach',path.join(work,'volume')],{timeout:30000});mounted=false;}catch{}}
    if(work&&!mounted&&!ready)await fs.rm(work,{recursive:true,force:true});
+   this.value.download={...this.value.download,phase:ready?'ready':'failed',message:ready?'Đã tải 100% · đang cài và mở lại app…':'Tải/cài cập nhật chưa hoàn tất. Hãy thử lại.'};
    this.busy=false;
   }
  }

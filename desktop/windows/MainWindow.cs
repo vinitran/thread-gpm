@@ -184,6 +184,9 @@ sealed class MainWindow : Window
             var ids = new HashSet<string>(); foreach (var data in J.Rows(snapshot["profiles"])) { var id = J.S(data["id"]); ids.Add(id); if (!allRows.TryGetValue(id, out var row)) { row = new(); row.PropertyChanged += (_, e) => { if (e.PropertyName == "Selected") { Controls(); RenderLogs(); } }; allRows[id] = row; } row.Data = data; row.Changed(); }
             foreach (var id in allRows.Keys.Except(ids).ToArray()) allRows.Remove(id);
             Filter(); RenderLogs(); Controls();
+            var download = J.O(snapshot["updateDownload"]); var phase = J.S(download["phase"]);
+            if (phase is "downloading" or "verifying" or "ready") { message.Text = updateText.Text = updateWarning.Text = J.S(download["message"]); progress.Visibility = Visibility.Visible; progress.IsIndeterminate = phase != "downloading"; if (double.TryParse(J.S(download["percent"]), out var percent)) progress.Value = percent; }
+            else progress.IsIndeterminate = true;
         }
         catch (Exception e) { if (busy == 0) Message("Mất kết nối · đang thử lại: " + e.Message, true); }
         finally { refreshing = false; }

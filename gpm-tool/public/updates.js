@@ -25,7 +25,8 @@ $('install-update').onclick=async()=>{
  if((state.profiles||[]).some(p=>['running','stopping'].includes(p.view?.state?.status)||p.view?.operation)||state.operation){$('update-status').textContent='Dừng các profile và đợi thao tác hoàn tất trước khi cài cập nhật.';return;}
  if(document.getElementById('dirty')?.dataset.state==='changed'){$('update-status').textContent='Lưu các cài đặt đang sửa trước khi cài cập nhật.';return;}
  busy=true;render();$('install-update').classList.add('is-loading');$('update-status').textContent='Đang tải và xác minh bản mới. Giữ app mở…';
- await request('update-install',{});$('update-status').textContent='Đang mở lại tool với bản mới…';
+ let polling=false;const progressTimer=setInterval(async()=>{if(polling)return;polling=true;try{const v=await request('update-status');if(v.download?.message)$('update-status').textContent=v.download.message;}catch{}finally{polling=false;}},500);
+ try{await request('update-install',{});}finally{clearInterval(progressTimer);}$('update-status').textContent='Đang mở lại tool với bản mới…';
   let tries=0;const timer=setInterval(async()=>{try{const v=await request('update-status');if(v.currentVersion!==status.currentVersion){clearInterval(timer);location.reload();}}catch{}if(++tries>60){clearInterval(timer);busy=false;render();$('update-status').textContent='Hãy mở lại app và kiểm tra phiên bản. Nếu lỗi, xem update-error.txt trong thư mục dữ liệu.';}},2000);
  }catch(e){busy=false;render();$('update-status').textContent=e.message;}
  finally{$('install-update').classList.remove('is-loading');}

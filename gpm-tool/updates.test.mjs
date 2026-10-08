@@ -60,3 +60,15 @@ test('failed checks retain a known update, expose uncertainty and clear the erro
  const unknown=new Updater({repo,platform:'darwin',arch:'arm64',fetcher:async()=>new Response(null,{status:404})});
  await assert.rejects(unknown.check(),/Chưa có bản/);assert.equal(unknown.status().checkedAt,null);assert.match(unknown.status().checkError,/Chưa có bản/);
 });
+
+test('download progress reports actual streamed bytes and keeps verification separate',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'update-progress-'));let u;const seen=[];
+ try{
+  const target=path.join(dir,'app.exe');await fs.writeFile(target,'old');
+  const bytes=Buffer.alloc(128);bytes.write('MZ');bytes.writeUInt32LE(64,0x3c);bytes.write('PE\0\0',64);bytes.writeUInt16LE(0x8664,68);
+  u=new Updater({dir,repo,appPath:target,version:'0.3.7',platform:'win32',arch:'x64',fetcher:async()=>({ok:true,body:(async function*(){seen.push(u.status().download.percent);yield bytes.subarray(0,64);seen.push(u.status().download.percent);yield bytes.subarray(64);})()})});
+  u.candidate={version:'0.3.8',bytes:128,sha256:createHash('sha256').update(bytes).digest('hex'),url:'https://github.com/owner/tool/releases/download/v0.3.8/update.exe'};
+  await u.stage();assert.deepEqual(seen,[0,50]);assert.equal(u.status().download.percent,100);assert.equal(u.status().download.phase,'ready');
+  u.candidate.sha256='0'.repeat(64);await assert.rejects(u.stage(),/checksum/);assert.equal(u.status().download.phase,'failed');
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});

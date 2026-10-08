@@ -37,7 +37,7 @@ const token=randomBytes(24).toString('hex');let operation=null,startEpoch=0,publ
 const updater=isWorker?null:new Updater({dir:dataDir,repo:await updateRepository()});
 const active=()=>['running','stopping'].includes(runner.state?.status);
 function idleOnly(){if(operation||active())throw Error('Stop và đợi thao tác hiện tại hoàn tất trước khi chỉnh cài đặt.');}
-function view(){const profiles=manager?.rows();const selected=profiles?.find(p=>p.id===store.value.settings.profileId);return {...(selected?.view||dashboard(store.value,!!browser.browser?.isConnected())),operation,version:VERSION,...(manager?{profiles,selectedProfileId:store.value.settings.profileId}:{})};}
+function view(){const profiles=manager?.rows();const selected=profiles?.find(p=>p.id===store.value.settings.profileId);return {...(selected?.view||dashboard(store.value,!!browser.browser?.isConnected())),operation,version:VERSION,updateDownload:updater?.status().download,...(manager?{profiles,selectedProfileId:store.value.settings.profileId}:{})};}
 browser.onDisconnected=()=>broadcast();
 function broadcast(){if(isWorker&&process.connected)process.send({type:'view',view:view()});const message='data: '+JSON.stringify(view())+'\n\n';for(const response of clients){if(response.writableLength>1024*1024){response.destroy();clients.delete(response);}else response.write(message);}}
 store.subscribe(()=>{clearTimeout(publishing);publishing=setTimeout(broadcast,150);});
