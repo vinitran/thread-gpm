@@ -82,7 +82,29 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     func pin(_ item: NSView, in parent: NSView, inset: CGFloat = 0) { parent.addSubview(item); item.translatesAutoresizingMaskIntoConstraints = false; NSLayoutConstraint.activate([item.leadingAnchor.constraint(equalTo:parent.leadingAnchor,constant:inset),item.trailingAnchor.constraint(equalTo:parent.trailingAnchor,constant:-inset),item.topAnchor.constraint(equalTo:parent.topAnchor,constant:inset),item.bottomAnchor.constraint(equalTo:parent.bottomAnchor,constant:-inset)]) }
     func button(_ title: String, _ key: String, _ action: Selector) -> NSButton { let b = NSButton(title:title,target:self,action:action); b.bezelStyle = .rounded; b.identifier = NSUserInterfaceItemIdentifier(key); buttons[key] = b; return b }
     func label(_ title: String) -> NSTextField { let l = NSTextField(wrappingLabelWithString:title); l.textColor = .secondaryLabelColor; return l }
-    func scroll(_ document: NSView, height: CGFloat? = nil) -> NSScrollView { let s = NSScrollView(); s.hasVerticalScroller = true; s.autohidesScrollers = true; s.borderType = .bezelBorder; s.documentView = document; if let height = height { s.heightAnchor.constraint(equalToConstant:height).isActive = true }; return s }
+    func scroll(_ document: NSView, height: CGFloat? = nil) -> NSScrollView {
+        let s = NSScrollView(); s.hasVerticalScroller = true; s.autohidesScrollers = true; s.borderType = .bezelBorder
+        if let text = document as? NSTextView {
+            text.minSize = .zero; text.maxSize = NSSize(width:CGFloat.greatestFiniteMagnitude,height:CGFloat.greatestFiniteMagnitude)
+            text.isVerticallyResizable = true; text.isHorizontallyResizable = false; text.autoresizingMask = [.width]
+            text.textContainer?.widthTracksTextView = true
+            text.textContainer?.containerSize = NSSize(width:0,height:CGFloat.greatestFiniteMagnitude)
+            text.textColor = .textColor; text.backgroundColor = .textBackgroundColor
+            text.textContainerInset = NSSize(width:10,height:8)
+        }
+        s.documentView = document
+        if let height = height { s.heightAnchor.constraint(equalToConstant:height).isActive = true }
+        return s
+    }
+    func updateLogText(_ text: NSTextView, _ value: String) {
+        guard text.string != value else { return }
+        let position = text.enclosingScrollView?.contentView.bounds.origin ?? .zero
+        text.textStorage?.setAttributedString(NSAttributedString(string:value,attributes:[.font:NSFont.monospacedSystemFont(ofSize:12,weight:.regular),.foregroundColor:NSColor.textColor]))
+        text.layoutManager?.ensureLayout(for:text.textContainer!)
+        text.sizeToFit()
+        text.enclosingScrollView?.contentView.scroll(to:position)
+        text.needsDisplay = true
+    }
     func addWide(_ child: NSView, to parent: NSStackView) { parent.addArrangedSubview(child); child.widthAnchor.constraint(equalTo:parent.widthAnchor).isActive = true }
     func buildProfiles(_ page: NSStackView) {
         addWide(row([button("Từ GPM…","pick-gpm",#selector(pickGpm)),button("Tạo mới…","create-profile",#selector(createProfile)),button("Nhập file…","import-file",#selector(importFile)),button("Xuất / chuyển máy…","export-profiles",#selector(exportProfiles))]),to:page)
@@ -244,8 +266,8 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         }
         let value = lines.sorted { $0.0 > $1.0 }.prefix(300).map { $0.1 }.joined(separator:"\n")
         let historyValue = recent.sorted { $0.0 > $1.0 }.prefix(300).map { $0.1 }.joined(separator:"\n")
-        logs.string = value.isEmpty ? "Chưa có nhật ký." : value
-        history.string = historyValue.isEmpty ? "Chưa có lịch sử gửi bình luận." : historyValue
+        updateLogText(logs,value.isEmpty ? "Chưa có nhật ký." : value)
+        updateLogText(history,historyValue.isEmpty ? "Chưa có lịch sử gửi bình luận." : historyValue)
     }
     @objc func loadHistory() { Task { @MainActor in await refresh() } }
     @objc func openData() { if let delegate = NSApp.delegate as? AppDelegate { NSWorkspace.shared.open(delegate.data) } }
