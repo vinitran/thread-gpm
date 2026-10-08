@@ -129,3 +129,17 @@ test('saving global GPM address updates existing profiles and stop endpoints, bu
  assert.ok(calls.every(c=>c.base===shared.gpmApi));assert.equal((await manager.profileStore('b')).value.settings.proxy,'host:80');
  }finally{await manager.close();await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('dashboard restores common logs and recent receipts for stopped profiles without booting workers',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-log-history-'));const store=await new Store(dir).load();let booted=0;
+ const manager=new ProfileManager(store,{workerFactory:()=>({boot:async()=>{booted++;}})});
+ try{
+  for(const id of ['a','b']){
+   await manager.register(settings(id),'mở GPM');
+   const data=await manager.profileStore(id);
+   await data.set({autoRun:{status:'stopped',events:[{time:'2026-10-08T00:00:00Z',message:'Đã bấm gửi '+id}]},replyReceipts:{post:{post_url:'https://www.threads.com/@test/post/'+id,state:'sent_unverified',created_at:'2026-10-08T00:00:00Z'}}});
+  }
+  await manager.init();const rows=manager.rows();assert.equal(booted,0);assert.equal(rows.length,2);
+  for(const row of rows){assert.equal(row.view.recent.length,1);assert.ok(row.view.logs.some(e=>e.message==='mở GPM'));assert.ok(row.view.logs.some(e=>e.message==='Đã bấm gửi '+row.id));assert.equal(JSON.stringify(row.view).includes('test-key'),false);}
+ }finally{await manager.close();await fs.rm(dir,{recursive:true,force:true});}
+});

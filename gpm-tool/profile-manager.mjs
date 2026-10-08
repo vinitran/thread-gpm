@@ -2,7 +2,7 @@ import path from 'node:path';
 import {fork} from 'node:child_process';
 import {GpmApi} from './gpm-api.mjs';
 import {Store} from './store.mjs';
-import {dashboard} from './dashboard.mjs';
+import {dashboard,profileLogs} from './dashboard.mjs';
 import {redact,sharedProfileSettings,validateSettings,assertLiveSettings} from './settings.mjs';
 const valid=id=>typeof id==='string'&&/^[-\w]{1,100}$/.test(id);
 const busy=view=>['running','stopping'].includes(view?.state?.status)||!!view?.operation;
@@ -33,7 +33,7 @@ export class ProfileWorker{
 }
 export class ProfileManager{
  constructor(store,{workerFactory=(dir,onView)=>new ProfileWorker(dir,onView),onChange=()=>{},gpmFactory=base=>new GpmApi(base)}={}){this.gpmFactory=gpmFactory;this.store=store;this.workerFactory=workerFactory;this.onChange=onChange;this.workers=new Map();this.views=new Map();this.locks=new Map();this.cancelled=new Map();this.closing=false;this.live=new Map();this.syncing=null;this.endpoints=new Map();this.stoppingProfiles=new Map();}
- rows(){return Object.values(this.store.value.profileRegistry||{}).map(({view:discarded,...row})=>({...row,...(this.live.get(row.id)?.metadata||{}),gpm:this.live.get(row.id)?{...this.live.get(row.id),metadata:undefined}:{status:'unknown',fresh:false},view:this.views.get(row.id)||{state:{status:'idle',events:[]},counts:{today:0,total:0,session:0,unverified:0,sessions:0},recent:[],connected:false}})).sort((a,b)=>(b.lastUsedAt||'').localeCompare(a.lastUsedAt||''));}
+ rows(){return Object.values(this.store.value.profileRegistry||{}).map(({view:discarded,...row})=>({...row,...(this.live.get(row.id)?.metadata||{}),gpm:this.live.get(row.id)?{...this.live.get(row.id),metadata:undefined}:{status:'unknown',fresh:false},view:this.views.get(row.id)||{state:{status:'idle',events:[]},counts:{today:0,total:0,session:0,unverified:0,sessions:0},recent:[],connected:false}})).map(row=>({...row,view:{...row.view,logs:profileLogs(row,row.view)}})).sort((a,b)=>(b.lastUsedAt||'').localeCompare(a.lastUsedAt||''));}
  startSync(intervalMs=3000){if(this.syncTimer)return;const tick=()=>this.syncLive().catch(()=>{});tick();this.syncTimer=setInterval(tick,intervalMs);this.syncTimer.unref();}
  async syncLive(){
   if(this.syncing)return this.syncing;

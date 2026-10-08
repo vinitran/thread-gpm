@@ -122,16 +122,16 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         let sc = scroll(form); sc.drawsBackground = false; addWide(sc,to:page); form.translatesAutoresizingMaskIntoConstraints = false; form.widthAnchor.constraint(equalTo:sc.contentView.widthAnchor,constant:-18).isActive = true
     }
     func buildLogs(_ page: NSStackView) {
-        page.addArrangedSubview(label("Nhật ký live · chọn profile ở tab Profile để lọc, bỏ chọn để xem tất cả"))
+        page.addArrangedSubview(label("Nhật ký tất cả profile · Lịch sử gần đây tự cập nhật"))
         for text in [logs,history] { text.isEditable = false; text.isRichText = false; text.font = .monospacedSystemFont(ofSize:12,weight:.regular); text.isVerticallyResizable = true }
-        addWide(scroll(logs),to:page); addWide(row([button("Đọc lịch sử profile đã chọn","load-history",#selector(loadHistory)),button("Mở thư mục dữ liệu","open-data",#selector(openData))]),to:page); addWide(scroll(history,height:130),to:page)
+        addWide(scroll(logs),to:page); addWide(row([button("Làm mới nhật ký & lịch sử","load-history",#selector(loadHistory)),button("Mở thư mục dữ liệu","open-data",#selector(openData))]),to:page); addWide(scroll(history,height:130),to:page)
     }
     func controlTextDidChange(_ notification: Notification) { if notification.object as? NSSearchField === search { renderProfiles() } else { settingsEdited() } }
     @objc func settingsEdited() { dirty = true; saved.stringValue = "Có thay đổi chưa lưu"; saved.textColor = .systemOrange }
     func setBusy(_ delta: Int) { busy += delta; if busy > 0 { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }; controls() }
     func controls() {
         let any = !selected.isEmpty, one = selected.count == 1, ready = api != nil && loadedSettings
-        for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","load-history","dry-run-selected"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
+        for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","dry-run-selected"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
         for key in ["install-update","install-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && (updater["available"] as? Bool == true) && (updater["installSupported"] as? Bool == true) }
         for key in ["check-update","check-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && !string(updater["repository"]).isEmpty }
         selection.stringValue = selected.isEmpty ? "Chưa chọn profile" : "Đã chọn \(selected.count) profile"
@@ -232,11 +232,19 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     @objc func importPrompt() { let p = NSOpenPanel(); p.allowedContentTypes = [.plainText]; p.beginSheetModal(for:view.window!) { [weak self] r in if r == .OK,let u = p.url { do { let data = try Data(contentsOf:u); guard data.count <= 200000,let text = String(data:data,encoding:.utf8),text.count <= 50000 else { throw failure("Prompt cần UTF-8 và tối đa 50.000 ký tự.") }; self?.prompt.string = text; self?.settingsEdited() } catch { self?.showMessage(error.localizedDescription,error:true) } } } }
     @objc func checkImages() { let folder = inputs["imagesFolder"]!.stringValue; perform("Đang kiểm tra folder ảnh…") { api in let r = try await api.request("assets",["folder":folder]); if !string(r["error"]).isEmpty { throw failure(string(r["error"])) }; return "Folder hợp lệ · \(string(r["count"])) ảnh. Lưu cài đặt để áp dụng." } }
     @objc func loadModels() { perform("Đang lấy danh sách model…") { [weak self] api in let r = try await api.request("models",[:]), models = r["models"] as? [String] ?? []; guard let self = self,!models.isEmpty else { return "Không có model." }; let alert = NSAlert(); alert.messageText = "Chọn model AI"; alert.addButton(withTitle:"Chọn"); alert.addButton(withTitle:"Hủy"); let popup = NSPopUpButton(frame:NSRect(x:0,y:0,width:430,height:32)); popup.addItems(withTitles:models); popup.selectItem(withTitle:self.inputs["model"]!.stringValue); alert.accessoryView = popup; if await alert.beginSheetModal(for:self.view.window!) == .alertFirstButtonReturn { self.inputs["model"]!.stringValue = popup.titleOfSelectedItem ?? ""; self.settingsEdited() }; return "Chọn model rồi bấm Lưu cho tất cả profile." } }
-    func renderLogs() { let rows = profiles.filter { selected.isEmpty || selected.contains(string($0["id"])) }; var lines:[(String,String)] = []
-        for p in rows { let state = object(object(p["view"])["state"]); for e in objects(state["events"]) { let time = string(e["time"]); lines.append((time,string(p["name"]) + " → " + time + " · " + string(e["message"]))) }; let activity = string(object(state["activity"])["message"]); if !activity.isEmpty { lines.append(("zz",string(p["name"]) + " → " + activity)) } }
-        let value = lines.sorted { $0.0 > $1.0 }.prefix(300).map { $0.1 }.joined(separator:"\n"); if logs.string != value { logs.string = value.isEmpty ? "Chưa có nhật ký." : value }
+    func renderLogs() {
+        var lines:[(String,String)] = [], recent:[(String,String)] = []
+        for p in profiles {
+            let view = object(p["view"]), name = string(p["name"])
+            for e in objects(view["logs"]) { let time = string(e["time"]); lines.append((time,name + " → " + time + " · " + string(e["message"]))) }
+            for r in objects(view["recent"]) { let time = string(r["created_at"]); recent.append((time,name + " → " + time + " · " + string(r["state"]) + " · " + string(r["post_url"]))) }
+        }
+        let value = lines.sorted { $0.0 > $1.0 }.prefix(300).map { $0.1 }.joined(separator:"\n")
+        let historyValue = recent.sorted { $0.0 > $1.0 }.prefix(300).map { $0.1 }.joined(separator:"\n")
+        logs.string = value.isEmpty ? "Chưa có nhật ký." : value
+        history.string = historyValue.isEmpty ? "Chưa có lịch sử gửi bình luận." : historyValue
     }
-    @objc func loadHistory() { guard let id = selected.first else { return }; perform("Đang đọc lịch sử…") { [weak self] api in let r = try await api.request("history?profileId=" + id); let receipts = object(r["receipts"]).values.map { object($0) }; self?.history.string = receipts.map { string($0["created_at"]) + " · " + string($0["state"]) + " · " + string($0["post_url"]) }.joined(separator:"\n"); return "Đã đọc \(receipts.count) thao tác. Chưa xác minh không có nghĩa đã đăng thành công." } }
+    @objc func loadHistory() { Task { @MainActor in await refresh() } }
     @objc func openData() { if let delegate = NSApp.delegate as? AppDelegate { NSWorkspace.shared.open(delegate.data) } }
     func loadUpdate() async { guard let api = api else { return }; do { updater = try await api.request("update-status"); renderUpdate(); if !string(updater["repository"]).isEmpty { await checkForUpdate() } } catch { updateText.stringValue = error.localizedDescription; versionText.stringValue = "Chưa đọc được phiên bản" } }
     func renderUpdate() {

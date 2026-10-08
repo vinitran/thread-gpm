@@ -116,7 +116,7 @@ sealed class MainWindow : Window
         foreach (var (id, b) in buttons) b.IsEnabled = ready && busy == 0;
         foreach (var id in new[] { "open-selected", "start-selected" }) buttons[id].IsEnabled &= Selected.Any();
         buttons["stop-selected"].IsEnabled = ready && Selected.Any();
-        foreach (var id in new[] { "edit-profile", "delete-profile", "load-history", "dry-run-selected" }) buttons[id].IsEnabled &= Selected.Count() == 1;
+        foreach (var id in new[] { "edit-profile", "delete-profile", "dry-run-selected" }) buttons[id].IsEnabled &= Selected.Count() == 1;
         foreach (var id in new[] { "install-update", "install-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.B(update["available"]) && J.B(update["installSupported"]);
         foreach (var id in new[] { "check-update", "check-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.S(update["repository"]).Length > 0;
         selection.Text = Selected.Any() ? $"Đã chọn {Selected.Count()} profile" : "Chưa chọn profile";
@@ -169,8 +169,8 @@ sealed class MainWindow : Window
     }
     UIElement LogsPage()
     {
-        var page = new DockPanel { Margin = new(16) }; var note = Note("Nhật ký live · chọn profile ở tab Profile để lọc, bỏ chọn để xem tất cả"); DockPanel.SetDock(note, Dock.Top); page.Children.Add(note);
-        var bottom = new StackPanel(); bottom.Children.Add(Row(Action("Đọc lịch sử profile đã chọn", "load-history", () => { var id = Ids.Single(); Perform("Đang đọc lịch sử…", async api => { var r = await api.Request("history?profileId=" + Uri.EscapeDataString(id)); history.Text = string.Join(Environment.NewLine, J.O(r["receipts"]).Select(p => J.O(p.Value)).Select(p => J.S(p["created_at"]) + " · " + J.S(p["state"]) + " · " + J.S(p["post_url"]))); return "Đã đọc lịch sử. Chưa xác minh không có nghĩa đã đăng thành công."; }); }), Action("Mở thư mục dữ liệu", "open-data", () => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(backend.DataPath) { UseShellExecute = true }))));
+        var page = new DockPanel { Margin = new(16) }; var note = Note("Nhật ký tất cả profile · Lịch sử gần đây tự cập nhật"); DockPanel.SetDock(note, Dock.Top); page.Children.Add(note);
+        var bottom = new StackPanel(); bottom.Children.Add(Row(Action("Làm mới nhật ký & lịch sử", "load-history", async () => await Refresh()), Action("Mở thư mục dữ liệu", "open-data", () => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(backend.DataPath) { UseShellExecute = true }))));
         history.Height = 140; bottom.Children.Add(history); DockPanel.SetDock(bottom, Dock.Bottom); page.Children.Add(bottom);
         foreach (var text in new[] { logs, history }) { text.IsReadOnly = true; text.AcceptsReturn = true; text.VerticalScrollBarVisibility = ScrollBarVisibility.Auto; text.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto; text.FontFamily = new("Consolas"); text.FontSize = 12; }
         page.Children.Add(logs); return page;
@@ -269,9 +269,11 @@ sealed class MainWindow : Window
     }
     void RenderLogs()
     {
-        var selected = Selected.Any() ? Selected : allRows.Values;
-        var values = selected.SelectMany(p => J.Rows(p.State["events"]).Select(e => (Time: J.S(e["time"]), Text: p.Name + " → " + J.S(e["time"]) + " · " + J.S(e["message"])))).OrderByDescending(e => e.Time).Take(300).Select(e => e.Text);
-        var text = string.Join(Environment.NewLine, selected.Select(p => p.Name + " → " + J.S(J.O(p.State["activity"])["message"])).Concat(values)); if (logs.Text != text) logs.Text = text.Length == 0 ? "Chưa có nhật ký." : text;
+        var selected = allRows.Values;
+        var values = selected.SelectMany(p => J.Rows(J.O(p.Data["view"])["logs"]).Select(e => (Time: J.S(e["time"]), Text: p.Name + " → " + J.S(e["time"]) + " · " + J.S(e["message"])))).OrderByDescending(e => e.Time).Take(300).Select(e => e.Text);
+        var text = string.Join(Environment.NewLine, values); if (logs.Text != text) logs.Text = text.Length == 0 ? "Chưa có nhật ký." : text;
+        var recent = selected.SelectMany(p => J.Rows(J.O(p.Data["view"])["recent"]).Select(r => (Time: J.S(r["created_at"]), Text: p.Name + " → " + J.S(r["created_at"]) + " · " + J.S(r["state"]) + " · " + J.S(r["post_url"])))).OrderByDescending(r => r.Time).Take(300).Select(r => r.Text);
+        var historyText = string.Join(Environment.NewLine, recent); if (history.Text != historyText) history.Text = historyText.Length == 0 ? "Chưa có lịch sử gửi bình luận." : historyText;
     }
     async Task LoadUpdate(bool check = true) { if (api == null) return; try { update = await api.Request("update-status"); RenderUpdate(); if (check) await CheckForUpdate(); } catch (Exception e) { updateText.Text = "Chưa đọc được phiên bản: " + e.Message; } }
     void RenderUpdate()
