@@ -261,3 +261,11 @@ test('failed image send does not advance optional tag counter',async()=>{
  const f=fixture();f.deps.post=async()=>{throw Error('HTTP 403');};
  await f.runner.start({tagHoanxu:true});f.advance();await f.runner.tick();assert.equal(f.saved().imageRepliesSinceTag,0);
 });
+
+test('failed after-Post verification continues normal cadence without rechecking, recovering or resubmitting',async()=>{
+ const f=fixture();let recoveries=0;
+ f.deps.post=async url=>f.receipts[url]={state:'sent_unverified',checked_at:'2026-10-09T00:00:00Z',verification_error:'No matching comment',clicked_at:'2026-10-09T00:00:00Z'};
+ f.deps.replaceSource=async()=>{recoveries++;return 2;};await f.runner.start();f.advance();await f.runner.tick();
+ assert.equal(f.saved().status,'running');assert.equal(f.saved().current,null);assert.equal(f.saved().source,1);assert.equal(f.checks(),0);assert.equal(recoveries,0);assert.equal(f.saved().stats.sent,1);
+ assert.equal(f.saved().nextAt-f.deps.now(),120000);assert.equal(f.saved().history[p.url].state,'sent_unverified');
+});

@@ -6,7 +6,7 @@ import {AutoRunner} from '../extension/auto-runner.js';
 import {autoPage} from '../extension/auto-dom.js';
 import {extractPosts} from '../extension/extract.js';
 import {collectFreshPosts} from '../extension/feed-collector.js';
-import {postReply,checkReply,returnToFeed} from '../extension/post-reply.js';
+import {postReply,checkReply,returnToFeed,verifyAfterPost} from '../extension/post-reply.js';
 import {replaceSourceTab,closeTabPreservingWindow} from '../extension/tab-actions.js';
 import {generate,selectPosts} from './ai.mjs';
 import {engagementPage} from './idle-engagement.mjs';
@@ -38,9 +38,9 @@ export function createRunner(store,browser){
  post:async(url,stepDelayMs,shouldContinue,typingDelayMs,withImages)=>{
   const response=(await store.get('aiResults')).aiResults?.[url];if(!response)throw Error('Chưa có response AI');
   const image=withImages?await attachments((await settings()).imagesFolder):{files:[],names:[]};
-  return postReply(url,response.text,image,m=>runner.progress(m).catch(()=>{}),{followAuthor:true,stepDelayMs,typingDelayMs,tabId:runner.state.source,shouldContinue,skipVerification:true,waitBeforeHome:true});
+  return postReply(url,response.text,image,m=>runner.progress(m).catch(()=>{}),{followAuthor:true,stepDelayMs,typingDelayMs,tabId:runner.state.source,shouldContinue,skipVerification:true,verifyAfterPost:true,waitBeforeHome:true});
  },
- check:async url=>{const {replyReceipts={}}=await store.get('replyReceipts'),receipt=replyReceipts[url];return receipt?.state==='sent_unverified'?returnToFeed(receipt,m=>runner.progress(m),{waitBeforeHome:true,shouldContinue:()=>runner.active()}):checkReply(url,m=>runner.progress(m));}
+ check:async url=>{const {replyReceipts={}}=await store.get('replyReceipts'),receipt=replyReceipts[url],progress=m=>runner.progress(m),options={waitBeforeHome:true,shouldContinue:()=>runner.active()};if(receipt?.state==='sent_unverified'){await verifyAfterPost(receipt,progress,options);return returnToFeed(receipt,progress,options);}return checkReply(url,progress);}
  });
  runner.dispose=()=>clearTimeout(timer);
  return runner;

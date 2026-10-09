@@ -6,7 +6,7 @@ import {DEFAULT_API_KEY} from './ai-defaults.js';
 import {extractPosts} from './extract.js';
 import {DEFAULT_MODEL,models,generate,signature,selectPosts} from './ai.js';
 import {readFolder,selectReplyAssets,makeReplyAttachments} from './reply-assets.js';
-import {postReply,checkReply,returnToFeed} from './post-reply.js';
+import {postReply,checkReply,returnToFeed,verifyAfterPost} from './post-reply.js';
 let busy=false;
 let aiBusy=false;
 let posting=false;
@@ -38,14 +38,14 @@ async function handle(m,internal=false){
     try{
       const {aiResults={},replyReceipts={}}=await chrome.storage.local.get(['aiResults','replyReceipts']);
       const progress=stage=>{if(internal)runner.progress(stage).catch(console.error);chrome.runtime.sendMessage({type:'reply-progress',url:m.url,stage}).catch(()=>{});};
-      if(internal&&replyReceipts[m.url]?.state==='sent_unverified')return {receipt:await returnToFeed(replyReceipts[m.url],progress,{waitBeforeHome:true,shouldContinue:()=>runner.active()})};
+      if(internal&&replyReceipts[m.url]?.state==='sent_unverified'){const options={waitBeforeHome:true,shouldContinue:()=>runner.active()};await verifyAfterPost(replyReceipts[m.url],progress,options);return {receipt:await returnToFeed(replyReceipts[m.url],progress,options)};}
       if(m.type==='check-response'||replyReceipts[m.url])return {receipt:await checkReply(m.url,progress)};
       const response=aiResults[m.url];if(!response?.text)throw Error('Chưa có response AI cho bài này.');
       const image=m.withImages===false?{files:[],names:[]}:await makeReplyAttachments(selectReplyAssets(await readFolder()),{optimizeUpload:true});
       const stepDelayMs=Number(m.stepDelayMs??2000);if(!Number.isFinite(stepDelayMs)||stepDelayMs<500||stepDelayMs>10000)throw Error('Thời gian chờ phải từ 0.5 đến 10 giây.');
       const typingDelayMs=Number(m.typingDelayMs??60);if(!Number.isFinite(typingDelayMs)||typingDelayMs<0||typingDelayMs>500)throw Error('Tốc độ nhập phải từ 0 đến 500 ms.');
       const targetTabId=internal?runner.state.source:(await listTabs()).sort((a,b)=>Number(b.active)-Number(a.active))[0]?.id;
-      const receipt=await postReply(m.url,response.text,image,progress,{stepDelayMs,typingDelayMs,skipVerification:true,waitBeforeHome:true,tabId:targetTabId,shouldContinue:internal?()=>runner.active():undefined});return {receipt,image};
+      const receipt=await postReply(m.url,response.text,image,progress,{stepDelayMs,typingDelayMs,skipVerification:true,verifyAfterPost:true,waitBeforeHome:true,tabId:targetTabId,shouldContinue:internal?()=>runner.active():undefined});return {receipt,image};
     }finally{posting=false;clearInterval(keepAlive);}
   }
   if(m.type==='get-ai-settings'){

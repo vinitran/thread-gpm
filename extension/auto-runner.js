@@ -33,7 +33,7 @@ export class AutoRunner{
  }
  async progress(message){
   if(!this.state?.current)return;
-  this.state.current.step=message;await this.activity(/xác minh|URL comment/.test(message)?'verifying':'commenting',message);
+  this.state.current.step=message;await this.activity(/xác minh|URL comment|kiểm tra bình luận|lấy link/.test(message)?'verifying':'commenting',message);
  }
  active(){return this.state.status==='running';}
  canIdleEngage(){const s=this.state;return !!this.d.idleCandidates&&!!this.d.idleEngage&&s.config.idleEngagement!==false&&!s.current&&!s.sessionRest&&['waiting','resting'].includes(s.activity?.phase)&&s.nextAt>this.d.now()+5000;}

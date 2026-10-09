@@ -278,7 +278,7 @@ sealed class MainWindow : Window
         var selected = allRows.Values;
         var values = selected.SelectMany(p => J.Rows(J.O(p.Data["view"])["logs"]).Select(e => (Time: J.S(e["time"]), Text: p.Name + " → " + J.S(e["time"]) + " · " + J.S(e["message"])))).OrderByDescending(e => e.Time).Take(300).Select(e => e.Text);
         var text = string.Join(Environment.NewLine, values); if (logs.Text != text) logs.Text = text.Length == 0 ? "Chưa có nhật ký." : text;
-        var recent = selected.SelectMany(p => J.Rows(J.O(p.Data["view"])["recent"]).Select(r => (Time: J.S(r["created_at"]), Text: p.Name + " → " + J.S(r["created_at"]) + " · " + J.S(r["state"]) + " · " + J.S(r["post_url"])))).OrderByDescending(r => r.Time).Take(300).Select(r => r.Text);
+        var recent = selected.SelectMany(p => J.Rows(J.O(p.Data["view"])["recent"]).Select(r => (Time: J.S(r["created_at"]), Text: p.Name + " → " + J.S(r["created_at"]) + " · " + J.S(r["state"]) + " · " + (J.S(r["comment_url"]).Length > 0 ? J.S(r["comment_url"]) : J.S(r["post_url"])) + (J.S(r["verification_error"]).Length > 0 ? " · " + J.S(r["verification_error"]) : "")))).OrderByDescending(r => r.Time).Take(300).Select(r => r.Text);
         var historyText = string.Join(Environment.NewLine, recent); if (history.Text != historyText) history.Text = historyText.Length == 0 ? "Chưa có lịch sử gửi bình luận." : historyText;
     }
     async Task LoadUpdate(bool check = true) { if (api == null) return; try { update = await api.Request("update-status"); RenderUpdate(); if (check) await CheckForUpdate(); } catch (Exception e) { updateText.Text = "Chưa đọc được phiên bản: " + e.Message; } }

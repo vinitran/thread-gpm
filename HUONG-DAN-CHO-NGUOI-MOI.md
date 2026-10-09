@@ -79,6 +79,8 @@ http://USERNAME:PASSWORD@192.0.2.10:8080
 5. Khi đã sẵn sàng, chọn các profile rồi bấm **Chạy tự động** hoặc **Chạy bằng extension**. Nút extension tự nạp extension vào các profile đã chọn và dùng cùng cài đặt, AI, log và lịch sử; giữ app mở khi chạy. Nếu cần nạp lại extension, app có thể đóng/mở lại đúng profile đã chọn. Dừng profile trước khi đổi bộ chạy. Chế độ này có thể đăng bình luận thật. Tùy chọn **Thả tim khi chờ** nằm trong Cài đặt chung.
 6. Xem **Nhật ký & lịch sử** để theo dõi. Muốn kết thúc, chọn profile rồi bấm **Dừng & đóng** để gửi lệnh đóng tới GPM.
 
+Sau khi bấm Post, tool chờ ngẫu nhiên 25–35 giây rồi kiểm tra. Link bình luận đã xác minh hiện trong nhật ký và lịch sử. Nếu không tìm thấy, tool ghi lý do và tiếp tục bài tiếp theo, không gửi lại.
+
 Chỉ dùng các tài khoản và bài viết bạn được phép thao tác.
 
 ## 6. Cập nhật app

@@ -162,3 +162,7 @@ App lưu dữ liệu trong SQLite `tool.sqlite` bên ngoài thư mục cài đ�
 Chế độ này dùng cùng bộ logic, AI, cấu hình realtime, giới hạn phiên và SQLite với chế độ chạy hiện tại. Các thao tác tab/DOM, nhập chữ, đính kèm ảnh và bấm nút được thực hiện qua API Chrome của extension. Follow vẫn chỉ ở avatar với xác suất 60%, chờ 210–270 giây sau follow mới, nghỉ vẫn chỉ thả tim ngẫu nhiên 2–5 bài. Không sử dụng bộ chạy độc lập của extension cũ.
 
 App lưu extension trong thư mục dữ liệu riêng của profile, ngoài thư mục cài app. Khi extension thay đổi, app cập nhật các file và nạp lại trước lần chạy tiếp theo. Nếu Chrome đang mở chưa hỗ trợ nạp nóng, app có thể đóng/mở lại đúng profile đã chọn để nạp extension. Nếu GPM/Chrome không cho phép tự nạp extension, app báo lỗi và không tự đổi sang chạy trực tiếp. Cần dùng profile Chrome; Firefox chưa hỗ trợ chế độ này.
+
+## Kiểm tra bình luận sau khi gửi
+
+Cả chế độ trực tiếp và extension đều lưu lần bấm Post trước, chờ ngẫu nhiên 25–35 giây rồi tìm bình luận khớp tài khoản/nội dung và lấy link. Khi cần, tool mở lại bài đích để kiểm tra thêm trong khoảng 5 giây. Bình luận đã xác minh có trạng thái `posted`, link bình luận và thời điểm xác minh trong lịch sử. Nếu chưa xác minh được hoặc bước kiểm tra lỗi, giữ `sent_unverified`, ghi lý do rồi tiếp tục nhịp chạy đã cài đặt; không tự gửi lại. Thời gian chờ này được dùng luôn trước khi về trang chủ, không chờ thêm một lượt 30 giây. Nút Dừng vẫn hủy được thời gian chờ.

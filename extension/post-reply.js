@@ -71,8 +71,9 @@ export async function returnToFeed(receipt,onProgress=()=>{},options={}){
 async function verifyReceipt(receipt,onProgress=()=>{},options={}){
   const args={url:receipt.post_url,text:receipt.text,before:receipt.before||[],self_profile:receipt.self_profile,attachment_count:receipt.images?.length??3};
   const timeoutMs=options.verifyTimeoutMs??60000,intervalMs=options.verifyIntervalMs??1000;
-  const deadline=Date.now()+timeoutMs;let result,lastError,reads=0;
+  const now=options.now||Date.now,wait=options.wait||pause,deadline=now()+timeoutMs;let result,lastError,reads=0;
   do{
+    if(options.shouldContinue&&!options.shouldContinue())return receipt;
     try{result=await dom(receipt.tab_id,'verify',args);lastError=null;if(result?.verified&&result.url)break;}catch(e){lastError=e.message;}
     if(!reads||reads%8===0){
       try{const state=await dom(receipt.tab_id,'submission-state',args);
@@ -85,16 +86,49 @@ async function verifyReceipt(receipt,onProgress=()=>{},options={}){
       }catch{}
     }
     onProgress('Đang chờ URL comment · '+(lastError||result?.reason||'Threads đang cập nhật…'));
-    if(Date.now()>=deadline)break;
-    if(++reads%8===0){try{if(!args.replies_sorted){const sorting=await dom(receipt.tab_id,'recent-replies',args);if(sorting?.requested)args.sort_requested=true;if(sorting?.sorted){args.replies_sorted=true;onProgress('Đã chọn phản hồi mới nhất để tìm comment vừa gửi');}if(sorting?.changed){await pause(intervalMs);continue;}}await dom(receipt.tab_id,'reveal-reply',args);onProgress('Đang cuộn tìm comment đã gửi để lấy URL (không gửi lại)');}catch{}}
-    await pause(intervalMs);
-  }while(Date.now()<deadline);
-  receipt.checked_at=new Date().toISOString();
-  receipt.state=result?.verified?'posted':'unknown';
-  if(result?.verified){receipt.comment_url=result.url;receipt.verified_at=receipt.checked_at;receipt.visible_images=result.visible_images;delete receipt.verification_error;}
-  else receipt.verification_error=lastError||result?.reason||'Chưa tìm thấy comment sau khi chờ 60 giây.';
+    if(now()>=deadline)break;
+    if(++reads%8===0||options.eagerReveal&&reads===1){try{if(!args.replies_sorted){const sorting=await dom(receipt.tab_id,'recent-replies',args);if(sorting?.requested)args.sort_requested=true;if(sorting?.sorted){args.replies_sorted=true;onProgress('Đã chọn phản hồi mới nhất để tìm comment vừa gửi');}if(sorting?.changed){await wait(intervalMs);continue;}}await dom(receipt.tab_id,'reveal-reply',args);onProgress('Đang cuộn tìm comment đã gửi để lấy URL (không gửi lại)');}catch{}}
+    await wait(intervalMs);
+  }while(now()<deadline);
+  receipt.checked_at=new Date(now()).toISOString();
+  const verified=!!(result?.verified&&result.url);
+  receipt.state=verified?'posted':options.unverifiedState||'unknown';
+  if(verified){receipt.comment_url=result.url;receipt.verified_at=receipt.checked_at;receipt.visible_images=result.visible_images;delete receipt.verification_error;}
+  else receipt.verification_error=lastError||receipt.submission_ui?.alerts?.join(' | ')||(receipt.submission_ui?.draft_present?'Nội dung vẫn còn trong ô trả lời sau khi bấm Post.':result?.reason)||'Chưa tìm thấy URL bình luận trong thời gian kiểm tra.';
   const {replyReceipts={}}=await chrome.storage.local.get('replyReceipts');replyReceipts[receipt.post_url]=receipt;
   await chrome.storage.local.set({replyReceipts});return receipt;
+}
+export async function verifyAfterPost(receipt,onProgress=()=>{},options={}){
+  if(receipt.checked_at||receipt.state==='posted')return receipt;
+  const now=options.now||Date.now,wait=options.wait||pause,active=()=>!options.shouldContinue||options.shouldContinue();
+  if(!receipt.verification_due_at){
+    const seconds=25+Math.floor((options.random||Math.random)()*11),clicked=Date.parse(receipt.clicked_at||receipt.created_at||'');
+    receipt.verification_due_at=(Number.isFinite(clicked)?clicked:now())+seconds*1000;
+    receipt.home_after_at=receipt.verification_due_at;
+    const {replyReceipts={}}=await chrome.storage.local.get('replyReceipts');replyReceipts[receipt.post_url]=receipt;await chrome.storage.local.set({replyReceipts});
+  }
+  let last;
+  while(now()<receipt.verification_due_at){
+    if(!active())return receipt;
+    const seconds=Math.ceil((receipt.verification_due_at-now())/1000);
+    if(last===undefined||last-seconds>=10){onProgress('Đã bấm Post · chờ '+seconds+' giây để kiểm tra bình luận và lấy link');last=seconds;}
+    await wait(Math.min(1000,receipt.verification_due_at-now()));
+  }
+  if(!active())return receipt;
+  const verifyOptions={...options,unverifiedState:'sent_unverified'};
+  try{
+    await verifyReceipt(receipt,onProgress,{...verifyOptions,verifyTimeoutMs:0});
+    if(receipt.state!=='posted'&&active()&&!receipt.submission_ui?.dialog_open&&!receipt.submission_ui?.draft_present){
+      const tab=await chrome.tabs.get(receipt.tab_id);
+      if(new URL(tab.url).pathname!==new URL(receipt.post_url).pathname)await retryTabEdit(()=>chrome.tabs.update(receipt.tab_id,{url:receipt.post_url,active:true}),{onProgress,shouldContinue:active});
+      else await retryTabEdit(()=>chrome.tabs.reload(receipt.tab_id),{onProgress,shouldContinue:active});
+      if(active())await verifyReceipt(receipt,onProgress,{...verifyOptions,verifyTimeoutMs:options.afterPostVerifyTimeoutMs??5000,eagerReveal:true});
+    }
+  }catch(e){receipt.state='sent_unverified';receipt.checked_at=new Date(now()).toISOString();receipt.verification_error=e.message;
+    const {replyReceipts={}}=await chrome.storage.local.get('replyReceipts');replyReceipts[receipt.post_url]=receipt;await chrome.storage.local.set({replyReceipts});
+  }
+  if(active())onProgress(receipt.state==='posted'?'Đã xác minh bình luận: '+receipt.comment_url:'Chưa xác minh được bình luận · '+receipt.verification_error+' · tiếp tục bài tiếp theo, không gửi lại');
+  return receipt;
 }
 export async function checkReply(url,onProgress=()=>{},options={}){
   const {replyReceipts={}}=await chrome.storage.local.get('replyReceipts'),receipt=replyReceipts[url];
@@ -283,7 +317,7 @@ export async function postReply(url,text,image,onProgress=()=>{},options={}){
       await chrome.debugger.sendCommand({tabId:tab.id},'Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
       await chrome.debugger.sendCommand({tabId:tab.id},'Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'left',clickCount:1});
     }catch(e){receipt.state='unknown';await chrome.storage.local.set({replyReceipts});throw e;}
-    if(options.skipVerification){receipt.state='sent_unverified';receipt.clicked_at=new Date().toISOString();onProgress('Đã bấm Post · bỏ qua xác minh URL theo cấu hình');await chrome.storage.local.set({replyReceipts});}
+    if(options.skipVerification){receipt.state='sent_unverified';receipt.clicked_at=new Date().toISOString();onProgress(options.verifyAfterPost?'Đã bấm Post · đã lưu lần gửi, chuẩn bị kiểm tra sau khoảng 30 giây':'Đã bấm Post · bỏ qua xác minh URL theo cấu hình');await chrome.storage.local.set({replyReceipts});if(options.verifyAfterPost)await verifyAfterPost(receipt,onProgress,options);}
     else{onProgress('Đang xác minh comment đã đăng…');await verifyReceipt(receipt,onProgress,options);}
     if(['posted','sent_unverified'].includes(receipt.state)){if(shared){await returnToFeed(receipt,onProgress,options);}else{try{await closeTabPreservingWindow(tab.id,'kết thúc tab comment riêng');attached=false;receipt.tab_id=null;}catch{}}}
     replyReceipts[url]=receipt;await chrome.storage.local.set({replyReceipts});return receipt;

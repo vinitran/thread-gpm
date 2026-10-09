@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {selectReplyAssets,makeReplyAttachments,uploadImage} from './extension/reply-assets.js';
 import {replyAction} from './extension/reply-dom.js';
-import {postReply,checkReply,typeReplyText,returnToFeed,waitBeforeHome} from './extension/post-reply.js';
+import {postReply,checkReply,typeReplyText,returnToFeed,waitBeforeHome,verifyAfterPost} from './extension/post-reply.js';
 const attachmentFixture=()=>({files:['a.png','app_store.PNG','b.png'].map(name=>({name,type:'image/png',data_url:'data:image/png;base64,VGVzdA=='})),names:['a','app_store.PNG','b']});
 const images=['one.png','app_store.PNG','two.png','three.png'].map(name=>({name,path:'folder/'+name,blob:new Blob(['fixture'])}));
 test('select exactly two distinct random images with case-insensitive app_store in center',()=>{
@@ -466,4 +466,49 @@ test('inline follow waits 210–270 seconds and Stop prevents comment after foll
  await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/a',()=>{},{random:()=>random,wait:async ms=>{if(ms===1000)seconds++;}});assert.equal(seconds,expected);}
  let clicked=false,active=true;globalThis.chrome={scripting:{async executeScript({args:[action]}){if(action==='inline-follow-author'){clicked=true;return [{result:{state:'clicked'}}];}return [{result:{state:clicked?'following':'not-following',available:true}}];}}};await assert.rejects(()=>followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/a',()=>{},{shouldContinue:()=>active,wait:async ms=>{if(ms===1000)active=false;}}),/Đã dừng/);
  }finally{globalThis.chrome=old;}
+});
+
+test('after Post waits random 25–35s, verifies once, persists comment URL and does not wait again before Home',async()=>{
+ const old=globalThis.chrome;
+ try{for(const [random,seconds] of [[0,25],[0.99999,35]]){
+  let time=1000,reads=0;const logs=[],receipt={state:'sent_unverified',post_url:'https://www.threads.com/@demo/post/a',tab_id:4,text:'response',shared_tab:true,clicked_at:new Date(time).toISOString()},store={replyReceipts:{}};
+  globalThis.chrome={storage:{local:{async get(){return structuredClone(store);},async set(p){Object.assign(store,structuredClone(p));}}},scripting:{async executeScript({args:[action]}){
+   if(action==='verify'){reads++;assert.ok(time>=1000+seconds*1000);return [{result:{verified:true,url:'https://www.threads.com/@self/post/reply',visible_images:3}}];}
+   if(action==='back-to-feed')return [{result:{home:true}}];throw Error('Unexpected '+action);
+  }}};
+  const options={random:()=>random,now:()=>time,wait:async ms=>time+=ms,waitBeforeHome:true};
+  assert.equal((await verifyAfterPost(receipt,m=>logs.push(m),options)).state,'posted');assert.equal(time,1000+seconds*1000);assert.equal(reads,1);
+  assert.equal(store.replyReceipts[receipt.post_url].comment_url,'https://www.threads.com/@self/post/reply');assert.ok(logs.includes('Đã xác minh bình luận: '+receipt.comment_url));
+  await returnToFeed(receipt,()=>{},options);assert.equal(time,1000+seconds*1000);
+  await verifyAfterPost(structuredClone(receipt),()=>{},options);assert.equal(reads,1);
+ }}finally{globalThis.chrome=old;}
+});
+
+test('missing comment gets one bounded permalink lookup and stays sent_unverified so runner can continue',async()=>{
+ const old=globalThis.chrome;let time=0,updates=0,reads=0,sorted=0;const logs=[],url='https://www.threads.com/@demo/post/missing',receipt={state:'sent_unverified',post_url:url,tab_id:4,text:'response',shared_tab:true,clicked_at:new Date(time).toISOString()},store={replyReceipts:{}};
+ globalThis.chrome={storage:{local:{async get(){return structuredClone(store);},async set(p){Object.assign(store,structuredClone(p));}}},tabs:{async get(){return {url:'https://www.threads.com/'};},async update(id,o){assert.equal(o.url,url);updates++;return {id,url:o.url};}},scripting:{async executeScript({args:[action]}){
+  if(action==='verify'){reads++;return [{result:{verified:false,reason:'No matching comment'}}];}
+  if(action==='submission-state')return [{result:{dialog_open:false,draft_present:false,alerts:[]}}];
+  if(action==='recent-replies'){sorted++;return [{result:{sorted:true}}];}
+  if(action==='back-to-feed')return [{result:{home:true}}];return [{result:{}}];
+ }}};
+ try{const options={random:()=>0.5,now:()=>time,wait:async ms=>time+=ms,waitBeforeHome:true};
+  await verifyAfterPost(receipt,m=>logs.push(m),options);assert.equal(time,35000);assert.equal(updates,1);assert.ok(reads>=2);assert.equal(sorted,1);
+  assert.equal(receipt.state,'sent_unverified');assert.equal(receipt.verification_error,'No matching comment');assert.ok(receipt.checked_at);assert.ok(logs.some(m=>m.includes('tiếp tục bài tiếp theo, không gửi lại')));
+  await returnToFeed(receipt,()=>{},options);assert.equal(time,35000);assert.equal(store.replyReceipts[url].state,'sent_unverified');
+ }finally{globalThis.chrome=old;}
+});
+
+test('after-Post wait survives Stop and resumes the existing deadline without repeating submission',async()=>{
+ const old=globalThis.chrome;let time=1000,active=true,reads=0;const receipt={state:'sent_unverified',post_url:'https://www.threads.com/@demo/post/pending',tab_id:4,clicked_at:new Date(time).toISOString()},store={replyReceipts:{}};
+ globalThis.chrome={storage:{local:{async get(){return structuredClone(store);},async set(p){Object.assign(store,structuredClone(p));}}},scripting:{async executeScript(){reads++;return [{result:{verified:true,url:'https://www.threads.com/@self/post/reply'}}];}}};
+ try{await verifyAfterPost(receipt,()=>{},{random:()=>0,now:()=>time,shouldContinue:()=>active,wait:async ms=>{time+=ms;active=false;}});assert.equal(reads,0);assert.equal(receipt.checked_at,undefined);assert.equal(store.replyReceipts[receipt.post_url].verification_due_at,26000);
+  time=25000;active=true;const restored=structuredClone(store.replyReceipts[receipt.post_url]);await verifyAfterPost(restored,()=>{},{random:()=>{throw Error('Must retain original deadline');},now:()=>time,shouldContinue:()=>active,wait:async ms=>time+=ms});assert.equal(time,26000);assert.equal(reads,1);assert.equal(restored.state,'posted');
+ }finally{globalThis.chrome=old;}
+});
+
+test('verification browser errors are recorded without turning a clicked Post into a posting retry',async()=>{
+ const old=globalThis.chrome,receipt={state:'sent_unverified',post_url:'https://www.threads.com/@demo/post/error',tab_id:4,text:'response',clicked_at:'2020-01-01T00:00:00Z'},store={replyReceipts:{}};let submits=0;
+ globalThis.chrome={storage:{local:{async get(){return structuredClone(store);},async set(p){Object.assign(store,structuredClone(p));}}},tabs:{async get(){throw Error('Tab closed during verification');}},scripting:{async executeScript({args:[action]}){if(action==='submit')submits++;throw Error('DOM unavailable');}}};
+ try{await verifyAfterPost(receipt);assert.equal(submits,0);assert.equal(receipt.state,'sent_unverified');assert.match(receipt.verification_error,/Tab closed/);assert.ok(store.replyReceipts[receipt.post_url].checked_at);}finally{globalThis.chrome=old;}
 });

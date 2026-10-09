@@ -287,7 +287,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         for p in profiles {
             let view = object(p["view"]), name = string(p["name"])
             for e in objects(view["logs"]) { let time = string(e["time"]); lines.append((time,name + " → " + time + " · " + string(e["message"]))) }
-            for r in objects(view["recent"]) { let time = string(r["created_at"]); recent.append((time,name + " → " + time + " · " + string(r["state"]) + " · " + string(r["post_url"]))) }
+            for r in objects(view["recent"]) { let time = string(r["created_at"]), link = string(r["comment_url"]).isEmpty ? string(r["post_url"]) : string(r["comment_url"]), error = string(r["verification_error"]); recent.append((time,name + " → " + time + " · " + string(r["state"]) + " · " + link + (error.isEmpty ? "" : " · " + error))) }
         }
         let value = lines.sorted { $0.0 > $1.0 }.prefix(300).map { $0.1 }.joined(separator:"\n")
         let historyValue = recent.sorted { $0.0 > $1.0 }.prefix(300).map { $0.1 }.joined(separator:"\n")
