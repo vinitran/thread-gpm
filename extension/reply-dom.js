@@ -19,7 +19,9 @@ export function replyAction(action,args,captureErrors=false){
     const authorPath=path(args.url).split('/').slice(0,2).join('/');
     let target;try{target=root();}catch{return {state:'loading'};}
     const authorLinks=[...target.querySelectorAll('a[href]')].filter(a=>visible(a)&&path(a.href)===authorPath);
-    const avatars=authorLinks.flatMap(a=>[...a.querySelectorAll('img')].filter(visible));
+    const username=authorPath.slice(2).toLowerCase();
+    const avatars=[...new Set([...authorLinks.flatMap(a=>[...a.querySelectorAll('img')].filter(visible)),
+      ...[...target.querySelectorAll('img')].filter(im=>visible(im)&&normalize(im.getAttribute('alt')).toLowerCase()===`${username}'s profile picture`)])];
     const followName=b=>/^(Follow|Follow back|Theo dõi|Theo dõi lại)$/i.test(normalize(label(b)));
     const knownState=b=>/^(Following|Đang theo dõi|Đã theo dõi)$/i.test(normalize(label(b)))?'following':/^(Requested|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(normalize(label(b)))?'requested':null;
     const nearAvatar=b=>avatars.some(im=>{
@@ -43,7 +45,9 @@ export function replyAction(action,args,captureErrors=false){
     const avatarButtons=buttons(target).filter(nearAvatar);
     const status=avatarButtons.map(knownState).filter(Boolean);
     if(status.length===1)return {state:status[0],available:true};
-    const candidates=avatarButtons.filter(b=>followName(b)||/^(\+|Add|Plus|Thêm)$/i.test(normalize(label(b))));
+    const matches=avatarButtons.filter(b=>followName(b)||/^(\+|Add|Plus|Thêm)$/i.test(normalize(label(b))));
+    // Threads puts the + button inside another role=button for the avatar.
+    const candidates=matches.filter(b=>!matches.some(other=>other!==b&&b.contains(other)));
     if(candidates.length===1){
       if(action==='inline-follow-author'){
         const b=candidates[0];if(b.disabled||b.getAttribute('aria-disabled')==='true')return {state:'blocked'};
@@ -52,7 +56,7 @@ export function replyAction(action,args,captureErrors=false){
       return {state:'not-following',available:true};
     }
     // Disappearance is accepted only after our click, with the same author/avatar still present.
-    if(args.inlineClicked&&avatars.length&&avatarButtons.length===0)return {state:'following',available:true};
+    if(args.inlineClicked&&authorLinks.length&&avatars.length&&matches.length===0)return {state:'following',available:true};
     return {state:'unsupported'};
   }
   if(action==='follow-state'||action==='follow-author'){
@@ -61,15 +65,22 @@ export function replyAction(action,args,captureErrors=false){
     if([...document.querySelectorAll('[role="dialog"]')].some(visible))throw Error('Trang người đăng đang có popup; chưa follow.');
     const self=[...document.querySelectorAll('a[href]')].find(a=>visible(a)&&/^(Profile|Trang cá nhân)$/i.test(label(a).trim()));
     if(self&&path(self.href)===authorPath)return {state:'self'};
-    const firstPost=anchors()[0];
     const candidates=buttons(document.querySelector('main,[role="main"]')||document.body).filter(b=>{
       if(b.closest('article'))return false;
-      // Profile controls precede the feed; never click Follow on another post.
-      if(firstPost&&!(b.compareDocumentPosition(firstPost)&4))return false;
-      return /^(Follow|Follow back|Following|Requested|Theo dõi|Theo dõi lại|Đang theo dõi|Đã theo dõi|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(normalize(label(b)));
+      // The profile action has its own text/label. Avatar wrappers inherit the
+      // child's SVG title; SVG-only + controls belong to posts, not the header.
+      if(b.querySelector('img')||b.querySelector('button,[role="button"]'))return false;
+      const ownLabel=normalize(b.getAttribute('aria-label')||b.innerText);
+      if(!/^(Follow|Follow back|Following|Requested|Theo dõi|Theo dõi lại|Đang theo dõi|Đã theo dõi|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(ownLabel))return false;
+      // Explicit text buttons inside post cards must not enter the header set.
+      for(let n=b.parentElement;n&&n!==document.body;n=n.parentElement){
+        if(n.querySelector('h1,[role="heading"][aria-level="1"]'))return true;
+        if(n.querySelector('a[href*="/post/"] time'))return false;
+      }
+      return true;
     });
     if(candidates.length!==1)return {state:'loading',reason:`Không xác định duy nhất nút follow (${candidates.length}).`};
-    const button=candidates[0],name=normalize(label(button));
+    const button=candidates[0],name=normalize(button.getAttribute('aria-label')||button.innerText);
     const state=/^(Following|Đang theo dõi|Đã theo dõi)$/i.test(name)?'following':/^(Requested|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(name)?'requested':'not-following';
     if(action==='follow-author'&&state==='not-following'){
       if(button.disabled||button.getAttribute('aria-disabled')==='true')throw Error('Nút follow chưa khả dụng.');

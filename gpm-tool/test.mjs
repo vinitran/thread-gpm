@@ -267,3 +267,26 @@ test('opening a profile preserves tabs; only starting automation opens Threads',
  try{const id=await runner.d.source();const tabs=await browser.query();assert.equal(tabs.find(t=>t.id===id).url,'https://www.threads.com/');assert.ok(tabs.some(t=>t.url==='https://example.test/keep-this-tab'));const again=await runner.d.source();assert.equal(again,id);assert.equal((await browser.query()).filter(t=>t.url==='https://www.threads.com/').length,1);}finally{runner.dispose();}
  }finally{if(worker)await worker.close();if(context)await context.close();if(api)await new Promise(resolve=>api.close(resolve));await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('actual Threads avatar structure outside author link selects inner plus and excludes post controls from profile header',async()=>{
+ const executable=process.env.TEST_CHROME||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'/usr/bin/google-chrome');
+ const browser=await chromium.launch({executablePath:executable,headless:true});
+ try{
+ const context=await browser.newContext(),page=await context.newPage();
+ const post=(id)=>`<section class="post"><div role="button" class="avatar"><img alt="demo's profile picture" style="width:36px;height:36px"><div role="button" class="plus" onclick="document.body.dataset.followed='${id}';this.remove()"><svg aria-label="Follow"><title>Follow</title></svg></div></div><a href="/@demo">demo</a><a href="/@demo/post/${id}"><time>now</time></a><button><svg><title>Reply</title></svg></button></section>`;
+ const html=`<style>.avatar{position:relative;width:36px;height:36px}.plus{position:absolute;bottom:0;right:0;width:20px;height:20px}.plus svg{width:10px;height:10px}.post{margin:30px}</style><main><header><h1>Demo</h1><div><div role="button" onclick="document.body.dataset.header='1'">Follow</div></div></header>${post('target')}${post('other')}</main>`;
+ await page.route('**/*',r=>r.fulfill({contentType:'text/html',body:html}));await page.goto('https://www.threads.com/@demo');
+ const args={url:'https://www.threads.com/@demo/post/target'};
+ const act=(action,extra={})=>page.evaluate(({source,action,args})=>{const fn=new Function('return ('+source+')')();return fn(action,args);},{source:replyAction.toString(),action,args:{...args,...extra}});
+ assert.equal(await page.evaluate(()=>{const a=document.querySelector('a[href="/@demo/post/target"]');return [...document.querySelectorAll('[role="button"]')].filter(b=>b.compareDocumentPosition(a)&4).length;}),3);
+ assert.deepEqual(await act('follow-state'),{state:'not-following'});
+ assert.deepEqual(await act('inline-follow-state'),{state:'not-following',available:true});
+ assert.deepEqual(await act('inline-follow-author'),{state:'clicked',available:true});
+ assert.equal(await page.evaluate(()=>document.body.dataset.followed),'target');assert.equal(await page.evaluate(()=>document.body.dataset.header),undefined);
+ assert.deepEqual(await act('inline-follow-state',{inlineClicked:true}),{state:'following',available:true});
+ assert.deepEqual(await act('follow-author'),{state:'clicked'});assert.equal(await page.evaluate(()=>document.body.dataset.header),'1');
+ await page.evaluate(()=>{const b=document.querySelector('header [role="button"]');b.innerHTML='<svg><title>Follow</title></svg>Following';delete document.body.dataset.header;});
+ assert.deepEqual(await act('follow-author'),{state:'following'});assert.equal(await page.evaluate(()=>document.body.dataset.header),undefined);
+ assert.equal(await page.locator('.plus').count(),1);
+ }finally{await browser.close();}
+});
