@@ -15,6 +15,28 @@ export function replyAction(action,args,captureErrors=false){
   };
   const editor=()=>{const e=[...area().querySelectorAll('[contenteditable="true"][role="textbox"]')].filter(visible);if(e.length!==1)throw Error('Ô trả lời không duy nhất.');return e[0];};
   const media=()=>[...area().querySelectorAll('img')].filter(visible).map(im=>im.currentSrc||im.src);
+  if(action==='follow-state'||action==='follow-author'){
+    const authorPath=path(args.url).split('/').slice(0,2).join('/');
+    if(path(location.href)!==authorPath)return {state:'loading'};
+    if([...document.querySelectorAll('[role="dialog"]')].some(visible))throw Error('Trang người đăng đang có popup; chưa follow.');
+    const self=[...document.querySelectorAll('a[href]')].find(a=>visible(a)&&/^(Profile|Trang cá nhân)$/i.test(label(a).trim()));
+    if(self&&path(self.href)===authorPath)return {state:'self'};
+    const firstPost=anchors()[0];
+    const candidates=buttons(document.querySelector('main,[role="main"]')||document.body).filter(b=>{
+      if(b.closest('article'))return false;
+      // Profile controls precede the feed; never click Follow on another post.
+      if(firstPost&&!(b.compareDocumentPosition(firstPost)&4))return false;
+      return /^(Follow|Follow back|Following|Requested|Theo dõi|Theo dõi lại|Đang theo dõi|Đã theo dõi|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(normalize(label(b)));
+    });
+    if(candidates.length!==1)return {state:'loading',reason:`Không xác định duy nhất nút follow (${candidates.length}).`};
+    const button=candidates[0],name=normalize(label(button));
+    const state=/^(Following|Đang theo dõi|Đã theo dõi)$/i.test(name)?'following':/^(Requested|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(name)?'requested':'not-following';
+    if(action==='follow-author'&&state==='not-following'){
+      if(button.disabled||button.getAttribute('aria-disabled')==='true')throw Error('Nút follow chưa khả dụng.');
+      button.click();return {state:'clicked'};
+    }
+    return {state};
+  }
   if(action==='feed-ready')return {ready:path(location.href)==='/'&&![...document.querySelectorAll('[role="dialog"]')].some(visible)};
   if(action==='back-to-feed'){
     if([...document.querySelectorAll('[role="dialog"]')].some(visible))return {blocked:true,reason:'Hộp trả lời chưa đóng sau khi đăng.'};

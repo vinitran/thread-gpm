@@ -398,3 +398,38 @@ test('failed blank-tab creation keeps the final profile tab open',async()=>{
  globalThis.chrome={tabs:{async query(){return [{id:7,windowId:4}];},async create(){throw Error('create failed');},async remove(){closed=true;}}};
  try{await assert.rejects(()=>closeTabPreservingWindow(7),/create failed/);assert.equal(closed,false);}finally{globalThis.chrome=previous;}
 });
+
+// Follow is exercised against fixtures only; these tests never contact Threads/GPM.
+test('follow visits the exact author, clicks once, confirms, then returns to the post',async()=>{
+ const {followAuthorBeforeReply}=await import('./extension/post-reply.js');
+ const old=globalThis.chrome,events=[];let followed=false;
+ globalThis.chrome={tabs:{async update(id,{url}){events.push(url);}},scripting:{async executeScript({args:[action,args]}){events.push(action);assert.equal(args.url,'https://www.threads.com/@demo/post/follow');if(action==='follow-author'){followed=true;return [{result:{state:'clicked'}}];}return [{result:{state:followed?'following':'not-following'}}];}}};
+ try{await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',()=>{},{wait:async()=>{},stepDelayMs:0});assert.deepEqual(events,['https://www.threads.com/@demo','follow-state','follow-author','follow-state','https://www.threads.com/@demo/post/follow']);}finally{globalThis.chrome=old;}
+});
+test('already following, pending requests and own profile never click follow/unfollow',async()=>{
+ const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;
+ try{for(const state of ['following','requested','self']){let clicks=0,returned=false;globalThis.chrome={tabs:{async update(id,{url}){returned=url.includes('/post/');}},scripting:{async executeScript({args:[action]}){if(action==='follow-author')clicks++;return [{result:{state}}];}}};await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',()=>{},{wait:async()=>{},stepDelayMs:0});assert.equal(clicks,0);assert.equal(returned,true);}}finally{globalThis.chrome=old;}
+});
+test('unconfirmed follow fails closed without repeated click or returning to comment',async()=>{
+ const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;let clicks=0,updates=0;
+ globalThis.chrome={tabs:{async update(){updates++;}},scripting:{async executeScript({args:[action]}){if(action==='follow-author')clicks++;return [{result:{state:'not-following'}}];}}};
+ try{await assert.rejects(()=>followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',()=>{},{wait:async()=>{},stepDelayMs:0}),/Chưa xác nhận được follow/);assert.equal(clicks,1);assert.equal(updates,1);}finally{globalThis.chrome=old;}
+});
+test('stopping during follow delay prevents clicking and commenting',async()=>{
+ const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;let active=true,clicks=0;
+ globalThis.chrome={tabs:{async update(){}},scripting:{async executeScript({args:[action]}){if(action==='follow-author')clicks++;return [{result:{state:'not-following'}}];}}};
+ try{await assert.rejects(()=>followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',message=>{if(message==='Đang follow người đăng…')active=false;},{wait:async()=>{},stepDelayMs:0,shouldContinue:()=>active}),/Đã dừng/);assert.equal(clicks,0);}finally{globalThis.chrome=old;}
+});
+test('follow DOM recognizes states, refuses ambiguous controls and never unfollows',()=>{
+ const saved={document:globalThis.document,location:globalThis.location,getComputedStyle:globalThis.getComputedStyle};let clicks=0,name='Follow',count=1;
+ const button={getClientRects:()=>[1],getAttribute:()=>null,querySelector:()=>null,get innerText(){return name;},closest:()=>null,click(){clicks++;}};
+ const scope={querySelectorAll:()=>Array(count).fill(button)};
+ globalThis.location={href:'https://www.threads.com/@demo'};globalThis.getComputedStyle=()=>({visibility:'visible'});
+ globalThis.document={body:scope,querySelector:()=>scope,querySelectorAll:()=>[]};
+ try{const args={url:'https://www.threads.com/@demo/post/follow'};assert.equal(replyAction('follow-state',args).state,'not-following');assert.equal(clicks,0);replyAction('follow-author',args);assert.equal(clicks,1);for(name of ['Following','Đang theo dõi','Requested','Đã gửi yêu cầu']){replyAction('follow-author',args);assert.equal(clicks,1);}name='Follow';count=2;assert.equal(replyAction('follow-author',args).state,'loading');assert.equal(clicks,1);count=1;globalThis.location.href='https://www.threads.com/@other';assert.equal(replyAction('follow-author',args).state,'loading');assert.equal(clicks,1);}finally{Object.assign(globalThis,saved);}
+});
+test('required follow failure prevents opening composer or submitting the comment',async()=>{
+ const old=globalThis.chrome,actions=[];
+ globalThis.chrome={storage:{local:{async get(){return {replyReceipts:{}};}}},tabs:{async create(){return {id:7};},async update(){}},scripting:{async executeScript({args:[action]}){actions.push(action);return [{result:{state:'not-following'}}];}}};
+ try{await assert.rejects(()=>postReply('https://www.threads.com/@demo/post/follow','comment',{files:[],names:[]},()=>{},{followAuthor:true,wait:async()=>{},stepDelayMs:0}),/Chưa xác nhận được follow/);assert.equal(actions.includes('prepare'),false);assert.equal(actions.includes('submit'),false);assert.equal(actions.filter(a=>a==='follow-author').length,1);}finally{globalThis.chrome=old;}
+});

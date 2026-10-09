@@ -93,6 +93,8 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile; chưa 
 
 Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở profile nếu cần, bắt đầu tìm bài, gọi AI và đăng bình luận bằng cài đặt chung đã lưu. Nên chạy một profile trước để quan sát kết quả.
 
+Trước mỗi bình luận, tool vào trang người đăng bài và follow nếu chưa theo dõi, sau đó quay lại bài để bình luận. Người đã theo dõi hoặc đã gửi yêu cầu follow được bỏ qua; tool không bấm unfollow. Các bước có khoảng chờ tối thiểu 1,5 giây và hiện trong log. Nếu không nhận diện được trạng thái hoặc chưa xác nhận follow, tool báo lỗi và chưa gửi bình luận. Chế độ dry-run và nút Mở không follow hay gửi bình luận.
+
 Muốn chạy nhiều profile, kiểm tra đăng nhập từng profile và lưu cài đặt chung trước, rồi chọn các profile cần chạy. Thanh thao tác giữ trên màn hình khi cuộn; **Bỏ chọn** xoá toàn bộ lựa chọn. Nếu chọn profile nằm ngoài bộ lọc hiện tại, tool báo số lượng cạnh phần chọn.
 
 Theo dõi **Xem log** ở từng hàng, trạng thái phiên, **Phiên /10**, **Hôm nay / Tổng**, lượt tiếp theo và lịch sử. “Chưa xác minh” nghĩa là đã ghi nhận gửi nhưng chưa xác nhận được comment; kiểm tra bài gốc trước khi thao tác thủ công để tránh trùng.
