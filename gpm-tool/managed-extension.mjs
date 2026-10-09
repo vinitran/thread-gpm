@@ -12,9 +12,11 @@ export async function stageManagedExtension(dir){
  return {directory:destination,revision:createHash('sha256').update(fingerprint).digest('hex')};
 }
 export function extensionArguments(directory){if(/["\r\n]/.test(directory))throw Error('Đường dẫn extension không hợp lệ.');return '--enable-unsafe-extension-debugging --proxy-bypass-list="localhost;127.0.0.1;[::1]" --load-extension="'+directory+'"';}
-export async function connectManagedExtension(browser,bridge,{directory,base}){
- const session=await browser.browser.newBrowserCDPSession();
- try{try{await session.send('Extensions.loadUnpacked',{path:directory});}catch{/* Older GPM cores load it through addition_args instead. */}}finally{await session.detach();}
+export async function connectManagedExtension(browser,bridge,{directory,base,loadExtension=true}){
+ if(loadExtension){
+  const session=await browser.browser.newBrowserCDPSession();
+  try{try{await session.send('Extensions.loadUnpacked',{path:directory});}catch{/* Older GPM cores load it through addition_args instead. */}}finally{await session.detach();}
+ }
  const tab=await browser.context.newPage();
  try{
   await tab.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/bootstrap.html#'+encodeURIComponent(JSON.stringify({base,token:bridge.token})),{waitUntil:'domcontentloaded',timeout:15000});

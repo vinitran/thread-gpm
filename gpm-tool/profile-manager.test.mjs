@@ -3,6 +3,7 @@ import {Store} from './store.mjs';import {ProfileManager} from './profile-manage
 const settings=id=>({profileId:id,profileName:id.toUpperCase(),proxy:'',cdp:'http://localhost:9222',gpmApi:'http://localhost:9495',prompt:'Prompt',model:'m',apiKey:'test-key',runConfig:AUTO_DEFAULTS});
 function fakeFactory(calls){return (dir,onView)=>({boot:async()=>{},close:async()=>{},call:async(route,input)=>{
  const store=await new Store(dir).load();const id=path.basename(dir);calls.push({id,route,input});
+ if(route==='extension-reconnect')return {ok:true,alreadyRunning:true,reconnected:true};
  if(route==='settings'){await store.set({settings:input});return {ok:true};}
  if(route==='profile-open')return {ok:true,profileName:id.toUpperCase(),cdp:'http://localhost:9222'};
  if(route==='start'){await new Promise(r=>setTimeout(r,20));await store.set({autoRun:{status:'running',stats:{sent:id==='a'?25:2},sessionRest:id==='a'?{until:Date.now()+10800000}:null},replyReceipts:{['same-post']:{state:'sent_unverified',created_at:new Date().toISOString(),post_url:'https://www.threads.com/@x/post/shared'}}});}
@@ -167,4 +168,16 @@ test('Stop during extension setup cancels even when the pending worker request r
  const manager=new ProfileManager(store,{workerFactory:factory,gpmFactory:()=>({call:async()=>{stops++;}})});
  try{await manager.register(settings('a'));const starting=manager.start('a',undefined,'extension');await opening;await manager.closeProfile('a');release();assert.equal((await starting).cancelled,true);assert.equal(starts,0);assert.equal(stops,2);}
  finally{await manager.close();await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('Run by extension reconnects a running profile instead of skipping setup or starting another session',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-reconnect-')),store=await new Store(dir).load(),calls=[];
+ const manager=new ProfileManager(store,{workerFactory:()=>({close:async()=>{},call:async route=>{calls.push(route);if(route==='state')return {engine:'extension',state:{status:'running'}};if(route==='extension-reconnect')return {ok:true,alreadyRunning:true,reconnected:true};throw Error('Unexpected '+route);}})});
+ try{
+  await manager.register(settings('a'));manager.views.set('a',{engine:'extension',state:{status:'running'}});
+  assert.equal((await manager.start('a',undefined,'extension')).reconnected,true);assert.deepEqual(calls,['extension-reconnect']);
+  manager.views.set('a',{engine:'extension',state:{status:'idle'}});calls.length=0;
+  assert.equal((await manager.start('a',undefined,'extension')).reconnected,true);assert.deepEqual(calls,['state','extension-reconnect']);
+  await assert.rejects(manager.start('a',undefined,'direct'),/Dừng profile/);
+ }finally{await manager.close();await fs.rm(dir,{recursive:true,force:true});}
 });

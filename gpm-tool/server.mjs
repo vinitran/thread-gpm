@@ -201,6 +201,16 @@ const server=http.createServer(async(req,res)=>{
      return {ok:true,...result,hasProxy:!!raw,engine};
     }));
    }
+   if(isWorker&&url.pathname==='/api/extension-reconnect'){
+    if(store.value.executionMode!=='extension'||!extensionBridge||extensionBridge.closed||runner.state.status!=='running')throw Error('Phiên extension đã dừng · bấm Dừng & đóng profile rồi Chạy bằng extension lại.');
+    const bridge=extensionBridge,epoch=startEpoch;
+    return json(res,await exclusive('kết nối lại extension',async()=>{
+     await connect();
+     await connectManagedExtension(browser,bridge,{directory:path.join(dataDir,'managed-extension'),base:`http://127.0.0.1:${port}`,loadExtension:false});
+     if(epoch!==startEpoch||shuttingDown||bridge.closed)throw Error('Đã hủy kết nối extension do Dừng.');
+     return {ok:true,alreadyRunning:true,reconnected:true};
+    }));
+   }
    if(url.pathname==='/api/start'&&manager)return json(res,await manager.start(store.value.settings.profileId,store.value.settings));
    if(url.pathname==='/api/start'){
     idleOnly();const epoch=++startEpoch;

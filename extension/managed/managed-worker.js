@@ -40,7 +40,7 @@ async function loaded(tab){
 }
 async function synchronize(){
  if(!configured)return;
- try{const state=await request('status');await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch{await disconnected();}
+ try{const state=await request('status');await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch(e){await disconnected(e);}
 }
 async function disconnected(error){await chrome.storage.local.set({autoRun:{status:'disconnected'},managedStatus:{status:'disconnected',message:error?.message||'Mất kết nối app · đã ngừng thao tác.'}}).catch(()=>{});}
 async function runLoop(){
