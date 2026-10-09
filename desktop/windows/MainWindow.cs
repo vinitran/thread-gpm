@@ -289,6 +289,7 @@ sealed class MainWindow : Window
         updateBanner.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         updateWarning.Text = "Bạn chưa dùng phiên bản mới nhất: " + current + " → " + J.S(update["latestVersion"]) + ". Dừng profile và lưu cài đặt trước khi cập nhật.";
         updateText.Text = available ? updateWarning.Text : error.Length > 0 ? "Chưa xác định được bản mới nhất: " + error : J.S(update["repository"]).Length == 0 ? "Cập nhật từ xa đang tắt · tải bản mới thủ công từ GitHub Releases." : update["checkedAt"] == null ? "Chưa kiểm tra phiên bản mới." : "Bạn đang dùng bản mới nhất · " + current;
+        if (available) updateText.Text += "\nSau khi cập nhật: dừng và đóng profile, rồi bấm Chạy bằng extension để nạp lại bộ chạy.";
         if (J.S(update["repository"]).Length > 0) updateText.Text += "\nTự kiểm tra cập nhật mỗi phút khi app đang mở.";
         if (DateTimeOffset.TryParse(J.S(update["checkedAt"]), out var checkedAt))
             updateText.Text += "\nKiểm tra thành công gần nhất: " + checkedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
