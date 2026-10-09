@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "HoanXu GPM · Bộ chạy extension",
+  "version": "1.0.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw3y6bYPKyIjvaSe1gUDO2B+idFpO9ogFI6wv+pz5d316GJ8M9+JHk1/t1KUu/ltKpcwqBo0i5m2zl28tPOVz61besOogsx33RJtHUiwbEDbSZKqAny1r+3yP29XxzL6467Ri93wqwoyVwnE82qIZabtiv2SfxHwh3DBzuc5+2j6EdjeS/oGL0RLYQ8PvK8fRvSLED22fnyJgaJySpq7kv48oX+YrY6Q7Bd/Cpgir/tyOTZ41FU4vqH/85tX4454YEm+tE6iGMnsjym+jVWyCJeR9m1lUfMVIk92HM/kH7+wpOQBcPeF3u5eW34yb+bLs76q5jmPLLn9rxPzt/pYOdwIDAQAB",
+  "permissions": [
+    "storage",
+    "scripting",
+    "debugger",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.threads.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "managed-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "managed-popup.html",
+    "default_title": "HoanXu GPM · chạy bằng extension"
+  }
+}

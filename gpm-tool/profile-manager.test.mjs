@@ -143,3 +143,28 @@ test('dashboard restores common logs and recent receipts for stopped profiles wi
   for(const row of rows){assert.equal(row.view.recent.length,1);assert.ok(row.view.logs.some(e=>e.message==='mở GPM'));assert.ok(row.view.logs.some(e=>e.message==='Đã bấm gửi '+row.id));assert.equal(JSON.stringify(row.view).includes('test-key'),false);}
  }finally{await manager.close();await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('extension button uses explicit engine for each selected profile and refuses engine changes while running',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-engine-')),store=await new Store(dir).load(),calls=[];
+ const manager=new ProfileManager(store,{workerFactory:fakeFactory(calls)});
+ try{
+  await manager.register(settings('a'));await manager.register(settings('b'));await manager.init();
+  const result=await manager.batch('start-extension',['a','b']);assert.ok(result.results.every(r=>r.ok));
+  assert.deepEqual(calls.filter(c=>c.route==='profile-open').map(c=>c.input.engine),['extension','extension']);
+  manager.views.set('a',{engine:'extension',state:{status:'running'}});
+  assert.equal((await manager.start('a',undefined,'extension')).alreadyRunning,true);
+  await assert.rejects(()=>manager.start('a'),/Dừng profile trước khi đổi/);
+ }finally{await manager.close();await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('Stop during extension setup cancels even when the pending worker request rejects',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-extension-stop-')),store=await new Store(dir).load();let opened,release,stops=0,starts=0;
+ const opening=new Promise(r=>opened=r),factory=()=>({boot:async()=>{},close:async()=>{},call:async(route)=>{
+  if(route==='state')return {state:{status:'idle'}};
+  if(route==='profile-open'){opened();await new Promise(r=>release=r);throw Error('Đã hủy kết nối extension do Dừng.');}
+  if(route==='start')starts++;return {ok:true};
+ }});
+ const manager=new ProfileManager(store,{workerFactory:factory,gpmFactory:()=>({call:async()=>{stops++;}})});
+ try{await manager.register(settings('a'));const starting=manager.start('a',undefined,'extension');await opening;await manager.closeProfile('a');release();assert.equal((await starting).cancelled,true);assert.equal(starts,0);assert.equal(stops,2);}
+ finally{await manager.close();await fs.rm(dir,{recursive:true,force:true});}
+});

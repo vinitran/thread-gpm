@@ -120,7 +120,8 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         table.identifier = NSUserInterfaceItemIdentifier("profiles-table"); table.delegate = self; table.dataSource = self; table.allowsMultipleSelection = true; table.rowHeight = 48; table.usesAlternatingRowBackgroundColors = true; table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         for (key,title,width) in [("name","Profile",220.0),("proxy","Proxy",185.0),("status","Trạng thái / thao tác",350.0),("counts","Hôm nay / tổng",130.0)] { let c = NSTableColumn(identifier:NSUserInterfaceItemIdentifier(key)); c.title = title; c.width = width; c.minWidth = 80; table.addTableColumn(c) }
         addWide(scroll(table),to:page)
-        addWide(row([selection,button("Mở trình duyệt","open-selected",#selector(openSelected)),button("Chạy thử · không đăng","dry-run-selected",#selector(dryRunSelected)),button("Chạy tự động","start-selected",#selector(startSelected)),button("Dừng & đóng","stop-selected",#selector(stopSelected))]),to:page)
+        addWide(row([selection,button("Mở trình duyệt","open-selected",#selector(openSelected)),button("Chạy thử · không đăng","dry-run-selected",#selector(dryRunSelected)),button("Dừng & đóng","stop-selected",#selector(stopSelected))]),to:page)
+        addWide(row([button("Chạy tự động","start-selected",#selector(startSelected)),button("Chạy bằng extension","start-extension",#selector(startExtensionSelected)),label("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")]),to:page)
         addWide(row([button("Sửa tên / proxy…","edit-profile",#selector(editProfile)),button("Xóa khỏi GPM…","delete-profile",#selector(deleteProfile)),label("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")]),to:page)
         table.setContentHuggingPriority(.defaultLow,for:.vertical)
     }
@@ -159,7 +160,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     func setBusy(_ delta: Int) { busy += delta; if busy > 0 { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }; controls() }
     func controls() {
         let any = !selected.isEmpty, one = selected.count == 1, ready = api != nil && loadedSettings
-        for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","dry-run-selected"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
+        for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected","start-extension"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","dry-run-selected"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
         for key in ["install-update","install-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && (updater["available"] as? Bool == true) && (updater["installSupported"] as? Bool == true) }
         for key in ["check-update","check-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && !string(updater["repository"]).isEmpty }
         selection.stringValue = selected.isEmpty ? "Chưa chọn profile" : "Đã chọn \(selected.count) profile"
@@ -231,6 +232,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     @objc func dryRunSelected() { guard let id = selected.first else { return }; perform("Đang chạy thử · chỉ đọc bài và gọi AI…") { api in let r = try await api.request("profile-dry-run",["id":id]); return "Dry-run · model " + string(r["model"]) + " · đã đọc " + string(r["scanned"]) + " bài · chọn " + string(r["selected"]) + " · " + string(r["message"]) + (string(r["preview"]).isEmpty ? "" : "\nBản xem trước: " + string(r["preview"])) } }
     @objc func openSelected() { let ids = Array(selected); openEpoch += 1; let epoch = openEpoch; perform("Đang mở trình duyệt GPM…") { [weak self] api in var lines:[String] = []; for id in ids { guard self?.openEpoch == epoch else { return "Đã hủy các lượt mở còn lại do Dừng." }; let r = try await api.request("profile-open",["profileId":id,"useCurrentProxy":true]); if r["cancelled"] as? Bool == true { return "Đã hủy yêu cầu mở do Dừng." }; lines.append(string(r["profileName"]).isEmpty ? id : string(r["profileName"])) }; return "Đã mở: " + lines.joined(separator:", ") + ". Chưa chạy tự động." } }
     @objc func startSelected() { let ids = Array(selected); perform("Đang chạy profile…") { [weak self] api in self?.results(try await api.request("profiles-start",["ids":ids])) ?? "Đã xử lý" } }
+    @objc func startExtensionSelected() { let ids = Array(selected); perform("Đang nạp extension và chạy profile…") { [weak self] api in self?.results(try await api.request("profiles-start-extension",["ids":ids])) ?? "Đã xử lý" } }
     @objc func stopSelected() { openEpoch += 1; let ids = Array(selected); perform("Đang gửi lệnh dừng tới GPM…") { [weak self] api in self?.results(try await api.request("profiles-close",["ids":ids])) ?? "Đã dừng" } }
     func showForm(_ title: String, values: [(String,String)], done: @escaping ([String]) -> Void) {
         editingProfileForm = true

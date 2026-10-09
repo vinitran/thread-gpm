@@ -110,15 +110,16 @@ export class ProfileManager{
   return this.locked(id,async()=>{await this.configure(settings);await this.worker(id).call('profile-open',{useCurrentProxy:true});if((this.cancelled.get(id)||0)!==epoch)throw Error('Đã hủy chạy thử do Dừng.');return this.worker(id).call('dry-run',{},240000);});
  }
  async connect(settings){return this.locked(settings.profileId,async()=>{await this.configure(settings);return this.worker(settings.profileId).call('connect',{});});}
- async start(id,settings){
+ async start(id,settings,engine='direct'){
   if(!valid(id))throw Error('Profile ID không hợp lệ.');if(this.closing)throw Error('Tool đang tắt.');if(this.stoppingProfiles.has(id))throw Error('Profile đang dừng.');
-  if(this.views.get(id)?.state?.status==='running')return {ok:true,alreadyRunning:true};const epoch=(this.cancelled.get(id)||0);
+  if(this.views.get(id)?.state?.status==='running'){if((this.views.get(id).engine||'direct')!==engine)throw Error('Dừng profile trước khi đổi bộ chạy.');return {ok:true,alreadyRunning:true};}const epoch=(this.cancelled.get(id)||0);
   return this.locked(id,async()=>{
    if(settings){await this.configure(settings);}else if(!this.store.value.profileRegistry?.[id])throw Error('Profile chưa có cấu hình đã lưu.');
    if(this.closing||(this.cancelled.get(id)||0)!==epoch)return {ok:true,cancelled:true};
    const worker=this.worker(id);const current=await worker.call('state');
-   if(current.state.status==='running')return {ok:true,alreadyRunning:true};
-   const data=await this.profileStore(id);if(this.closing||(this.cancelled.get(id)||0)!==epoch)return {ok:true,cancelled:true};await worker.call('profile-open',{useCurrentProxy:true});
+   if(current.state.status==='running'){if((current.engine||'direct')!==engine)throw Error('Dừng profile trước khi đổi bộ chạy.');return {ok:true,alreadyRunning:true};}
+   const data=await this.profileStore(id);if(this.closing||(this.cancelled.get(id)||0)!==epoch)return {ok:true,cancelled:true};
+   try{await worker.call('profile-open',{useCurrentProxy:true,engine},engine==='extension'?180000:90000);}catch(e){if(this.closing||(this.cancelled.get(id)||0)!==epoch){if(!this.closing)await this.gpmStop(id);return {ok:true,cancelled:true};}throw e;}
    if(this.closing||(this.cancelled.get(id)||0)!==epoch){if(!this.closing)await this.gpmStop(id);return {ok:true,cancelled:true};}
    const result=await worker.call('start',{});
    if(this.closing||(this.cancelled.get(id)||0)!==epoch){await worker.call('stop',{}).catch(()=>{});if(!this.closing)await this.gpmStop(id);return {ok:true,cancelled:true};}
@@ -164,7 +165,7 @@ export class ProfileManager{
    return {ok:true,...(warning?{warning}:{})};
   }finally{const remaining=(this.stoppingProfiles.get(id)||1)-1;if(remaining)this.stoppingProfiles.set(id,remaining);else this.stoppingProfiles.delete(id);this.onChange();}
  }
- async batch(action,ids){if(!['start','stop','close'].includes(action)||!Array.isArray(ids)||!ids.length||ids.length>50||ids.some(id=>!valid(id)))throw Error('Chọn 1–50 profile hợp lệ.');const unique=[...new Set(ids)];return {results:await Promise.all(unique.map(async id=>{try{const result=await (action==='start'?this.start(id):action==='close'?this.closeProfile(id):this.stop(id));return {id,ok:true,...(result?.warning?{warning:result.warning}:{}),...(result?.cancelled?{cancelled:true}:{})};}catch(e){let settings=this.store.value.settings||{};try{settings=(await this.profileStore(id)).value.settings||settings;}catch{}return {id,ok:false,error:redact(e.message,settings)};}}))};}
+ async batch(action,ids){if(!['start','start-extension','stop','close'].includes(action)||!Array.isArray(ids)||!ids.length||ids.length>50||ids.some(id=>!valid(id)))throw Error('Chọn 1–50 profile hợp lệ.');const unique=[...new Set(ids)];return {results:await Promise.all(unique.map(async id=>{try{const result=await (action==='start'?this.start(id):action==='start-extension'?this.start(id,undefined,'extension'):action==='close'?this.closeProfile(id):this.stop(id));return {id,ok:true,...(result?.warning?{warning:result.warning}:{}),...(result?.cancelled?{cancelled:true}:{})};}catch(e){let settings=this.store.value.settings||{};try{settings=(await this.profileStore(id)).value.settings||settings;}catch{}return {id,ok:false,error:redact(e.message,settings)};}}))};}
  async history(id){if(!valid(id))throw Error('Profile ID không hợp lệ.');const data=await this.profileStore(id);return {profileId:id,exportedAt:new Date().toISOString(),state:data.value.autoRun,receipts:data.value.replyReceipts||{},tabLifecycle:data.value.tabLifecycle||{}};}
  async close(){this.closing=true;clearInterval(this.syncTimer);await this.syncing;await Promise.all([...this.workers.values()].map(worker=>worker.close()));}
 }

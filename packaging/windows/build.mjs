@@ -18,6 +18,7 @@ await fs.writeFile(path.join(app,'package.json'),JSON.stringify({private:true,ty
 await fs.writeFile(path.join(out,'HUONG-DAN-WINDOWS.md'),windowsGuide);
 await fs.cp(path.join(root,'gpm-tool/public'),path.join(app,'gpm-tool/public'),{recursive:true});
 for(const name of ['ai.js','auto-runner.js','auto-dom.js','extract.js','feed-collector.js','post-reply.js','reply-dom.js','reply-assets.js','tab-actions.js','default-prompt.txt'])await copy('extension/'+name);
+await fs.cp(path.join(root,'extension/managed'),path.join(app,'extension/managed'),{recursive:true});
 await fs.cp(path.join(root,'extension/default-assets'),path.join(app,'extension/default-assets'),{recursive:true});await fs.copyFile(path.join(root,'packaging/windows/launcher.cjs'),path.join(app,'launcher.cjs'));await fs.copyFile(path.join(root,'packaging/windows/update.ps1'),path.join(app,'update.ps1'));
 console.log('Publishing native WPF Windows x64 application...');
 await run(process.env.DOTNET||'dotnet',['publish',path.join(root,'desktop/windows/HoanXuDesktop.csproj'),'-c','Release','-r','win-x64','--self-contained','true','-o',app]);

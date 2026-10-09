@@ -6,6 +6,10 @@ Người mới bắt đầu: [Hướng dẫn cài đặt và sử dụng](HUONG-
 
 Dự án gồm Chrome extension **0.11.30** và tool riêng điều khiển GPM **0.3.2**. Cả hai dùng chung bộ chạy phiên, đọc DOM Threads, lọc bài bằng AI và logic comment. Không dùng API Threads.
 
+## Chạy bằng extension trong app native
+
+Trên macOS Apple Silicon và Windows x64, chọn profile rồi bấm **Chạy bằng extension**. App tự nạp extension theo từng profile; các thao tác trình duyệt chuyển sang API Chrome của extension, còn bộ logic hiện tại, AI, cài đặt realtime và SQLite dùng chung trong app. Giữ app mở; dừng trước khi chuyển bộ chạy. Xem [hướng dẫn](gpm-tool/HUONG-DAN-SU-DUNG.md#chạy-bằng-extension-trong-app-macos--windows).
+
 ## Tool GPM
 
 ```sh

@@ -42,9 +42,12 @@ export class GpmBrowser{
    page.once('close',()=>{if(this.pages.get(id)===page){this.pages.delete(id);this.sessions.delete(id);}});return id;})();this.tracking.set(page,pending);return pending;
  }
  page(id){const p=this.pages.get(id);if(!p||p.isClosed())throw Error('No tab '+id);return p;}
- async describe(id){const p=this.page(id);return {id,url:p.url(),windowId:this.windows.get(p),status:'complete',active:await p.evaluate(()=>document.hasFocus()).catch(()=>false),title:await p.title().catch(()=>p.url())};}
- async query(){const rows=await Promise.all([...this.pages.keys()].map(async id=>{try{return await this.describe(id);}catch(e){if(!this.pages.has(id)||this.pages.get(id).isClosed())return null;throw e;}}));return rows.filter(Boolean);}
+ nativeId(id){if(!Number.isInteger(id)||id>=0)throw Error('Tab không thuộc bộ chạy extension.');return -id;}
+ extensionTab(tab){return {...tab,id:-tab.id,url:tab.url||tab.pendingUrl||''};}
+ async describe(id){if(this.extensionBridge)return this.extensionTab(await this.extensionBridge.call('tabs.get',{id:this.nativeId(id)}));const p=this.page(id);return {id,url:p.url(),windowId:this.windows.get(p),status:'complete',active:await p.evaluate(()=>document.hasFocus()).catch(()=>false),title:await p.title().catch(()=>p.url())};}
+ async query(){if(this.extensionBridge)return (await this.extensionBridge.call('tabs.query')).map(t=>this.extensionTab(t));const rows=await Promise.all([...this.pages.keys()].map(async id=>{try{return await this.describe(id);}catch(e){if(!this.pages.has(id)||this.pages.get(id).isClosed())return null;throw e;}}));return rows.filter(Boolean);}
  async create(options,{shouldContinue=()=>true}={}){
+  if(this.extensionBridge){if(!shouldContinue())throw Error('Đã dừng · không mở tab mới.');return this.extensionTab(await this.extensionBridge.call('tabs.create',{options}));}
   await this.ensureConnected(shouldContinue);
   if(!shouldContinue())throw Error('Đã dừng · không mở tab mới.');
   let p;
@@ -55,11 +58,14 @@ export class GpmBrowser{
   }else p=await this.context.newPage();
   await this.track(p);await p.goto(options.url,{waitUntil:'domcontentloaded'});return this.describe([...this.pages.entries()].find(([,page])=>page===p)[0]);
  }
- async update(id,options){const p=this.page(id);if(options.url)await p.goto(options.url,{waitUntil:'domcontentloaded',timeout:30000});if(options.active)await p.bringToFront();return this.describe(id);}
+ async update(id,options){if(this.extensionBridge)return this.extensionTab(await this.extensionBridge.call('tabs.update',{id:this.nativeId(id),options}));const p=this.page(id);if(options.url)await p.goto(options.url,{waitUntil:'domcontentloaded',timeout:30000});if(options.active)await p.bringToFront();return this.describe(id);}
+ async reload(id){if(this.extensionBridge)return this.extensionBridge.call('tabs.reload',{id:this.nativeId(id)});return this.page(id).reload({waitUntil:'domcontentloaded'});}
+ async remove(id){if(this.extensionBridge)return this.extensionBridge.call('tabs.remove',{id:this.nativeId(id)});return this.page(id).close();}
  async evaluate(id,func,args=[]){
+  if(this.extensionBridge)return this.extensionBridge.call('script',{id:this.nativeId(id),name:func.name,args});
   // Only live run status is exposed, so Stop takes effect between scroll steps.
   const source=`((chrome)=>(${func.toString()})(...${JSON.stringify(args)}))({storage:{local:{get:()=>window[${JSON.stringify(this.statusBinding)}]()}}})`;
   return this.page(id).evaluate(source);
  }
- installChrome(){globalThis.chrome={storage:{local:this.store},tabs:{query:()=>this.query(),get:id=>this.describe(id),create:o=>this.create(o),update:(id,o)=>this.update(id,o),reload:id=>this.page(id).reload({waitUntil:'domcontentloaded'}),remove:id=>this.page(id).close()},scripting:{executeScript:async({target,func,args})=>[{frameId:0,result:await this.evaluate(target.tabId,func,args)}]},debugger:{attach:async({tabId})=>{if(!this.sessions.has(tabId))this.sessions.set(tabId,await this.context.newCDPSession(this.page(tabId)));},sendCommand:async({tabId},method,params)=>{const session=this.sessions.get(tabId);if(!session)throw Error('Debugger chưa kết nối');return session.send(method,params);},detach:async({tabId})=>{const session=this.sessions.get(tabId);if(session){this.sessions.delete(tabId);await session.detach();}}}};}
+ installChrome(){globalThis.chrome={storage:{local:this.store},tabs:{query:()=>this.query(),get:id=>this.describe(id),create:o=>this.create(o),update:(id,o)=>this.update(id,o),reload:id=>this.reload(id),remove:id=>this.remove(id)},scripting:{executeScript:async({target,func,args})=>[{frameId:0,result:await this.evaluate(target.tabId,func,args)}]},debugger:{attach:async({tabId})=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.attach',{id:this.nativeId(tabId)});if(!this.sessions.has(tabId))this.sessions.set(tabId,await this.context.newCDPSession(this.page(tabId)));},sendCommand:async({tabId},method,params)=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.send',{id:this.nativeId(tabId),method,params});const session=this.sessions.get(tabId);if(!session)throw Error('Debugger chưa kết nối');return session.send(method,params);},detach:async({tabId})=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.detach',{id:this.nativeId(tabId)});const session=this.sessions.get(tabId);if(session){this.sessions.delete(tabId);await session.detach();}}}};}
 }

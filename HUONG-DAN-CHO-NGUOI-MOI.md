@@ -76,7 +76,7 @@ http://USERNAME:PASSWORD@192.0.2.10:8080
 2. Bấm **Mở trình duyệt**. Nút này mở profile GPM và kết nối trình duyệt, chưa chạy automation.
 3. Trong trình duyệt GPM, mở Threads và tự đăng nhập. Đóng các popup còn mở, về trang chủ và chờ bài viết tải xong.
 4. Có thể chọn một profile và bấm **Chạy thử · không đăng** để đọc các bài đang hiển thị, gọi AI và xem bản nháp. Lượt này không gửi comment hoặc thả tim, nhưng có gọi dịch vụ AI bằng key của bạn.
-5. Khi đã sẵn sàng, chọn các profile rồi bấm **Chạy tự động**. Chế độ này có thể đăng bình luận thật. Tùy chọn **Thả tim khi chờ** nằm trong Cài đặt chung.
+5. Khi đã sẵn sàng, chọn các profile rồi bấm **Chạy tự động** hoặc **Chạy bằng extension**. Nút extension tự nạp extension vào các profile đã chọn và dùng cùng cài đặt, AI, log và lịch sử; giữ app mở khi chạy. Nếu cần nạp lại extension, app có thể đóng/mở lại đúng profile đã chọn. Dừng profile trước khi đổi bộ chạy. Chế độ này có thể đăng bình luận thật. Tùy chọn **Thả tim khi chờ** nằm trong Cài đặt chung.
 6. Xem **Nhật ký & lịch sử** để theo dõi. Muốn kết thúc, chọn profile rồi bấm **Dừng & đóng** để gửi lệnh đóng tới GPM.
 
 Chỉ dùng các tài khoản và bài viết bạn được phép thao tác.

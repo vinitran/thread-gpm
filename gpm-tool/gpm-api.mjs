@@ -63,7 +63,7 @@ export class GpmApi{
     if(d.remote_debugging_address){const u=new URL(endpoint(d.remote_debugging_address.includes('://')?d.remote_debugging_address:'http://'+d.remote_debugging_address));d.remote_debugging_port=Number(u.port);}
    }
   }
-  const inUse=/^\/profiles\/start\/[-\w]+$/.test(route)&&result.message==='ProfileInUse'&&result.data?.profile_id===decodeURIComponent(route.split('/').at(-1))&&Number.isInteger(Number(result.data.remote_debugging_port))&&Number(result.data.remote_debugging_port)>0&&Number(result.data.remote_debugging_port)<=65535;
+  const inUse=/^\/profiles\/start\/[-\w]+(?:\?|$)/.test(route)&&result.message==='ProfileInUse'&&result.data?.profile_id===decodeURIComponent(route.split('?')[0].split('/').at(-1))&&Number.isInteger(Number(result.data.remote_debugging_port))&&Number(result.data.remote_debugging_port)>0&&Number(result.data.remote_debugging_port)<=65535;
   const alreadyStopped=/^\/profiles\/stop\/[-\w]+$/.test(route)&&(result.message==='ProfileNotRunning'||result.message==='OK'&&result.data===null);
   if(result.success!==true&&!inUse&&!alreadyStopped)throw Error('GPM từ chối thao tác '+route.split('/')[2]+': '+(gpmFailure(result)||'GPM không trả nguyên nhân chi tiết. Kiểm tra thông báo trong GPM.'));return result.data;
  }
@@ -110,23 +110,27 @@ export class GpmApi{
   await this.call('/profiles/stop/'+encodeURIComponent(id));
   await this.call('/profiles/delete/'+encodeURIComponent(id)+'?mode=soft');
  }
- async open(id){
+ async stop(id){
+  if(typeof id!=='string'||!/^[-\w]{1,100}$/.test(id))throw Error('Chọn đúng Profile ID trước.');
+  return this.call('/profiles/stop/'+encodeURIComponent(id));
+ }
+ async open(id,{additionArgs=''}={}){
   if(typeof id!=='string'||!/^[-\w]{1,100}$/.test(id))throw Error('Chọn đúng Profile ID trước.');
   const selected=await this.call('/profiles/'+encodeURIComponent(id));if(selected?.id!==id)throw Error('GPM trả profile không khớp ID đã chọn.');
-  const started=await this.call('/profiles/start/'+encodeURIComponent(id));
+  const started=await this.call('/profiles/start/'+encodeURIComponent(id)+(additionArgs?'?addition_args='+encodeURIComponent(additionArgs):''));
   if(started.profile_id!==id)throw Error('GPM mở profile không khớp ID đã chọn.');
   const port=Number(started.remote_debugging_port);if(!Number.isInteger(port)||port<1||port>65535)throw Error('GPM chưa trả CDP port hợp lệ.');
   return {cdp:'http://127.0.0.1:'+port,profileId:id,profileName:selected.name};
  }
- async applyAndOpen(id,raw){
+ async applyAndOpen(id,raw,options={}){
   if(typeof id!=='string'||!/^[-\w]{1,100}$/.test(id))throw Error('Chọn đúng Profile ID trước.');if(raw)raw=proxy(raw);
   const selected=await this.call('/profiles/'+encodeURIComponent(id));if(selected?.id!==id)throw Error('GPM trả profile không khớp ID đã chọn.');
-  if((selected.raw_proxy||'')===raw)return this.open(id);
+  if((selected.raw_proxy||'')===raw)return this.open(id,options);
   // Explicit UI action: apply proxy and restart exactly this profile, not other profiles.
   await this.call('/profiles/stop/'+encodeURIComponent(id));
   await this.call('/profiles/update/'+encodeURIComponent(id),{raw_proxy:raw});
   const updated=await this.call('/profiles/'+encodeURIComponent(id));if(updated.raw_proxy!==raw)throw Error('GPM chưa lưu đúng proxy; chưa mở profile.');
-  const started=await this.call('/profiles/start/'+encodeURIComponent(id));
+  const started=await this.call('/profiles/start/'+encodeURIComponent(id)+(options.additionArgs?'?addition_args='+encodeURIComponent(options.additionArgs):''));
   if(started.profile_id!==id)throw Error('GPM mở profile không khớp ID đã chọn.');
   const port=Number(started.remote_debugging_port);if(!Number.isInteger(port)||port<1||port>65535)throw Error('GPM chưa trả CDP port hợp lệ.');
   return {cdp:'http://127.0.0.1:'+port,profileId:id,profileName:selected.name};

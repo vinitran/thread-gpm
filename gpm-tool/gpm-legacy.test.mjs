@@ -101,3 +101,19 @@ test('quoted multiline clipboard proxy is cleaned for Parse and GPM create paylo
  let payload;const api=new GpmApi('http://localhost:9495',async(url,options)=>({ok:true,json:async()=>({success:true,data:(payload=JSON.parse(options.body),{id:'new'})})}));
  await api.create({name:'Fixture',browserVersion:'152.0.7977.140',rawProxy:'"'+raw+'\n"'});assert.equal(payload.raw_proxy,raw);
 });
+
+test('extension startup arguments reach both API v1 and v3 and preserve already-open response handling',async()=>{
+ for(const version of ['v1','v3']){
+  const args='--enable-unsafe-extension-debugging --load-extension="C:\\App Data\\extension"';let profile={id:'fixture',name:'Fixture',raw_proxy:''};const calls=[];
+  const api=new GpmApi('http://127.0.0.1:19995/api/'+version,async(url,options)=>{
+   const u=new URL(url);calls.push(u);
+   if(u.pathname.includes('/update/'))profile.raw_proxy=JSON.parse(options.body).raw_proxy;
+   if(u.pathname.includes('/start/'))return new Response(JSON.stringify({success:false,message:'ProfileInUse',data:{profile_id:'fixture',remote_debugging_port:45678}}));
+   return new Response(JSON.stringify({success:true,data:profile}));
+  });
+  assert.equal((await api.applyAndOpen('fixture','',{additionArgs:args})).cdp,'http://127.0.0.1:45678');
+  assert.equal(calls.find(u=>u.pathname.includes('/start/')).searchParams.get('addition_args'),args);
+  assert.equal((await api.applyAndOpen('fixture','proxy.test:8080',{additionArgs:args})).profileId,'fixture');
+  for(const u of calls.filter(u=>u.pathname.includes('/start/')))assert.equal(u.searchParams.get('addition_args'),args);
+ }
+});

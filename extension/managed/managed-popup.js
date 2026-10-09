@@ -1,0 +1,2 @@
+async function refresh(){const r=await chrome.runtime.sendMessage({type:'managed-state'});document.getElementById('state').textContent=r.ok?(r.value.message||r.value.status):r.error;}
+document.getElementById('stop').onclick=async()=>{const r=await chrome.runtime.sendMessage({type:'managed-stop'});document.getElementById('state').textContent=r.ok?'Đã gửi lệnh dừng tới app.':r.error;};refresh();setInterval(refresh,2000);

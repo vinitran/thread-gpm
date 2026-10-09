@@ -150,3 +150,15 @@ File danh sách từ tool hỗ trợ tối đa 10.000 profile / 5 MB, tự nhậ
 ## Lưu dữ liệu từ bản 0.4.1
 
 App lưu dữ liệu trong SQLite `tool.sqlite` bên ngoài thư mục cài đặt. Mỗi profile có namespace riêng; lịch sử chống gửi trùng, cấu hình và trạng thái chạy được giữ khi cập nhật app. JSON cũ tự chuyển và được giữ dưới tên `state.pre-sqlite.json`. Muốn sao lưu, thoát app trước rồi copy toàn bộ thư mục data. Không ghi lại bằng phiên bản trước 0.4.1 sau khi chuyển SQLite.
+
+## Chạy bằng extension trong app macOS / Windows
+
+1. Trong tab **Profile**, chọn các profile muốn chạy.
+2. Lưu API key, model, chủ đề và nhịp chạy ở **Cài đặt** như bình thường.
+3. Bấm **Chạy bằng extension**. App đọc profile/proxy từ GPM, tự chuẩn bị extension theo từng profile, nạp extension nếu thiếu rồi bắt đầu chạy. Không cần cài thủ công từ Chrome Web Store.
+4. Xem tiến độ, log và lịch sử ở app. Giữ app mở trong suốt quá trình chạy; extension nhận lệnh từ app trên máy này.
+5. Bấm **Dừng & đóng** để dừng và đóng profile qua GPM. Dừng trước khi đổi giữa **Chạy tự động** và **Chạy bằng extension**.
+
+Chế độ này dùng cùng bộ logic, AI, cấu hình realtime, giới hạn phiên và SQLite với chế độ chạy hiện tại. Các thao tác tab/DOM, nhập chữ, đính kèm ảnh và bấm nút được thực hiện qua API Chrome của extension. Follow vẫn chỉ ở avatar với xác suất 60%, chờ 210–270 giây sau follow mới, nghỉ vẫn chỉ thả tim ngẫu nhiên 2–5 bài. Không sử dụng bộ chạy độc lập của extension cũ.
+
+App lưu extension trong thư mục dữ liệu riêng của profile, ngoài thư mục cài app. Khi extension thay đổi, app cập nhật các file và nạp lại trước lần chạy tiếp theo. Nếu Chrome đang mở chưa hỗ trợ nạp nóng, app có thể đóng/mở lại đúng profile đã chọn để nạp extension. Nếu GPM/Chrome không cho phép tự nạp extension, app báo lỗi và không tự đổi sang chạy trực tiếp. Cần dùng profile Chrome; Firefox chưa hỗ trợ chế độ này.

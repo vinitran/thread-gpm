@@ -114,7 +114,7 @@ sealed class MainWindow : Window
         progress.Visibility = busy > 0 ? Visibility.Visible : Visibility.Collapsed;
         var ready = api != null && loaded;
         foreach (var (id, b) in buttons) b.IsEnabled = ready && busy == 0;
-        foreach (var id in new[] { "open-selected", "start-selected" }) buttons[id].IsEnabled &= Selected.Any();
+        foreach (var id in new[] { "open-selected", "start-selected", "start-extension" }) buttons[id].IsEnabled &= Selected.Any();
         buttons["stop-selected"].IsEnabled = ready && Selected.Any();
         foreach (var id in new[] { "edit-profile", "delete-profile", "dry-run-selected" }) buttons[id].IsEnabled &= Selected.Count() == 1;
         foreach (var id in new[] { "install-update", "install-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.B(update["available"]) && J.B(update["installSupported"]);
@@ -133,7 +133,8 @@ sealed class MainWindow : Window
         top.Children.Add(Row(search, category, Action("Chọn tất cả", "select-all", () => { foreach (var p in rows) p.Selected = true; Controls(); RenderLogs(); }), Action("Bỏ chọn", "clear-selection", () => { foreach (var p in allRows.Values) p.Selected = false; Controls(); RenderLogs(); })));
         DockPanel.SetDock(top, Dock.Top); page.Children.Add(top);
         var bottom = new StackPanel { Margin = new(0, 12, 0, 0) }; selection.Width = 170; selection.VerticalAlignment = VerticalAlignment.Center;
-        bottom.Children.Add(Row(selection, Action("Mở trình duyệt", "open-selected", OpenSelected), Action("Chạy thử · không đăng", "dry-run-selected", DryRunSelected), Action("Chạy tự động", "start-selected", () => Batch("start")), Action("Dừng & đóng", "stop-selected", () => { openEpoch++; Batch("close"); })));
+        bottom.Children.Add(Row(selection, Action("Mở trình duyệt", "open-selected", OpenSelected), Action("Chạy thử · không đăng", "dry-run-selected", DryRunSelected), Action("Dừng & đóng", "stop-selected", () => { openEpoch++; Batch("close"); })));
+        bottom.Children.Add(Row(Action("Chạy tự động", "start-selected", () => Batch("start")), Action("Chạy bằng extension", "start-extension", () => Batch("start-extension")), Note("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")));
         bottom.Children.Add(Row(Action("Sửa tên / proxy…", "edit-profile", EditProfile), Action("Xóa khỏi GPM…", "delete-profile", DeleteProfile), Note("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")));
         DockPanel.SetDock(bottom, Dock.Bottom); page.Children.Add(bottom);
         profiles.Name = "ProfilesTable"; profiles.ItemsSource = rows; profiles.IsReadOnly = false; profiles.CanUserAddRows = false; profiles.CanUserDeleteRows = false; profiles.AutoGenerateColumns = false; profiles.HeadersVisibility = DataGridHeadersVisibility.Column; profiles.RowHeight = 46; profiles.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal; profiles.AlternatingRowBackground = Brushes.White; profiles.Background = Brushes.WhiteSmoke;
@@ -227,7 +228,7 @@ sealed class MainWindow : Window
     void CheckGpm() { var address = fields["gpmApi"].Text.Trim(); Perform("Đang kiểm tra GPM Local API…", async api => { var r = await api.Request("gpm-check", new() { ["gpmApi"] = address }); if (J.B(r["discovered"])) fields["gpmApi"].Text = J.S(r["gpmApi"]); return J.S(r["message"]); }); }
     void SaveSettings() => Perform("Đang lưu cho tất cả profile…", Save);
     string Results(JsonObject r) => string.Join(" · ", J.Rows(r["results"]).Select(p => (allRows.TryGetValue(J.S(p["id"]), out var row) ? row.Name : J.S(p["id"])) + ": " + (J.B(p["ok"]) ? (J.B(p["cancelled"]) ? "đã hủy" : "đã xử lý") : J.S(p["error"]))));
-    void Batch(string action) { var ids = Ids; Perform(action == "start" ? "Đang chạy profile…" : "Đang gửi lệnh dừng tới GPM…", async api => Results(await api.Request("profiles-" + action, new() { ["ids"] = J.Strings(ids) }))); }
+    void Batch(string action) { var ids = Ids; Perform(action == "start-extension" ? "Đang nạp extension và chạy profile…" : action == "start" ? "Đang chạy profile…" : "Đang gửi lệnh dừng tới GPM…", async api => Results(await api.Request("profiles-" + action, new() { ["ids"] = J.Strings(ids) }))); }
     void DryRunSelected() { var id = Ids.Single(); Perform("Đang chạy thử · chỉ đọc bài và gọi AI…", async api => { var r = await api.Request("profile-dry-run", new() { ["id"] = id }); return "Dry-run · model " + J.S(r["model"]) + " · đã đọc " + J.S(r["scanned"]) + " bài · chọn " + J.S(r["selected"]) + " · " + J.S(r["message"]) + (J.S(r["preview"]).Length == 0 ? "" : "\nBản xem trước: " + J.S(r["preview"])); }); }
     void OpenSelected()
     {

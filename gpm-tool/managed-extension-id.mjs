@@ -1,0 +1,1 @@
+export const MANAGED_EXTENSION_ID='belaohigchneooklfjopiogdchaedinh';
