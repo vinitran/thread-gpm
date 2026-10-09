@@ -314,8 +314,10 @@ export async function postReply(url,text,image,onProgress=()=>{},options={}){
     try{
       ensureRunning();
       ensureRunning();
+      if(chrome.pointer)await chrome.pointer.click({tabId:tab.id},point);else{
       await chrome.debugger.sendCommand({tabId:tab.id},'Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
       await chrome.debugger.sendCommand({tabId:tab.id},'Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'left',clickCount:1});
+      }
     }catch(e){receipt.state='unknown';await chrome.storage.local.set({replyReceipts});throw e;}
     if(options.skipVerification){receipt.state='sent_unverified';receipt.clicked_at=new Date().toISOString();onProgress(options.verifyAfterPost?'Đã bấm Post · đã lưu lần gửi, chuẩn bị kiểm tra sau khoảng 30 giây':'Đã bấm Post · bỏ qua xác minh URL theo cấu hình');await chrome.storage.local.set({replyReceipts});if(options.verifyAfterPost)await verifyAfterPost(receipt,onProgress,options);}
     else{onProgress('Đang xác minh comment đã đăng…');await verifyReceipt(receipt,onProgress,options);}

@@ -5,7 +5,7 @@ export {MANAGED_EXTENSION_ID};
 const source=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../extension');
 export async function stageManagedExtension(dir){
  const destination=path.join(dir,'managed-extension');await fs.mkdir(destination,{recursive:true});
- const files=['auto-dom.js','extract.js','reply-dom.js'];let fingerprint='';
+ const files=['auto-dom.js','extract.js','reply-dom.js','pointer-input.js'];let fingerprint='';
  for(const name of files){const data=await fs.readFile(path.join(source,name));fingerprint+=data.toString();await fs.writeFile(path.join(destination,name),data);}
  for(const name of (await fs.readdir(path.join(source,'managed'))).sort()){const data=await fs.readFile(path.join(source,'managed',name));fingerprint+=data.toString();await fs.writeFile(path.join(destination,name),data);}
  const idle=await fs.readFile(new URL('./idle-engagement.mjs',import.meta.url));fingerprint+=idle.toString();await fs.writeFile(path.join(destination,'idle-engagement.js'),idle);

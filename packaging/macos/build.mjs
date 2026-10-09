@@ -22,7 +22,7 @@ for(const name of ['package.json','package-lock.json','HUONG-DAN-SU-DUNG.md'])aw
 await fs.writeFile(path.join(payload,'package.json'),JSON.stringify({private:true,type:'module'}));
 await fs.writeFile(path.join(payload,'release-config.json'),JSON.stringify({repository:repo,updatesEnabled:process.env.GPM_UPDATES_ENABLED!=='0'}));
 await fs.cp(path.join(root,'gpm-tool/public'),path.join(payload,'gpm-tool/public'),{recursive:true});
-for(const name of ['ai.js','auto-runner.js','auto-dom.js','extract.js','feed-collector.js','post-reply.js','reply-dom.js','reply-assets.js','tab-actions.js','default-prompt.txt'])await copy('extension/'+name);
+for(const name of ['pointer-input.js','ai.js','auto-runner.js','auto-dom.js','extract.js','feed-collector.js','post-reply.js','reply-dom.js','reply-assets.js','tab-actions.js','default-prompt.txt'])await copy('extension/'+name);
 await fs.cp(path.join(root,'extension/managed'),path.join(payload,'extension/managed'),{recursive:true});
 await fs.cp(path.join(root,'extension/default-assets'),path.join(payload,'extension/default-assets'),{recursive:true});
 await run('npm',['ci','--omit=dev','--include=optional','--os=darwin','--cpu='+arch,'--ignore-scripts','--no-audit','--no-fund'],path.join(payload,'gpm-tool'));

@@ -2,7 +2,9 @@ import {autoPage} from './auto-dom.js';
 import {extractPosts} from './extract.js';
 import {replyAction} from './reply-dom.js';
 import {engagementPage} from './idle-engagement.js';
-const functions={autoPage,extractPosts,replyAction,engagementPage};
+import {pointerTarget} from './pointer-input.js';
+const functions={autoPage,extractPosts,replyAction,engagementPage,pointerTarget};
+const attached=new Set();chrome.debugger.onDetach.addListener(target=>attached.delete(target.tabId));
 let configured,loopRunning=false;
 async function request(path,body){
  if(!configured)throw Error('Chưa kết nối app HoanXu GPM.');
@@ -23,8 +25,8 @@ async function execute(job){
   const results=await chrome.scripting.executeScript({target:{tabId:a.id},func,args:a.args,...(a.name==='replyAction'&&a.args[0]==='upload'?{world:'MAIN'}:{})});
   const frame=results.find(r=>r.frameId===0)||results[0];if(frame?.error)throw Error(frame.error.message);return frame?.result;
  }
- case 'debugger.attach':await chrome.debugger.attach({tabId:a.id},'1.3');return true;
- case 'debugger.detach':await chrome.debugger.detach({tabId:a.id});return true;
+ case 'debugger.attach':if(!attached.has(a.id)){await chrome.debugger.attach({tabId:a.id},'1.3');attached.add(a.id);}return true;
+ case 'debugger.detach':try{await chrome.debugger.detach({tabId:a.id});}finally{attached.delete(a.id);}return true;
  case 'debugger.send':return chrome.debugger.sendCommand({tabId:a.id},a.method,a.params);
  default:throw Error('Lệnh extension không được hỗ trợ.');
  }

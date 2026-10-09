@@ -7,6 +7,9 @@ export function replyAction(action,args,captureErrors=false){
   const rootFor=a=>{for(let n=a?.parentElement;n&&n!==document.body;n=n.parentElement)if(buttons(n).some(b=>/^(Reply|Trả lời)$/.test(label(b).trim())))return n;throw Error('Chưa xác định được bài/nút trả lời.');};
   const path=u=>new URL(u,location.href).pathname.replace(/\/$/,'')||'/';
   const root=()=>rootFor(anchors().find(a=>path(a.href)===path(args.url)));
+  const mark=e=>{const token='hx'+crypto.randomUUID().replace(/-/g,'');e.setAttribute('data-hoanxu-pointer',token);return token;};
+  const click=(e,result)=>{if(args.__nativeInput)return {__input:{kind:'click',token:mark(e)},result};e.click();return result;};
+  const reveal=(e,result)=>args.__nativeInput?{__input:{kind:'reveal',token:mark(e)},result}:(e.scrollIntoView({block:'center',behavior:'smooth'}),result);
   const normalize=s=>(s||'').normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/g,' ').trim();
   const area=()=>{
     const dialogs=[...document.querySelectorAll('[role="dialog"]')].filter(visible);
@@ -46,7 +49,7 @@ export function replyAction(action,args,captureErrors=false){
       if(!belongs||confirm.length!==1)return {state:'blocked'};
       if(action==='inline-follow-author'){
         const b=confirm[0];if(b.disabled||b.getAttribute('aria-disabled')==='true')return {state:'blocked'};
-        b.click();return {state:'clicked',available:true};
+        return click(b,{state:'clicked',available:true});
       }
       return {state:'confirm',available:true};
     }
@@ -59,7 +62,7 @@ export function replyAction(action,args,captureErrors=false){
     if(candidates.length===1){
       if(action==='inline-follow-author'){
         const b=candidates[0];if(b.disabled||b.getAttribute('aria-disabled')==='true')return {state:'blocked'};
-        b.click();return {state:'clicked',available:true};
+        return click(b,{state:'clicked',available:true});
       }
       return {state:'not-following',available:true};
     }
@@ -92,7 +95,7 @@ export function replyAction(action,args,captureErrors=false){
     const state=/^(Following|Đang theo dõi|Đã theo dõi)$/i.test(name)?'following':/^(Requested|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(name)?'requested':'not-following';
     if(action==='follow-author'&&state==='not-following'){
       if(button.disabled||button.getAttribute('aria-disabled')==='true')throw Error('Nút follow chưa khả dụng.');
-      button.click();return {state:'clicked'};
+      return click(button,{state:'clicked'});
     }
     return {state};
   }
@@ -100,12 +103,12 @@ export function replyAction(action,args,captureErrors=false){
   if(action==='back-to-feed'){
     if([...document.querySelectorAll('[role="dialog"]')].some(visible))return {blocked:true,reason:'Hộp trả lời chưa đóng sau khi đăng.'};
     const logos=[...document.querySelectorAll('a[href]')].filter(a=>visible(a)&&path(a.href)==='/'&&/threads/i.test(label(a)));
-    if(logos.length===1){logos[0].click();return {clicked:true};}
+    if(logos.length===1){return click(logos[0],{clicked:true});}
     const homeLinks=[...document.querySelectorAll('a[href]')].filter(a=>visible(a)&&path(a.href)==='/'&&/^(Home|Trang chủ)$/i.test(label(a).trim()));
-    if(homeLinks.length===1){homeLinks[0].click();return {clicked:true};}
+    if(homeLinks.length===1){return click(homeLinks[0],{clicked:true});}
     return {clicked:false};
   }
-  if(action==='locate'){let target;try{target=root();}catch{return {found:false};}target.scrollIntoView({block:'center',behavior:'smooth'});return {found:true};}
+  if(action==='locate'){let target;try{target=root();}catch{return {found:false};}return reveal(target,{found:true});}
   if(action==='ready'){root();return true;}
   if(action==='prepare'){
     const target=root(),author=path(args.url).split('/')[1];
@@ -113,7 +116,7 @@ export function replyAction(action,args,captureErrors=false){
     const target_texts=nodes.filter(e=>!nodes.some(n=>n!==e&&n.contains(e))).map(e=>(e.innerText||'').replace(/\s*(Translate|Dịch)\s*$/,'').trim()).filter(Boolean).map(normalize);
     const target_text=target_texts[0]||'';
     const context={target_text,target_texts,target_author:'/'+author,before:anchors().map(a=>path(a.href))};
-    const reply=buttons(target).find(b=>/^(Reply|Trả lời)$/.test(label(b).trim()));reply.click();return context;
+    const reply=buttons(target).find(b=>/^(Reply|Trả lời)$/.test(label(b).trim()));return click(reply,context);
   }
   if(action==='composer'){
     if(args.attachment_count===0){try{if(editor())return {ready:true};}catch{}}
@@ -124,13 +127,13 @@ export function replyAction(action,args,captureErrors=false){
     if(inputs.length===1)return {ready:true};
     const candidates=buttons(scope).filter(b=>/expand|mở rộng|full.?screen|toàn màn hình/i.test(label(b)));
     if(candidates.length!==1)throw Error('Ô trả lời nhỏ chưa hỗ trợ ảnh; không xác định được nút mở rộng. Các nút: '+buttons(scope).map(label).join(' | '));
-    if(!args.expand_requested){candidates[0].click();return {ready:false,expanded:true};}
+    if(!args.expand_requested){return click(candidates[0],{ready:false,expanded:true});}
     return {ready:false};
   }
   if(action==='focus'){
     const e=editor();if(e.innerText.trim())throw Error('Tab comment đang có bản nháp. Đóng tab comment đó và thử lại.');
     const profile=[...document.querySelectorAll('a[href]')].find(a=>/^(Profile|Trang cá nhân)$/.test(a.getAttribute('aria-label')||a.querySelector('svg title')?.textContent||''));
-    e.focus();if(document.activeElement&&document.activeElement!==e&&!e.contains?.(document.activeElement))throw Error('Ô trả lời chưa nhận focus; đang chờ Threads cập nhật.');return {before:args.before||anchors().map(a=>path(a.href)),original_media:media(),self_profile:profile?path(profile.href):null};
+    const result={before:args.before||anchors().map(a=>path(a.href)),original_media:media(),self_profile:profile?path(profile.href):null};if(args.__nativeInput)return click(e,result);e.focus();if(document.activeElement&&document.activeElement!==e&&!e.contains?.(document.activeElement))throw Error('Ô trả lời chưa nhận focus; đang chờ Threads cập nhật.');return result;
   }
   if(action==='upload'){
     const inputs=[...document.querySelectorAll('input[type="file"]')].filter(e=>/image\//.test(e.accept));if(inputs.length!==1)throw Error('Không xác định được input nhận ảnh: '+inputs.length);
@@ -168,12 +171,14 @@ export function replyAction(action,args,captureErrors=false){
     const ready=submit.length===1&&loaded>=args.attachment_count;
     if(action==='draft')return {ready,loaded,expected:args.attachment_count,post_buttons:submit.length,...(!submit.length?{reason:'Các nút trong ô trả lời: '+buttons(submitScope).map(b=>(label(b).trim()||'(không nhãn)')+(enabled(b)?'':' [disabled]')).join(' | ')}:{})};
     if(!ready)throw Error(`Chưa sẵn sàng: ${loaded}/${args.attachment_count} ảnh, ${submit.length} nút đăng khả dụng.`);
-    submit[0].scrollIntoView({block:'center',behavior:'instant'});const rect=submit[0].getBoundingClientRect();
+    if(!args.__nativeInput)submit[0].scrollIntoView({block:'center',behavior:'instant'});const rect=submit[0].getBoundingClientRect();
+    if(args.__nativeInput&&!args.__pointerReady)return {__input:{kind:'reveal',token:mark(submit[0])},__rerun:true};
+    if(args.__nativeInput&&(rect.top<0||rect.bottom>innerHeight||rect.left<0||rect.right>innerWidth))return {__input:{kind:'reveal',token:mark(submit[0])},__rerun:true};
     if(rect.width<=0||rect.height<=0)throw Error('Nút đăng chưa có vị trí khả dụng.');
     const point={x:rect.left+rect.width/2,y:rect.top+rect.height/2};
     const hit=document.elementFromPoint?.(point.x,point.y);
     if(hit&&hit!==submit[0]&&!submit[0].contains(hit))throw Error('Nút Post đang bị che, chưa thể bấm.');
-    return point;
+    return {...point,...(args.__nativeInput?{token:mark(submit[0])}:{})};
 
   }
   if(action==='submission-state'){
@@ -186,18 +191,19 @@ export function replyAction(action,args,captureErrors=false){
     if(path(location.href)!==path(args.url)||[...document.querySelectorAll('[role="dialog"]')].some(visible))return {changed:false};
     const menus=[...document.querySelectorAll('[role="menu"]')].filter(visible);
     const recent=menus.flatMap(menu=>[...menu.querySelectorAll('[role="menuitem"],button,[role="button"]')]).filter(visible).find(e=>/^(Recent|Newest|Newest first|Most recent|Gần đây|Mới nhất)$/i.test(label(e).trim()));
-    if(recent){recent.click();return {changed:true,sorted:true};}
+    if(recent){return click(recent,{changed:true,sorted:true});}
     const top=buttons(document).filter(e=>/^(Top|Top replies|Hàng đầu)$/i.test(label(e).trim()));
-    if(top.length===1&&!args.sort_requested){top[0].click();return {changed:true,requested:true};}
+    if(top.length===1&&!args.sort_requested){return click(top[0],{changed:true,requested:true});}
     return {changed:false};
   }
   if(action==='reveal-reply'){
     if([...document.querySelectorAll('[role="dialog"]')].some(visible))return {scrolled:false,reason:'Hộp trả lời còn mở'};
     const expected=normalize(args.text);
     const caption=[...document.querySelectorAll('[dir="auto"]')].find(e=>!e.closest('[contenteditable]')&&normalize(e.innerText)===expected);
-    if(caption){caption.scrollIntoView({block:'center',behavior:'smooth'});return {scrolled:true};}
+    if(caption){return reveal(caption,{scrolled:true});}
     const candidates=[...document.querySelectorAll('div,main')].filter(e=>visible(e)&&e.clientHeight>200&&e.scrollHeight>e.clientHeight+100&&/auto|scroll/.test(getComputedStyle(e).overflowY));
     const scroller=candidates.sort((a,b)=>b.clientHeight-a.clientHeight)[0]||document.scrollingElement;
+    if(args.__nativeInput&&scroller)return {__input:{kind:'wheel',token:mark(scroller),deltaY:Math.max(350,(scroller.clientHeight||500)*.7)},result:{scrolled:true}};
     scroller?.scrollBy({top:Math.max(350,(scroller.clientHeight||500)*.7),behavior:'smooth'});
     return {scrolled:!!scroller};
   }

@@ -1,3 +1,4 @@
+import {installNativePointer} from './pointer-input.js';
 import {collectFreshPosts} from './feed-collector.js';
 import {retryTabEdit,activateTab,replaceSourceTab,closeTabPreservingWindow} from './tab-actions.js';
 import {AutoRunner} from './auto-runner.js';
@@ -9,7 +10,7 @@ import {readFolder,selectReplyAssets,makeReplyAttachments} from './reply-assets.
 import {postReply,checkReply,returnToFeed,verifyAfterPost} from './post-reply.js';
 let busy=false;
 let aiBusy=false;
-let posting=false;
+let posting=false;let manualPointer=false;
 const isThreads=url=>{try{return new URL(url).origin==='https://www.threads.com';}catch{return false;}};
 async function listTabs(){return (await chrome.tabs.query({url:'https://www.threads.com/*'})).map(t=>({id:t.id,title:t.title||'Threads',url:t.url,active:t.active}));}
 const PROMPT_REVISION='2026-10-06-user-rewrite-v3-voucher';
@@ -34,7 +35,7 @@ async function handle(m,internal=false){
   if(m.type==='post-response'||m.type==='check-response'){
     if(posting)throw Error('Một comment đang được xử lý.');
     if(!/^https:\/\/www\.threads\.com\/@[\w.]+\/post\/[-\w]+$/.test(m.url))throw Error('Link bài không hợp lệ.');
-    posting=true;const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);
+    posting=true;manualPointer=!internal;const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);
     try{
       const {aiResults={},replyReceipts={}}=await chrome.storage.local.get(['aiResults','replyReceipts']);
       const progress=stage=>{if(internal)runner.progress(stage).catch(console.error);chrome.runtime.sendMessage({type:'reply-progress',url:m.url,stage}).catch(()=>{});};
@@ -46,7 +47,7 @@ async function handle(m,internal=false){
       const typingDelayMs=Number(m.typingDelayMs??60);if(!Number.isFinite(typingDelayMs)||typingDelayMs<0||typingDelayMs>500)throw Error('Tốc độ nhập phải từ 0 đến 500 ms.');
       const targetTabId=internal?runner.state.source:(await listTabs()).sort((a,b)=>Number(b.active)-Number(a.active))[0]?.id;
       const receipt=await postReply(m.url,response.text,image,progress,{stepDelayMs,typingDelayMs,skipVerification:true,verifyAfterPost:true,waitBeforeHome:true,tabId:targetTabId,shouldContinue:internal?()=>runner.active():undefined});return {receipt,image};
-    }finally{posting=false;clearInterval(keepAlive);}
+    }finally{posting=false;manualPointer=false;clearInterval(keepAlive);}
   }
   if(m.type==='get-ai-settings'){
     const {aiSettings={},aiResults={}}=await chrome.storage.local.get(['aiSettings','aiResults']);
@@ -163,5 +164,6 @@ const runner=new AutoRunner({
  post:async(url,stepDelayMs,shouldContinue,typingDelayMs,withImages=true)=>(await handle({type:'post-response',url,stepDelayMs,typingDelayMs,withImages},true)).receipt,
  check:async url=>(await handle({type:'check-response',url},true)).receipt
 });
+installNativePointer(chrome,{shouldContinue:()=>manualPointer||!['stopping','stopped','attention'].includes(runner.state?.status)});
 chrome.alarms?.onAlarm.addListener(alarm=>{if(alarm.name===AUTO_ALARM)runner.tick().catch(console.error);});
 chrome.runtime.onStartup?.addListener(async()=>{const state=await runner.load();if(state.status==='running')await chrome.alarms.create(AUTO_ALARM,{when:Date.now()+30000,periodInMinutes:1});});

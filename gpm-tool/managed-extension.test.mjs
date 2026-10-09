@@ -32,6 +32,12 @@ test('real MV3 extension loads automatically and performs native tab, DOM, Like 
   assert.equal((await browser.evaluate(tab.id,engagementPage,[{action:'candidates'}])).posts.length,1);
   assert.equal((await browser.evaluate(tab.id,engagementPage,[{action:'engage',url:'https://www.threads.com/@demo/post/a',stepDelayMs:1500}])).like,'clicked');
   assert.deepEqual(await page.evaluate(()=>[window.likes,window.reposts]),[1,0]);
+  await page.evaluate(()=>{window.pointerEvents=[];document.addEventListener('mousemove',e=>window.pointerEvents.push({type:e.type,trusted:e.isTrusted}));document.addEventListener('wheel',e=>window.pointerEvents.push({type:e.type,trusted:e.isTrusted}));const space=document.createElement('div');space.style.height='2500px';document.body.append(space);});
+  const initialScroll=await page.evaluate(()=>scrollY);await browser.evaluate(tab.id,autoPage,['scroll']);assert.ok(await page.evaluate(()=>scrollY)>initialScroll);
+  const beforeIdle=await page.evaluate(()=>scrollY);await browser.evaluate(tab.id,autoPage,['idle-scroll']);assert.ok(Math.abs((await page.evaluate(()=>scrollY))-beforeIdle)<3);
+  const nativeEvents=await page.evaluate(()=>window.pointerEvents);assert.ok(nativeEvents.some(e=>e.type==='wheel'&&e.trusted));assert.ok(nativeEvents.some(e=>e.type==='mousemove'&&e.trusted));
+  await page.setContent(markup);
+  await page.evaluate(()=>{window.likes=1;window.reposts=0;});
   await page.focus('#editor');await globalThis.chrome.debugger.attach({tabId:tab.id},'1.3');
   await globalThis.chrome.debugger.sendCommand({tabId:tab.id},'Input.insertText',{text:'Fixture only'});await globalThis.chrome.debugger.detach({tabId:tab.id});
   assert.equal(await page.inputValue('#editor'),'Fixture only');
@@ -42,10 +48,10 @@ test('real MV3 extension loads automatically and performs native tab, DOM, Like 
   await page.setContent(`<a href="/@me" aria-label="Profile">Me</a><a href="/" aria-label="Home">Home</a><main><div style="position:relative;width:40px;height:40px"><a href="/@demo"><img alt="demo's profile picture" width="40" height="40" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6aV8AAAAASUVORK5CYII="></a><button id="follow" aria-label="Follow" style="position:absolute;left:25px;top:25px;width:16px;height:16px;padding:0">+</button></div><a href="/@demo/post/a"><time>now</time></a><p dir="auto">Fixture text</p><button id="reply" aria-label="Reply">Reply</button><div id="composer" style="display:none"><div contenteditable="true" role="textbox"></div><input type="file" accept="image/png" multiple><section id="media"></section><button id="post">Post</button></div></main>`);
   await page.evaluate(()=>{
    window.follows=0;window.posts=0;
-   document.getElementById('follow').onclick=e=>{window.follows++;e.currentTarget.remove();};
+   document.getElementById('follow').onclick=e=>{window.followTrusted=e.isTrusted;window.follows++;e.currentTarget.remove();};
    document.getElementById('reply').onclick=()=>{document.getElementById('composer').style.display='block';document.getElementById('composer').setAttribute('role','dialog');};
    document.querySelector('input').onchange=e=>{for(const file of e.target.files){const im=document.createElement('img');im.src=URL.createObjectURL(file);document.getElementById('media').append(im);}};
-   document.getElementById('post').onclick=()=>{window.posts++;document.getElementById('composer').style.display='none';const reply=document.createElement('article');reply.innerHTML='<a href="/@me/post/fixture-reply"><time>now</time></a><p dir="auto">Fixture</p>';for(const original of document.querySelectorAll('#media img')){const im=original.cloneNode();im.width=80;im.height=80;reply.append(im);}document.body.append(reply);};
+   document.getElementById('post').onclick=e=>{window.postTrusted=e.isTrusted;window.posts++;document.getElementById('composer').style.display='none';const reply=document.createElement('article');reply.innerHTML='<a href="/@me/post/fixture-reply"><time>now</time></a><p dir="auto">Fixture</p>';for(const original of document.querySelectorAll('#media img')){const im=original.cloneNode();im.width=80;im.height=80;reply.append(im);}document.body.append(reply);};
    document.querySelector('[aria-label="Home"]').onclick=e=>e.preventDefault();
   });
   const url='https://www.threads.com/@demo/post/a',events=[],waits=[];let verificationClock=Date.now(),waitingAfterPost=false;
@@ -54,6 +60,7 @@ test('real MV3 extension loads automatically and performs native tab, DOM, Like 
   const receipt=await postReply(url,'Fixture',image,m=>{events.push(m);if(m.startsWith('Đã bấm Post · đã lưu')){waitingAfterPost=true;verificationClock=Date.now();}},options);
   assert.equal(receipt.state,'posted');assert.equal(values.replyReceipts[url].state,'posted');assert.equal(receipt.comment_url,'https://www.threads.com/@me/post/fixture-reply');assert.ok(events.some(m=>m.includes('Đã xác minh bình luận: '+receipt.comment_url)));assert.equal(values.replyFollowDecisions[url].selected,true);
   assert.deepEqual(await page.evaluate(()=>[window.follows,window.posts,document.querySelector('input').files.length]),[1,1,3]);
+  assert.deepEqual(await page.evaluate(()=>[window.followTrusted,window.postTrusted]),[true,true]);
   assert.ok(waits.filter(ms=>ms===1000).length>=234);assert.ok(waits.filter(ms=>ms===1000).length<=235);assert.ok(events.some(m=>m.includes('210 giây')));
   assert.equal((await postReply(url,'Fixture',image,()=>{},options)).reused,true);
   assert.deepEqual(await page.evaluate(()=>[window.follows,window.posts]),[1,1]);

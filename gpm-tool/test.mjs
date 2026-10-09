@@ -10,6 +10,7 @@ import {GpmBrowser,endpoint} from './browser.mjs';
 import {attachments,createRunner} from './runner.mjs';
 import {AUTO_DEFAULTS} from '../extension/auto-runner.js';
 import {postReply} from '../extension/post-reply.js';
+import {autoPage} from '../extension/auto-dom.js';
 import {replyAction} from '../extension/reply-dom.js';
 import {closeTabPreservingWindow} from '../extension/tab-actions.js';
 import {selectPosts,generate} from './ai.mjs';
@@ -80,7 +81,7 @@ test('bundled assets become three separate uploads with store image in the middl
  const result=await attachments();assert.equal(result.files.length,3);assert.match(result.files[1].name,/^app_store\./i);assert.notEqual(result.names[0],result.names[2]);assert.ok(result.files.every(f=>f.size>0&&f.data_url.startsWith('data:image/')));
 });
 async function freePort(){const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));return port;}
-const fixture=`<!doctype html><html><body><a href="/" aria-label="Threads">Threads</a><main><a href="/@demo/post/abc"><time datetime="2026-10-07">now</time></a><button aria-label="Reply">Reply</button><div><div contenteditable="true" role="textbox" style="min-height:80px;min-width:200px"></div><button aria-label="Send" onclick="sessionStorage.setItem('sent',document.querySelector('[contenteditable]').innerText);document.querySelector('[contenteditable]').innerText=''">↑</button></div></main></body></html>`;
+const fixture=`<!doctype html><html><body><a href="/" aria-label="Threads">Threads</a><main><a href="/@demo/post/abc"><time datetime="2026-10-07">now</time></a><button aria-label="Reply">Reply</button><div><div contenteditable="true" role="textbox" style="min-height:80px;min-width:200px"></div><button aria-label="Send" onclick="sessionStorage.setItem('trusted',String(event.isTrusted));sessionStorage.setItem('sent',document.querySelector('[contenteditable]').innerText);document.querySelector('[contenteditable]').innerText=''">↑</button></div></main></body></html>`;
 test('real CDP adapter runs shared text-post DOM flow, resumes stable IDs and protects last window',async()=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-browser-')),port=await freePort();
  const executable=process.env.TEST_CHROME||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'/usr/bin/google-chrome');
@@ -90,10 +91,12 @@ test('real CDP adapter runs shared text-post DOM flow, resumes stable IDs and pr
   await context.route('**/*',route=>route.fulfill({contentType:'text/html',body:fixture}));
   const page=context.pages()[0];await page.goto('https://www.threads.com/@demo/post/abc');
   const store=await new Store(path.join(dir,'data')).load();const browser=new GpmBrowser(store);await browser.connect('http://127.0.0.1:'+port);browser.installChrome();
-  await store.set({autoRun:{status:'running'}});const pendingStatus=browser.evaluate((await browser.query())[0].id,async()=>{await new Promise(r=>setTimeout(r,200));return (await chrome.storage.local.get('autoRun')).autoRun.status;});await store.set({autoRun:{status:'stopped'}});assert.equal(await pendingStatus,'stopped');
+  await store.set({autoRun:{status:'running'}});const pendingStatus=browser.evaluate((await browser.query())[0].id,async()=>{await new Promise(r=>setTimeout(r,200));return (await chrome.storage.local.get('autoRun')).autoRun.status;});await store.set({autoRun:{status:'stopped'}});assert.equal(await pendingStatus,'stopped');await store.set({autoRun:{status:'running'}});
   const tab=(await browser.query()).find(t=>t.url.includes('/post/abc'));assert.ok(tab);
   const result=await postReply(tab.url,'test @hoanxu.app',{files:[],names:[]},()=>{},{tabId:tab.id,skipVerification:true,waitBeforeHome:false,stepDelayMs:0,typingDelayMs:0});
-  assert.equal(result.state,'sent_unverified');assert.equal(await page.evaluate(()=>sessionStorage.getItem('sent')),'test @hoanxu.app');assert.equal(page.url(),'https://www.threads.com/');
+  assert.equal(result.state,'sent_unverified');assert.equal(await page.evaluate(()=>sessionStorage.getItem('sent')),'test @hoanxu.app');assert.equal(page.url(),'https://www.threads.com/');assert.equal(await page.evaluate(()=>sessionStorage.getItem('trusted')),'true');
+  await page.evaluate(()=>{const profile=document.createElement('a');profile.href='/@me';profile.setAttribute('aria-label','Profile');document.body.prepend(profile);const space=document.createElement('div');space.style.height='2000px';document.body.append(space);window.trustedWheel=false;document.addEventListener('wheel',e=>{window.trustedWheel=e.isTrusted;});});
+  await browser.evaluate(tab.id,autoPage,['scroll']);assert.equal(await page.evaluate(()=>window.trustedWheel),true);assert.ok(await page.evaluate(()=>scrollY)>0);
   await page.evaluate(()=>{const input=document.createElement('input');input.type='file';input.accept='image/png,image/jpeg';input.multiple=true;document.body.append(input);input.addEventListener('change',()=>document.body.dataset.uploaded=String(input.files.length));});
   const files=await attachments();const upload=await browser.evaluate(tab.id,replyAction,['upload',{files:files.files}]);assert.equal(upload.files,3);assert.equal(await page.locator('body').getAttribute('data-uploaded'),'3');
   const browser2=new GpmBrowser(store);await browser2.connect('http://127.0.0.1:'+port);assert.equal((await browser2.query()).find(t=>t.url==='https://www.threads.com/').id,tab.id);

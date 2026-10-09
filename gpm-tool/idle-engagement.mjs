@@ -1,5 +1,5 @@
 // Runs in the Threads page through the GPM browser adapter.
-export async function engagementPage({action,url,until=Infinity,stepDelayMs=2000}={}){
+export async function engagementPage({action,url,until=Infinity,stepDelayMs=2000,__nativeInput=false}={}){
  const visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
  const label=e=>(e.getAttribute('aria-label')||e.querySelector('svg title')?.textContent||e.querySelector('svg')?.getAttribute('aria-label')||e.innerText||'').trim();
  const overlays=()=>[...document.querySelectorAll('[role="dialog"],[role="menu"],[aria-modal="true"]')].filter(e=>visible(e)&&((e.innerText||'').trim()||[...e.querySelectorAll('button,[role="button"],[role="menuitem"],input,textarea,[contenteditable="true"]')].some(c=>visible(c)&&(label(c)||c.matches('input,textarea,[contenteditable="true"]')))));
@@ -30,7 +30,7 @@ export async function engagementPage({action,url,until=Infinity,stepDelayMs=2000
  if(Date.now()+Math.max(5000,delayBase+1500+500)>=until)return {...result,skipped:'Không đủ thời gian nghỉ để tương tác chậm'};
  if(!await running())return {...result,stopped:true};
  const like=available(root,/^(Like|Thích)$/i);
- if(like){if(!await pause())return {...result,stopped:true};const current=available(root,/^(Like|Thích)$/i);if(current&&root.isConnected&&!overlays().length){current.click();result.like='clicked';}}
+ if(like){if(!await pause())return {...result,stopped:true};const current=available(root,/^(Like|Thích)$/i);if(current&&root.isConnected&&!overlays().length){if(__nativeInput){const token='hx'+crypto.randomUUID().replace(/-/g,'');current.setAttribute('data-hoanxu-pointer',token);return {__input:{kind:'click',token},result:{...result,like:'clicked'}};}current.click();result.like='clicked';}}
  if(!await running())return {...result,stopped:true};
  return result;
 }

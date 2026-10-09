@@ -6,6 +6,7 @@ import {extractPosts} from './extension/extract.js';
 let listener,hold=null,injections=0,reloads=0,hasDraft=false;
 const store={};
 globalThis.chrome={
+  debugger:{async attach(){},async detach(){},async sendCommand(){}},
   runtime:{id:'test',onMessage:{addListener(fn){listener=fn;}},getURL:p=>'chrome-extension://test/'+p},
   storage:{local:{async get(){return structuredClone(store);},async set(v){Object.assign(store,structuredClone(v));}}},
   tabs:{async query(){return [{id:1,url:'https://www.threads.com/',title:'Threads',active:true}];},async get(id){return {id,url:id===9?'https://example.com/':'https://www.threads.com/',status:'complete'};},async reload(){reloads++;},async update(id){return {id};},async create(){return {id:2};}},

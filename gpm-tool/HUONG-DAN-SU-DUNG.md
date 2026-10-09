@@ -166,3 +166,7 @@ App lưu extension trong thư mục dữ liệu riêng của profile, ngoài th�
 ## Kiểm tra bình luận sau khi gửi
 
 Cả chế độ trực tiếp và extension đều lưu lần bấm Post trước, chờ ngẫu nhiên 25–35 giây rồi tìm bình luận khớp tài khoản/nội dung và lấy link. Khi cần, tool mở lại bài đích để kiểm tra thêm trong khoảng 5 giây. Bình luận đã xác minh có trạng thái `posted`, link bình luận và thời điểm xác minh trong lịch sử. Nếu chưa xác minh được hoặc bước kiểm tra lỗi, giữ `sent_unverified`, ghi lý do rồi tiếp tục nhịp chạy đã cài đặt; không tự gửi lại. Thời gian chờ này được dùng luôn trước khi về trang chủ, không chờ thêm một lượt 30 giây. Nút Dừng vẫn hủy được thời gian chờ.
+
+## Thao tác chuột trong trình duyệt
+
+Cả chạy trực tiếp và chạy bằng extension đều đưa con trỏ qua các điểm trung gian rồi click khi follow, thả tim, mở trả lời, chọn ô nhập, Post và về trang chủ. Các bước tìm bài, đưa nút vào vùng nhìn thấy và cuộn nhẹ khi nghỉ dùng sự kiện bánh xe theo từng đoạn, có khoảng chờ. Tool đo lại vị trí và kiểm tra nút có bị che/disabled trước khi bấm; Dừng hủy thao tác đang di chuyển hoặc cuộn. Di chuyển diễn ra trong trình duyệt của từng profile.

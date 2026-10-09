@@ -1,5 +1,6 @@
 import {chromium} from 'playwright';
 import {randomBytes} from 'node:crypto';
+import {installNativePointer} from '../extension/pointer-input.js';
 export function endpoint(value){const url=new URL(value);if(!['http:','https:','ws:','wss:'].includes(url.protocol)||!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.username||url.password)throw Error('CDP phải là địa chỉ localhost của profile GPM trên máy này.');return url.href;}
 export class GpmBrowser{
  constructor(store){this.store=store;this.pages=new Map();this.sessions=new Map();this.serial=0;this.tracking=new WeakMap();this.targets={};this.windows=new Map();}
@@ -24,6 +25,7 @@ export class GpmBrowser{
   const {browserTargets={}}=await this.store.get('browserTargets');this.targets=browserTargets;this.serial=Math.max(0,...Object.values(browserTargets));
   await Promise.all(this.context.pages().map(p=>this.track(p)));
   this.context.on('page',p=>{if(this.context===connectedContext)this.track(p).catch(()=>{});});
+  if(this.nativeExecute)this.installChrome();
  }
  async ensureConnected(shouldContinue=()=>true){
   if(!shouldContinue())throw Error('Đã dừng · không kết nối lại trình duyệt.');
@@ -61,11 +63,12 @@ export class GpmBrowser{
  async update(id,options){if(this.extensionBridge)return this.extensionTab(await this.extensionBridge.call('tabs.update',{id:this.nativeId(id),options}));const p=this.page(id);if(options.url)await p.goto(options.url,{waitUntil:'domcontentloaded',timeout:30000});if(options.active)await p.bringToFront();return this.describe(id);}
  async reload(id){if(this.extensionBridge)return this.extensionBridge.call('tabs.reload',{id:this.nativeId(id)});return this.page(id).reload({waitUntil:'domcontentloaded'});}
  async remove(id){if(this.extensionBridge)return this.extensionBridge.call('tabs.remove',{id:this.nativeId(id)});return this.page(id).close();}
- async evaluate(id,func,args=[]){
+ async evaluate(id,func,args=[]){if(this.nativeExecute)return (await this.nativeExecute({target:{tabId:id},func,args}))[0]?.result;return this.evaluateRaw(id,func,args);}
+ async evaluateRaw(id,func,args=[]){
   if(this.extensionBridge)return this.extensionBridge.call('script',{id:this.nativeId(id),name:func.name,args});
   // Only live run status is exposed, so Stop takes effect between scroll steps.
   const source=`((chrome)=>(${func.toString()})(...${JSON.stringify(args)}))({storage:{local:{get:()=>window[${JSON.stringify(this.statusBinding)}]()}}})`;
   return this.page(id).evaluate(source);
  }
- installChrome(){globalThis.chrome={storage:{local:this.store},tabs:{query:()=>this.query(),get:id=>this.describe(id),create:o=>this.create(o),update:(id,o)=>this.update(id,o),reload:id=>this.reload(id),remove:id=>this.remove(id)},scripting:{executeScript:async({target,func,args})=>[{frameId:0,result:await this.evaluate(target.tabId,func,args)}]},debugger:{attach:async({tabId})=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.attach',{id:this.nativeId(tabId)});if(!this.sessions.has(tabId))this.sessions.set(tabId,await this.context.newCDPSession(this.page(tabId)));},sendCommand:async({tabId},method,params)=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.send',{id:this.nativeId(tabId),method,params});const session=this.sessions.get(tabId);if(!session)throw Error('Debugger chưa kết nối');return session.send(method,params);},detach:async({tabId})=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.detach',{id:this.nativeId(tabId)});const session=this.sessions.get(tabId);if(session){this.sessions.delete(tabId);await session.detach();}}}};}
+ installChrome(){globalThis.chrome={storage:{local:this.store},tabs:{query:()=>this.query(),get:id=>this.describe(id),create:o=>this.create(o),update:(id,o)=>this.update(id,o),reload:id=>this.reload(id),remove:id=>this.remove(id)},scripting:{executeScript:async({target,func,args})=>[{frameId:0,result:await this.evaluateRaw(target.tabId,func,args)}]},debugger:{attach:async({tabId})=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.attach',{id:this.nativeId(tabId)});if(!this.sessions.has(tabId))this.sessions.set(tabId,await this.context.newCDPSession(this.page(tabId)));},sendCommand:async({tabId},method,params)=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.send',{id:this.nativeId(tabId),method,params});const session=this.sessions.get(tabId);if(!session)throw Error('Debugger chưa kết nối');return session.send(method,params);},detach:async({tabId})=>{if(this.extensionBridge)return this.extensionBridge.call('debugger.detach',{id:this.nativeId(tabId)});const session=this.sessions.get(tabId);if(session){this.sessions.delete(tabId);await session.detach();}}}};installNativePointer(globalThis.chrome,{shouldContinue:()=>!['stopping','stopped','attention'].includes(this.store.value.autoRun?.status)});this.nativeExecute=globalThis.chrome.scripting.executeScript;}
 }
