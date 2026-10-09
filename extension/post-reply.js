@@ -150,6 +150,13 @@ export async function followAuthorBeforeReply(tabId,url,onProgress=()=>{},option
       await wait(250);
     }
     if(!confirmed)throw Error('Chưa xác nhận được follow; chưa gửi bình luận. Kiểm tra trang người đăng trong profile.');
+    const seconds=210+Math.floor((options.random||Math.random)()*61);
+    for(let remaining=seconds;remaining>0;remaining--){
+      ensureRunning();
+      if(remaining===seconds||remaining%15===0)onProgress(`${state.state==='requested'?'Đã gửi yêu cầu follow':'Đã follow'} · còn ${remaining} giây trước khi comment…`);
+      await wait(1000);
+      ensureRunning();
+    }
   }
   await step(state.state==='requested'?'Đã gửi yêu cầu follow · quay lại bài…':state.state==='self'?'Bài của tài khoản hiện tại · quay lại bài…':'Đã theo dõi người đăng · quay lại bài…');
   await retryTabEdit(()=>chrome.tabs.update(tabId,{url}),{onProgress,shouldContinue:options.shouldContinue});

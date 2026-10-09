@@ -433,3 +433,20 @@ test('required follow failure prevents opening composer or submitting the commen
  globalThis.chrome={storage:{local:{async get(){return {replyReceipts:{}};}}},tabs:{async create(){return {id:7};},async update(){}},scripting:{async executeScript({args:[action]}){actions.push(action);return [{result:{state:'not-following'}}];}}};
  try{await assert.rejects(()=>postReply('https://www.threads.com/@demo/post/follow','comment',{files:[],names:[]},()=>{},{followAuthor:true,wait:async()=>{},stepDelayMs:0}),/Chưa xác nhận được follow/);assert.equal(actions.includes('prepare'),false);assert.equal(actions.includes('submit'),false);assert.equal(actions.filter(a=>a==='follow-author').length,1);}finally{globalThis.chrome=old;}
 });
+test('new follow waits a random 210–270 seconds after confirmation before returning to comment',async()=>{
+ const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;
+ try{for(const [random,expected] of [[0,210],[0.5,240],[0.999999,270]]){let followed=false,confirmed=false,seconds=0;const logs=[];
+ globalThis.chrome={tabs:{async update(id,{url}){if(url.includes('/post/'))assert.equal(seconds,expected);}},scripting:{async executeScript({args:[action]}){if(action==='follow-author'){followed=true;return [{result:{state:'clicked'}}];}if(followed)confirmed=true;return [{result:{state:followed?'following':'not-following'}}];}}};
+ await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',m=>logs.push(m),{stepDelayMs:0,random:()=>random,wait:async ms=>{if(ms===1000){assert.equal(confirmed,true);seconds++;}}});assert.equal(seconds,expected);assert.ok(logs.some(m=>m.includes(`còn ${expected} giây`)));}}
+ finally{globalThis.chrome=old;}
+});
+test('stop during four-minute follow wait prevents returning to comment',async()=>{
+ const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;let followed=false,active=true,seconds=0,returned=false;
+ globalThis.chrome={tabs:{async update(id,{url}){if(url.includes('/post/'))returned=true;}},scripting:{async executeScript({args:[action]}){if(action==='follow-author')followed=true;return [{result:{state:followed?'following':'not-following'}}];}}};
+ try{await assert.rejects(()=>followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',()=>{},{stepDelayMs:0,shouldContinue:()=>active,wait:async ms=>{if(ms===1000&&++seconds===2)active=false;}}),/Đã dừng/);assert.equal(seconds,2);assert.equal(returned,false);}finally{globalThis.chrome=old;}
+});
+test('previously followed author does not enter the four-minute wait',async()=>{
+ const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;
+ globalThis.chrome={tabs:{async update(){}},scripting:{async executeScript(){return [{result:{state:'following'}}];}}};
+ try{await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',()=>{},{stepDelayMs:0,wait:async ms=>assert.notEqual(ms,1000)});}finally{globalThis.chrome=old;}
+});
