@@ -44,28 +44,29 @@ export class AutoRunner{
   s.nextIdleAt??=this.d.now()+15000;
   const times=[s.nextAt];if(s.config.idleScroll&&s.current?.phase!=='posting')times.push(s.nextIdleAt);
   if(this.canIdleEngage()){
-   if(s.engagementWait?.until!==s.nextAt){s.engagementWait={until:s.nextAt,attempts:0,nextAt:this.d.now()+this.engagementDelay()};await this.save();}
-   if(s.engagementWait.attempts<3&&s.engagementWait.nextAt<s.nextAt-5000)times.push(s.engagementWait.nextAt);
+   if(s.engagementWait?.until!==s.nextAt){s.engagementWait={until:s.nextAt,attempts:0,limit:2+Math.min(3,Math.floor(this.d.random()*4)),nextAt:this.d.now()+this.engagementDelay()};await this.save();}
+   if(!Number.isInteger(s.engagementWait.limit)){s.engagementWait.limit=2+Math.min(3,Math.floor(this.d.random()*4));await this.save();}
+   if(s.engagementWait.attempts<s.engagementWait.limit&&s.engagementWait.nextAt<s.nextAt-5000)times.push(s.engagementWait.nextAt);
   }
   await this.d.schedule(Math.min(...times));
  }
  async engageIdle(){
   const s=this.state,window=s.engagementWait;
-  if(!this.canIdleEngage()||!window||window.until!==s.nextAt||window.attempts>=3||window.nextAt>this.d.now())return;
+  if(!this.canIdleEngage()||!window||window.until!==s.nextAt||window.attempts>=window.limit||window.nextAt>this.d.now())return;
   const history=s.idleEngagementHistory??={};
   try{
    const result=await this.d.idleCandidates(s.source);
    if(!this.active()||!this.canIdleEngage())return;
    const candidates=(result.posts||[]).filter(p=>p.url&&!history[p.url]);
-   if(!candidates.length){window.attempts=3;this.event('Thả tim khi nghỉ · '+(result.skipped||'không còn bài mới khả dụng'));await this.save();return;}
+   if(!candidates.length){window.attempts=window.limit;this.event('Thả tim khi nghỉ · '+(result.skipped||'không còn bài mới khả dụng'));await this.save();return;}
    const post=candidates[Math.min(candidates.length-1,Math.floor(this.d.random()*candidates.length))];
    window.attempts++;history[post.url]={state:'attempting',created_at:new Date(this.d.now()).toISOString()};await this.save();
    if(!this.active()||!this.canIdleEngage())return;
    const outcome=await this.d.idleEngage(s.source,post.url,window.until-1000);
    history[post.url]={...history[post.url],state:'attempted',...outcome};
-   this.event('Thả tim khi nghỉ · bài '+window.attempts+'/3 · '+post.url+' · Like: '+(outcome.like||'skipped'));
+   this.event('Thả tim khi nghỉ · bài '+window.attempts+'/'+window.limit+' · '+post.url+' · Like: '+(outcome.like||'skipped'));
   }catch(e){
-   window.attempts=3;
+   window.attempts=window.limit;
    this.event('Thả tim khi nghỉ chưa hoàn tất: '+e.message);
    if(/đăng nhập|kiểm tra hoặc giới hạn/.test(e.message)){await this.finish('attention',e.message);return;}
   }

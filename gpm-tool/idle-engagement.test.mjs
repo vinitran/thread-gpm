@@ -18,15 +18,15 @@ function fixture(config={}){
  return {store,posts,actions,scheduled,reopen,get runner(){return runner;},at(value){time=value;},now:()=>time};
 }
 
-test('idle engagement is limited to three distinct posts, random gaps and persisted windows',async()=>{
+test('idle engagement is limited to a random quota with distinct posts, random gaps and persisted windows',async()=>{
  const f=fixture();await f.reopen();await f.runner.scheduleNext();assert.equal(f.scheduled.at(-1),f.now()+20000);
- for(let i=0;i<3;i++){
+ for(let i=0;i<2;i++){
   f.at(f.runner.state.engagementWait.nextAt);if(i===0)f.runner.d.random=()=>1-Number.EPSILON;
   await f.runner.tick();assert.equal(f.actions.length,i+1);assert.equal(f.runner.state.engagementWait.nextAt,f.now()+(i===0?45000:20000));
   if(i===0)await f.reopen();
  }
- f.at(f.now()+20000);await f.runner.tick();assert.equal(f.actions.length,3);assert.equal(new Set(f.actions).size,3);assert.equal(f.scheduled.at(-1),f.runner.state.nextAt);
- f.runner.state.nextAt=f.now()+180000;await f.runner.scheduleNext();f.at(f.runner.state.engagementWait.nextAt);await f.runner.tick();assert.equal(f.actions.length,4);assert.equal(new Set(f.actions).size,4);
+ f.at(f.now()+20000);await f.runner.tick();assert.equal(f.actions.length,2);assert.equal(new Set(f.actions).size,2);assert.equal(f.scheduled.at(-1),f.runner.state.nextAt);
+ f.runner.state.nextAt=f.now()+180000;await f.runner.scheduleNext();f.at(f.runner.state.engagementWait.nextAt);await f.runner.tick();assert.equal(f.actions.length,3);assert.equal(new Set(f.actions).size,3);
  f.runner.dispose();
 });
 
@@ -79,4 +79,14 @@ test('Stop interrupts a pacing delay before any click and short wait budgets do 
  const short=await page.evaluate(engagementPage,{action:'engage',url:'https://www.threads.com/@demo/post/a',until:Date.now()+5000});assert.match(short.skipped,/Không đủ thời gian/);assert.equal(await page.evaluate(()=>window.clicks),0);
  await page.evaluate(()=>setTimeout(()=>window.fixtureStatus='stopped',100));const start=Date.now();const stopped=await page.evaluate(engagementPage,{action:'engage',url:'https://www.threads.com/@demo/post/a'});assert.equal(stopped.stopped,true);assert.equal(await page.evaluate(()=>window.clicks),0);assert.ok(Date.now()-start<1500);
  }finally{await browser.close();}
+});
+
+
+test('each wait randomly chooses 2 to 5 posts and preserves quota after reload',async()=>{
+ for(const [random,limit] of [[0,2],[0.25,3],[0.5,4],[0.999,5]]){
+  const f=fixture();await f.reopen();f.runner.d.random=()=>random;await f.runner.scheduleNext();
+  assert.equal(f.runner.state.engagementWait.limit,limit);
+  await f.reopen();await f.runner.scheduleNext();assert.equal(f.runner.state.engagementWait.limit,limit);
+  f.runner.state.nextAt=f.now()+200000;f.runner.d.random=()=>0;await f.runner.scheduleNext();assert.equal(f.runner.state.engagementWait.limit,2);f.runner.dispose();
+ }
 });

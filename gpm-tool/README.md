@@ -47,7 +47,7 @@ Prompt, chủ đề, nhịp gõ, chờ giữa bước, nghỉ tìm bài và kho�
 
 Prompt rating vẫn yêu cầu AI chấm đủ mọi bài đầu vào; GPM không kiểm tra số lượng hoặc báo lỗi nếu thiếu rating. Mỗi request AI rating hoặc viết comment chờ tối đa 90 giây. Mọi lỗi AI ở hai bước này đều nghỉ 2 phút rồi gọi lại, tối đa 3 lần gọi lại sau lần đầu (4 request cho bước đó). Nếu vẫn lỗi, phiên dừng và hiện nguyên nhân. Số lần gọi lại và mốc chờ được lưu để khôi phục; Stop hủy lần gọi tiếp theo.
 
-Thả tim khi chờ mặc định bật, có thể tắt trong Nhịp chạy & chủ đề và lưu theo profile. Trong khoảng chờ trên trang chủ, chọn ngẫu nhiên tối đa 3 bài, cách nhau 20–45 giây; chỉ tương tác khi còn ít nhất 5 giây chờ. Bỏ qua bài của mình, nút Unlike và URL đã ghi nhận tương tác trước đó. Lịch sử ghi trước click để không tự thao tác lại khi kết quả chưa rõ; log ghi nhận lần bấm, không khẳng định nền tảng đã xử lý thành công. Không tương tác trong lúc comment, có bản nháp/hộp thoại hoặc nghỉ 3 giờ; Stop hủy lượt tiếp theo.
+Thả tim khi chờ mặc định bật, có thể tắt trong Nhịp chạy & chủ đề và lưu theo profile. Trong khoảng chờ trên trang chủ, chọn ngẫu nhiên 2–5 bài, cách nhau 20–45 giây; chỉ tương tác khi còn ít nhất 5 giây chờ. Bỏ qua bài của mình, nút Unlike và URL đã ghi nhận tương tác trước đó. Lịch sử ghi trước click để không tự thao tác lại khi kết quả chưa rõ; log ghi nhận lần bấm, không khẳng định nền tảng đã xử lý thành công. Không tương tác trong lúc comment, có bản nháp/hộp thoại hoặc nghỉ 3 giờ; Stop hủy lượt tiếp theo.
 
 ## Dữ liệu và kiểm thử
 
@@ -96,7 +96,7 @@ Dữ liệu bền vững: ID profile và GPM endpoint, cấu hình AI/runConfig/
 Bấm Áp dụng & mở ở bảng và Start sẽ đọc proxy hiện tại từ GPM ngay trước khi mở, tránh ghi đè proxy đã đổi bên ngoài bằng cache cũ. Sửa tên/proxy là thao tác ghi rõ ràng qua Sửa profile.
 
 
-Thả tim khi nghỉ dùng `runConfig.stepSeconds`: mỗi bước chờ `max(1.5 giây, stepSeconds)` cộng ngẫu nhiên 0–1.5 giây (mặc định 2–3.5 giây). Có chờ trước mỗi lần bấm Like. Kiểm tra Stop mỗi tối đa 100ms trong thời gian chờ và xác nhận lại nút trước khi bấm. Không đủ ngân sách thời gian cho toàn bộ luồng thì bỏ qua, không rút ngắn khoảng chờ. Khoảng cách giữa các bài vẫn 20–45 giây, tối đa 3 bài trong một lượt nghỉ.
+Thả tim khi nghỉ dùng `runConfig.stepSeconds`: mỗi bước chờ `max(1.5 giây, stepSeconds)` cộng ngẫu nhiên 0–1.5 giây (mặc định 2–3.5 giây). Có chờ trước mỗi lần bấm Like. Kiểm tra Stop mỗi tối đa 100ms trong thời gian chờ và xác nhận lại nút trước khi bấm. Không đủ ngân sách thời gian cho toàn bộ luồng thì bỏ qua, không rút ngắn khoảng chờ. Khoảng cách giữa các bài vẫn 20–45 giây, ngẫu nhiên 2–5 bài trong một lượt nghỉ.
 
 ### Nhập danh sách profile đã có trong GPM
 
