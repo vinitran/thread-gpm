@@ -48,12 +48,12 @@ test('temporary AI failure backs off and retries before any submission',async()=
  f.advance();await f.runner.tick();assert.equal(f.posts(),1);assert.equal(f.saved().status,'running');
 });
 
-test('continuous mode passes the former ten-comment limit and stops only on request',async()=>{
+test('session caps ten sends and Stop cancels continuation',async()=>{
  const f=fixture();let index=0;f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});
  await f.runner.start({maxComments:10});
  for(let i=0;i<24&&f.posts()<12;i++){f.advance();await f.runner.tick();}
- assert.equal(f.posts(),12);assert.equal(f.saved().status,'running');
- await f.runner.stop();f.advance();await f.runner.tick();assert.equal(f.posts(),12);assert.equal(f.saved().status,'stopped');
+ assert.equal(f.posts(),10);assert.equal(f.saved().status,'running');
+ await f.runner.stop();f.advance();await f.runner.tick();assert.equal(f.posts(),10);assert.equal(f.saved().status,'stopped');
 });
 test('empty feed refreshes and schedules another scan instead of completing',async()=>{
  const f=fixture();let refreshes=0;f.deps.capture=async()=>({posts:[],self:'me'});f.deps.refresh=async()=>{refreshes++;};
@@ -210,25 +210,25 @@ test('random search interval varies around setting with bounded extremes',()=>{
  assert.equal(searchWaitMs(1,()=>0),1000);assert.equal(searchWaitMs(180,()=>1),180000);
 });
 
-test('25 sends closes source, waits three hours and starts fresh while preserving history',async()=>{
+test('10 sends closes source, waits three hours and starts fresh while preserving history',async()=>{
  const f=fixture();let index=0,closed=[],opened=0;f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});f.deps.closeSource=async id=>closed.push(id);f.deps.newSource=async()=>{opened++;return 9;};
- await f.runner.start();for(let i=0;i<25;i++){f.advance();await f.runner.tick();}
- assert.equal(f.posts(),25);assert.equal(f.saved().status,'running');assert.deepEqual(closed,[1]);assert.equal(f.saved().source,null);assert.equal(f.saved().nextAt-f.deps.now(),10800000);
- const history=Object.keys(f.saved().history);f.advance(10799999);await f.runner.tick();assert.equal(opened,0);assert.equal(f.posts(),25);
+ await f.runner.start();for(let i=0;i<10;i++){f.advance();await f.runner.tick();}
+ assert.equal(f.posts(),10);assert.equal(f.saved().status,'running');assert.deepEqual(closed,[1]);assert.equal(f.saved().source,null);assert.equal(f.saved().nextAt-f.deps.now(),10800000);
+ const history=Object.keys(f.saved().history);f.advance(10799999);await f.runner.tick();assert.equal(opened,0);assert.equal(f.posts(),10);
  f.advance(1);await f.runner.tick();assert.equal(opened,1);assert.equal(f.saved().source,9);assert.equal(f.saved().stats.posted,0);assert.equal(f.saved().sessionRest,null);assert.ok(history.every(url=>f.saved().history[url]));
- f.advance(15000);await f.runner.tick();assert.equal(f.posts(),26);
+ f.advance(15000);await f.runner.tick();assert.equal(f.posts(),11);
 });
-test('unverified 25th send enters rest even if returning home failed',async()=>{
+test('unverified 10th send enters rest even if returning home failed',async()=>{
  const f=fixture();f.deps.post=async url=>f.receipts[url]={state:'sent_unverified',navigation_error:'timeout'};
- await f.runner.start();f.runner.state.stats.sent=24;f.runner.state.stats.unknown=24;
- f.advance();await f.runner.tick();assert.equal(f.saved().status,'running');assert.equal(f.saved().source,null);assert.equal(f.saved().stats.sent,25);assert.ok(f.saved().sessionRest);
+ await f.runner.start();f.runner.state.stats.sent=9;f.runner.state.stats.unknown=9;
+ f.advance();await f.runner.tick();assert.equal(f.saved().status,'running');assert.equal(f.saved().source,null);assert.equal(f.saved().stats.sent,10);assert.ok(f.saved().sessionRest);
 });
 test('worker reload preserves three-hour deadline and performs no idle scrolling',async()=>{
- const f=fixture();let idle=0;f.deps.idleScroll=async()=>idle++;await f.runner.start();f.runner.state.stats.posted=25;f.advance();await f.runner.tick();const until=f.saved().sessionRest.until;
+ const f=fixture();let idle=0;f.deps.idleScroll=async()=>idle++;await f.runner.start();f.runner.state.stats.posted=10;f.advance();await f.runner.tick();const until=f.saved().sessionRest.until;
  const resumed=new AutoRunner(f.deps);f.advance(60000);await resumed.tick();assert.equal(f.saved().sessionRest.until,until);assert.equal(f.saved().nextAt,until);assert.equal(idle,0);assert.equal(f.posts(),0);
 });
 test('Stop during three-hour rest cancels automatic reopening',async()=>{
- const f=fixture();let opened=0;f.deps.newSource=async()=>{opened++;return 9;};await f.runner.start();f.runner.state.stats.posted=25;f.advance();await f.runner.tick();await f.runner.stop();f.advance(10800000);await f.runner.tick();assert.equal(opened,0);assert.equal(f.saved().status,'stopped');
+ const f=fixture();let opened=0;f.deps.newSource=async()=>{opened++;return 9;};await f.runner.start();f.runner.state.stats.posted=10;f.advance();await f.runner.tick();await f.runner.stop();f.advance(10800000);await f.runner.tick();assert.equal(opened,0);assert.equal(f.saved().status,'stopped');
 });
 
 test('image posts spaced six minutes apart with text-only posts between and persisted deadline',async()=>{

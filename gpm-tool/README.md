@@ -39,9 +39,9 @@ Dừng extension trước khi chạy tool trong cùng profile. Tool dùng AutoRu
 
 Lượt ảnh có 2 ảnh ngẫu nhiên + app_store.png ở giữa, gửi riêng lẻ. Lượt ảnh cách nhau 6–8 phút; giữa các lượt dùng chữ, mặc định không tag. Bật tùy chọn Tag @hoanxu.app rồi Lưu: sau mỗi 4 lượt bình luận có ảnh đã bấm gửi, lượt tiếp theo dùng chữ có tag một lần. Bộ đếm lưu riêng từng profile, giữ khi khởi động lại; lượt lỗi không tính. Ảnh bài gốc gửi AI gộp ngang tối đa 3 ảnh. Bộ mặc định có 13 ảnh. Folder tùy chỉnh cần app_store.png và ít nhất 2 ảnh khác, hỗ trợ PNG/JPEG/WebP, tối đa 200 file, 10 MB/file, 200 MB/folder.
 
-Sau Post chờ 30–40 giây, về trang chủ, nghỉ mặc định 120–180 giây. Mỗi phiên 25 lần gửi rồi đóng tab Threads, nghỉ 3 giờ và mở tab tiếp tục. Giữ tab trống trước khi đóng tab cuối để bảo vệ cửa sổ. Stop hủy lịch tiếp theo.
+Sau Post chờ 30–40 giây, về trang chủ, nghỉ mặc định 120–180 giây. Mỗi phiên 10 lần gửi rồi đóng tab Threads, nghỉ 3 giờ và mở tab tiếp tục. Giữ tab trống trước khi đóng tab cuối để bảo vệ cửa sổ. Stop hủy lịch tiếp theo.
 
-UI có log trực tiếp, số lần gửi hôm nay theo múi giờ Việt Nam, tiến độ /25, tổng lần gửi, trạng thái chưa xác minh, lịch sử gần nhất và xuất toàn bộ lịch sử. Thống kê là lần gửi; sent_unverified không bảo đảm đã đăng thành công. Không tự gửi lại receipt có kết quả chưa rõ.
+UI có log trực tiếp, số lần gửi hôm nay theo múi giờ Việt Nam, tiến độ /10, tổng lần gửi, trạng thái chưa xác minh, lịch sử gần nhất và xuất toàn bộ lịch sử. Thống kê là lần gửi; sent_unverified không bảo đảm đã đăng thành công. Không tự gửi lại receipt có kết quả chưa rõ.
 
 Prompt, chủ đề, nhịp gõ, chờ giữa bước, nghỉ tìm bài và khoảng nghỉ được lưu. Có thể nhập prompt từ .txt, chọn folder ảnh. UI giữ bản nháp khi cập nhật thống kê và khóa cấu hình khi chạy. Cache giữ tối đa 200 response AI khớp bài/model/prompt/loại lượt để giảm gọi lại khi khôi phục.
 
@@ -65,7 +65,7 @@ API chính thức: https://github.com/GPMSoft/GPMLoginGlobalApiDocs/blob/main/do
 
 ## Nhiều profile · 0.3.2
 
-Phiên được tính riêng theo Profile ID: bộ đếm 25 lần gửi, lịch nghỉ 3 giờ, receipt chống trùng, response AI, lịch sử và log của mỗi profile nằm trong data/tool.sqlite, tách theo namespace profile:PROFILE_ID. Dữ liệu bản cũ được chuyển một lần cho profile đã chọn; không gán lịch sử đó sang profile khác.
+Phiên được tính riêng theo Profile ID: bộ đếm 10 lần gửi, lịch nghỉ 3 giờ, receipt chống trùng, response AI, lịch sử và log của mỗi profile nằm trong data/tool.sqlite, tách theo namespace profile:PROFILE_ID. Dữ liệu bản cũ được chuyển một lần cho profile đã chọn; không gán lịch sử đó sang profile khác.
 
 Chọn một profile trong phần cài đặt, nhập proxy (hoặc để trống), lưu. Profile xuất hiện ở bảng Profile đã cấu hình / chạy. Lặp lại để thêm các profile khác. Bảng hiển thị proxy đầy đủ, trạng thái, số lần gửi của phiên, hôm nay/tổng và lượt tiếp theo. Xem log chọn profile đang hiển thị ở bảng thống kê phía trên; xuất lịch sử cũng lấy profile đang xem. Log có ghi lần mở/chạy và proxy tương ứng.
 

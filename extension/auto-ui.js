@@ -22,7 +22,7 @@ export function initAutoUI({send,beforeStart=()=>{},onState=()=>{},onError=()=>{
   renderActivity();
   const all=Object.values(receipts),posted=all.filter(r=>(r.state==='posted'&&r.comment_url)||r.state==='sent_unverified'),today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'});
   const daily=posted.filter(r=>new Date(r.verified_at||r.created_at).toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'})===today);
-  $('auto-today').textContent=daily.length;$('auto-total').textContent=posted.length;$('auto-session').textContent=sessionSendCount(state.stats)+' / 25';$('auto-unknown').textContent=all.filter(r=>r.state!=='posted').length;
+  $('auto-today').textContent=daily.length;$('auto-total').textContent=posted.length;$('auto-session').textContent=sessionSendCount(state.stats)+' / 10';$('auto-unknown').textContent=all.filter(r=>r.state!=='posted').length;
   $('auto-log').textContent=(state.events||[]).map(e=>`${new Date(e.time).toLocaleTimeString('vi-VN')} · ${e.message}`).join('\n')||'Bắt đầu để tự quét trang chủ Threads theo từ khóa.';
   const list=$('auto-history');list.replaceChildren();
   for(const r of all.sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,30)){

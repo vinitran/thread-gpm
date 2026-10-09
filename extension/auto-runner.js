@@ -16,7 +16,7 @@ export function eligible(post,config,self,history,receipts){
  return !!post.url&&!!post.author&&post.author!==self&&!history[post.url]&&!receipts[post.url];
 }
 export function searchWaitMs(seconds,random=Math.random){return Math.round(Math.max(1,Math.min(180,seconds*(.7+random()*.6)))*1000);}
-export const SESSION_LIMIT=25;
+export const SESSION_LIMIT=10;
 export const sessionSendCount=stats=>(stats?.posted||0)+Math.max(stats?.sent||0,stats?.unknown||0);
 export class AutoRunner{
  constructor(deps){this.d=deps;this.state=null;this.running=false;this.starting=false;}
@@ -95,7 +95,7 @@ export class AutoRunner{
   if(!s.sessionRest){
    s.sessionRest={until:this.d.now()+3*60*60*1000,oldTabId:s.source,closed:false};s.nextAt=s.sessionRest.until;
    s.sessionHistory=[...(s.sessionHistory||[]),{startedAt:s.startedAt,endedAt:new Date(this.d.now()).toISOString(),stats:{...s.stats}}].slice(-100);
-   await this.activity('session-rest','Đã đạt 25 lần gửi · nghỉ 3 giờ, sau đó tự mở tab mới và chạy tiếp');
+   await this.activity('session-rest','Đã đạt 10 lần gửi · nghỉ 3 giờ, sau đó tự mở tab mới và chạy tiếp');
    await this.scheduleNext();
   }
   if(!s.sessionRest.closed){
@@ -110,7 +110,7 @@ export class AutoRunner{
   s.sessionRest=null;s.current=null;s.queue=[];s.selectionBatch=null;s.recovery=null;s.recoveryAttempts=0;s.browserRetries=0;s.nextImageAt=null;s.needsScroll=false;s.emptyScans=0;s.authors=[];
   s.history=Object.fromEntries(Object.entries(s.history).filter(([,v])=>v.state!=='queued'));
   s.stats={scanned:0,selected:0,posted:0,sent:0,failed:0,unknown:0};s.startedAt=new Date(this.d.now()).toISOString();s.nextAt=this.d.now()+15000;s.nextIdleAt=s.nextAt+15000;
-  await this.activity('waiting','Đã nghỉ đủ 3 giờ · mở tab mới, chờ 15 giây rồi bắt đầu phiên 25 comment tiếp theo');await this.scheduleNext();
+  await this.activity('waiting','Đã nghỉ đủ 3 giờ · mở tab mới, chờ 15 giây rồi bắt đầu phiên 10 comment tiếp theo');await this.scheduleNext();
  }
  async recover(reason){
   const s=this.state;

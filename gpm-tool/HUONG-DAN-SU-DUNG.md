@@ -95,9 +95,9 @@ Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở pr
 
 Muốn chạy nhiều profile, kiểm tra đăng nhập từng profile và lưu cài đặt chung trước, rồi chọn các profile cần chạy. Thanh thao tác giữ trên màn hình khi cuộn; **Bỏ chọn** xoá toàn bộ lựa chọn. Nếu chọn profile nằm ngoài bộ lọc hiện tại, tool báo số lượng cạnh phần chọn.
 
-Theo dõi **Xem log** ở từng hàng, trạng thái phiên, **Phiên /25**, **Hôm nay / Tổng**, lượt tiếp theo và lịch sử. “Chưa xác minh” nghĩa là đã ghi nhận gửi nhưng chưa xác nhận được comment; kiểm tra bài gốc trước khi thao tác thủ công để tránh trùng.
+Theo dõi **Xem log** ở từng hàng, trạng thái phiên, **Phiên /10**, **Hôm nay / Tổng**, lượt tiếp theo và lịch sử. “Chưa xác minh” nghĩa là đã ghi nhận gửi nhưng chưa xác nhận được comment; kiểm tra bài gốc trước khi thao tác thủ công để tránh trùng.
 
-Mỗi phiên có 25 lần gửi, sau đó nghỉ 3 giờ rồi tiếp tục. Mỗi profile có bộ đếm, lịch nghỉ và lịch sử riêng. Thả tim khi nghỉ tối đa 3 bài, cách nhau 20–45 giây; các bước tương tác mặc định cách nhau khoảng 2–3.5 giây. Bỏ qua tương tác nếu không đủ thời gian nghỉ, không rút ngắn nhịp bấm để kịp.
+Mỗi phiên có 10 lần gửi, sau đó nghỉ 3 giờ rồi tiếp tục. Mỗi profile có bộ đếm, lịch nghỉ và lịch sử riêng. Thả tim khi nghỉ tối đa 3 bài, cách nhau 20–45 giây; các bước tương tác mặc định cách nhau khoảng 2–3.5 giây. Bỏ qua tương tác nếu không đủ thời gian nghỉ, không rút ngắn nhịp bấm để kịp.
 
 Giữ máy, GPM và dashboard hoạt động để tiếp tục đúng lịch. Không chạy automation của extension đồng thời với tool trên cùng profile.
 
