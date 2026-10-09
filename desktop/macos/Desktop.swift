@@ -302,6 +302,11 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         versionText.stringValue = "Phiên bản " + current + (updateChecking ? " · đang kiểm tra…" : !error.isEmpty ? " · chưa kiểm tra được bản mới" : "")
         updateBanner.isHidden = !available; updateWarning.stringValue = "Bạn chưa dùng phiên bản mới nhất: " + current + " → " + latest + ". Dừng profile và lưu cài đặt trước khi cập nhật."
         updateText.stringValue = available ? updateWarning.stringValue : !error.isEmpty ? "Chưa xác định được bản mới nhất: " + error : string(updater["repository"]).isEmpty ? "Cập nhật từ xa đang tắt · tải bản mới thủ công từ GitHub Releases." : string(updater["checkedAt"]).isEmpty ? "Chưa kiểm tra phiên bản mới." : "Bạn đang dùng bản mới nhất · " + current
+        let timestamp = ISO8601DateFormatter(); timestamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let checked = timestamp.date(from:string(updater["checkedAt"])) {
+            let display = DateFormatter(); display.dateFormat = "dd/MM/yyyy HH:mm:ss"
+            updateText.stringValue += "\nKiểm tra thành công gần nhất: " + display.string(from:checked)
+        }
         if available && !error.isEmpty { updateText.stringValue += "\nLần kiểm tra gần nhất lỗi: " + error }
         controls()
     }
