@@ -217,7 +217,7 @@ export function replyAction(action,args,captureErrors=false){
     const profile=[...document.querySelectorAll('a[href]')].find(a=>/^(Profile|Trang cá nhân)$/.test(label(a)));
     const self=(args.self_profile||(profile?path(profile.href):'')).split('/')[1]?.toLowerCase();
     if(!self)throw Error('Không xác định được tài khoản đăng nhập.');
-    let matchingText=false,ownLinks=0;
+    let ownLinks=0;
     const expected=normalize(args.text);
     const candidates=[...document.querySelectorAll('a[href*="/post/"]')].filter(visible);
     for(const a of candidates){
@@ -231,12 +231,13 @@ export function replyAction(action,args,captureErrors=false){
         const nodes=[...r.querySelectorAll('[dir="auto"]')].filter(e=>visible(e)&&!e.closest('a,time,[contenteditable],button,[role="button"]')&&!e.querySelector('[contenteditable],time'));
         const parts=nodes.filter(e=>!nodes.some(n=>n!==e&&n.contains(e))).map(e=>normalize((e.innerText||'').replace(/\s*(Translate|See translation|Dịch|Xem bản dịch)\s*$/,''))).filter(Boolean);
         if(!parts.some(t=>t===expected)&&normalize(parts.join(' '))!==expected)continue;
-        matchingText=true;
         const images=[...r.querySelectorAll('img')].filter(im=>visible(im)&&(im.width||im.naturalWidth)>70&&(im.height||im.naturalHeight)>70&&!/profile picture|ảnh đại diện/i.test(im.alt||''));
-        if(images.length||args.attachment_count===0)return {verified:true,url:'https://www.threads.com'+p,visible_images:new Set(images.map(im=>im.currentSrc||im.src)).size};
+        // A new own permalink with the exact caption proves the reply exists.
+        // Lazy-loaded media must not prevent saving that URL; report images separately.
+        return {verified:true,url:'https://www.threads.com'+p,visible_images:new Set(images.map(im=>im.currentSrc||im.src)).size};
       }
     }
-    return {verified:false,reason:matchingText?'Tìm thấy chữ nhưng ảnh comment chưa tải.':`Chưa thấy comment khớp nội dung · ${ownLinks} URL mới của ${self} / ${candidates.length} link bài trong DOM`};
+    return {verified:false,reason:`Chưa thấy comment khớp nội dung · ${ownLinks} URL mới của ${self} / ${candidates.length} link bài trong DOM`};
   }
 
   throw Error('Unknown reply action');

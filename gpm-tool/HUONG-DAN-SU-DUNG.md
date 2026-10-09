@@ -167,6 +167,10 @@ App lưu extension trong thư mục dữ liệu riêng của profile, ngoài th�
 
 Cả chế độ trực tiếp và extension đều lưu lần bấm Post trước, chờ ngẫu nhiên 25–35 giây rồi tìm bình luận khớp tài khoản/nội dung và lấy link. Khi cần, tool mở lại bài đích để kiểm tra thêm trong khoảng 5 giây. Bình luận đã xác minh có trạng thái `posted`, link bình luận và thời điểm xác minh trong lịch sử. Nếu chưa xác minh được hoặc bước kiểm tra lỗi, giữ `sent_unverified`, ghi lý do rồi tiếp tục nhịp chạy đã cài đặt; không tự gửi lại. Thời gian chờ này được dùng luôn trước khi về trang chủ, không chờ thêm một lượt 30 giây. Nút Dừng vẫn hủy được thời gian chờ.
 
+Link được lấy từ liên kết thời gian của đúng bình luận: đúng tài khoản đang đăng nhập, khớp nội dung, là URL mới và khác URL bài đích. Ảnh có thể tải muộn khi bình luận nằm ngoài vùng nhìn thấy; điều này không chặn lưu permalink đã xác minh. `visible_images` chỉ ghi số ảnh đang thấy trong DOM, không phải số ảnh đã đăng trên máy chủ. Trước Post, tool vẫn kiểm tra đủ ảnh xem trước.
+
+Tool hiện thao tác giao diện Chrome, không gọi endpoint đăng bình luận nội bộ của Threads. [Threads API chính thức của Meta](https://www.postman.com/meta/threads/documentation/dht3nzz/threads-api) có `reply_to_id` để tạo phản hồi, `threads_publish` để xuất bản và trường `permalink` khi đọc bài/phản hồi, dùng OAuth và Threads access token riêng. API key AI hoặc cookie GPM không phải Threads API access token; tool chưa tích hợp luồng API này.
+
 ## Thao tác chuột trong trình duyệt
 
 Cả chạy trực tiếp và chạy bằng extension đều đưa con trỏ qua các điểm trung gian rồi click khi follow, thả tim, mở trả lời, chọn ô nhập, Post và về trang chủ. Các bước tìm bài, đưa nút vào vùng nhìn thấy và cuộn nhẹ khi nghỉ dùng sự kiện bánh xe theo từng đoạn, có khoảng chờ. Tool đo lại vị trí và kiểm tra nút có bị che/disabled trước khi bấm; Dừng hủy thao tác đang di chuyển hoặc cuộn. Di chuyển diễn ra trong trình duyệt của từng profile.

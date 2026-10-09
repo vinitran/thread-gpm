@@ -146,6 +146,12 @@ test('verification recognizes own permalink and exact caption when carousel show
  try{
   const result=replyAction('verify',{url:location.href,text:'response text',before:[],self_profile:'/@self',attachment_count:3});
   assert.equal(result.verified,true);assert.equal(result.url,anchor.href);assert.equal(result.visible_images,1);
+  // Offscreen Threads replies can already have a permalink before their images load.
+  root.querySelectorAll=s=>s==='[dir="auto"]'?[caption]:[];
+  const lazy=replyAction('verify',{url:location.href,text:'response text',before:[],self_profile:'/@self',attachment_count:3});
+  assert.equal(lazy.verified,true);assert.equal(lazy.url,anchor.href);assert.equal(lazy.visible_images,0);
+  assert.equal(replyAction('verify',{url:location.href,text:'response text',before:['/@self/post/newreply'],self_profile:'/@self'}).verified,false);
+  assert.equal(replyAction('verify',{url:location.href,text:'response text',before:[],self_profile:'/@someoneelse'}).verified,false);
   assert.equal(replyAction('verify',{url:location.href,text:'different',before:[],self_profile:'/@self'}).verified,false);
  }finally{Object.assign(globalThis,previous);}
 });
