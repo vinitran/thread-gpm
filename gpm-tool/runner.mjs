@@ -15,7 +15,7 @@ export {attachments} from './assets.mjs';
 export function createRunner(store,browser){
  let timer;
  const settings=async()=>{const {settings}=await store.get('settings');return settings;};
- const home=async()=>{const tabs=(await browser.query()).filter(t=>t.url.startsWith('https://www.threads.com/'));if(!tabs.length)throw Error('Hãy tự mở Threads và đăng nhập trong GPM trước khi Start.');const t=tabs.find(t=>new URL(t.url).pathname==='/')||tabs[0];await browser.update(t.id,{url:'https://www.threads.com/',active:true});return t.id;};
+ const home=async()=>{const tabs=(await browser.query()).filter(t=>t.url.startsWith('https://www.threads.com/'));const t=tabs.find(t=>new URL(t.url).pathname==='/')||tabs[0];if(!t)return (await browser.create({url:'https://www.threads.com/',active:true})).id;await browser.update(t.id,{url:'https://www.threads.com/',active:true});return t.id;};
  const runner=new AutoRunner({now:Date.now,random:Math.random,read:async()=> (await store.get('autoRun')).autoRun,write:autoRun=>store.set({autoRun}),
  aiRetryPolicy:{maxRetries:3,delayMs:120000,retryAllErrors:true},
  idleCandidates:id=>browser.evaluate(id,engagementPage,[{action:'candidates'}]),idleEngage:(id,url,until)=>browser.evaluate(id,engagementPage,[{action:'engage',url,until,stepDelayMs:(runner.state.config.stepSeconds||2)*1000}]),

@@ -248,3 +248,22 @@ test('next AI generation reads the newly saved model and invalidates results fro
  assert.deepEqual(models,['cx/gpt-5.6-sol','cx/gpt-5.6-luna','cx/gpt-5.6-sol']);
  }finally{runner.dispose();globalThis.fetch=original;}
 });
+
+test('opening a profile preserves tabs; only starting automation opens Threads',async()=>{
+ const {default:http}=await import('node:http');const {ProfileWorker}=await import('./profile-manager.mjs');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-open-only-')),port=await freePort();let context,worker,api;
+ const executable=process.env.TEST_CHROME||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'/usr/bin/google-chrome');
+ try{
+ context=await chromium.launchPersistentContext(path.join(dir,'fixture-browser'),{executablePath:executable,headless:true,args:[`--remote-debugging-port=${port}`]});
+ await context.route('**/*',route=>route.fulfill({contentType:'text/html',body:'<html><body>Local fixture</body></html>'}));
+ const page=context.pages()[0];await page.goto('https://example.test/keep-this-tab');
+ api=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true,data:req.url.includes('/start/')?{profile_id:'fixture',remote_debugging_port:port}:{id:'fixture',name:'Fixture',raw_proxy:''}}));});
+ await new Promise(resolve=>api.listen(0,'127.0.0.1',resolve));
+ const dataDir=path.join(dir,'fixture'),store=await new Store(dataDir).load();await store.set({settings:{profileId:'fixture',profileName:'Fixture',proxy:'',gpmApi:`http://127.0.0.1:${api.address().port}/api/v3`,cdp:`http://127.0.0.1:${port}`,apiKey:'fixture-key',model:'fixture-model',prompt:'Fixture prompt',runConfig:AUTO_DEFAULTS}});
+ worker=new ProfileWorker(dataDir,()=>{});const result=await worker.call('profile-open',{proxy:''});assert.equal(result.ok,true);
+ assert.deepEqual(context.pages().map(p=>p.url()),['https://example.test/keep-this-tab']);
+ // Exercise the exact source step used by Start, with the fixture CDP browser.
+ const browser=new GpmBrowser(store);await browser.connect(result.cdp);const runner=createRunner(store,browser);
+ try{const id=await runner.d.source();const tabs=await browser.query();assert.equal(tabs.find(t=>t.id===id).url,'https://www.threads.com/');assert.ok(tabs.some(t=>t.url==='https://example.test/keep-this-tab'));const again=await runner.d.source();assert.equal(again,id);assert.equal((await browser.query()).filter(t=>t.url==='https://www.threads.com/').length,1);}finally{runner.dispose();}
+ }finally{if(worker)await worker.close();if(context)await context.close();if(api)await new Promise(resolve=>api.close(resolve));await fs.rm(dir,{recursive:true,force:true});}
+});

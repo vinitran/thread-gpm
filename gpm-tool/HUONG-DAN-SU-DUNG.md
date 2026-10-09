@@ -74,7 +74,7 @@ Nếu profile đang chạy, bấm **Dừng profile** trước khi sửa. Đổi 
 2. Trong cửa sổ GPM vừa mở, đăng nhập Threads bằng tài khoản của profile đó.
 3. Kiểm tra đã xem được bảng tin, xử lý xong các yêu cầu đăng nhập/xác minh và đóng popup còn mở.
 
-Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile; chưa bắt đầu phiên comment. Không cần tự nhập cổng CDP.
+Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, không tự mở tab hoặc chuyển trang sang Threads. Các tab GPM khôi phục khi mở profile vẫn giữ nguyên. Bạn có thể tự vào Threads để đăng nhập. Khi bấm **Chạy tự động**, tool mới mở Threads nếu chưa có tab và bắt đầu phiên comment. Không cần tự nhập cổng CDP.
 
 ## 5. Cài đặt AI và nhịp chạy
 

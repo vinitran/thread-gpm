@@ -150,7 +150,6 @@ const server=http.createServer(async(req,res)=>{
      if(browser.browser?.isConnected()&&browser.address!==new URL(result.cdp).href){const deadline=Date.now()+10000;while(browser.browser?.isConnected()&&Date.now()<deadline)await new Promise(r=>setTimeout(r,200));if(browser.browser?.isConnected())throw Error('Profile cũ chưa đóng. Đóng profile rồi bấm Mở profile lại.');}
      await store.set({settings:{...configured,cdp:result.cdp,profileName:result.profileName},proxyAppliedAt:new Date().toISOString()});
      await connect();browser.profileId=result.profileId;
-     if(!(await browser.query()).some(t=>t.url.startsWith('https://www.threads.com/')))await browser.create({url:'https://www.threads.com/'});
      return {ok:true,...result,hasProxy:!!raw};
     }));
    }
