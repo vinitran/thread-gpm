@@ -170,3 +170,5 @@ Cả chế độ trực tiếp và extension đều lưu lần bấm Post trư�
 ## Thao tác chuột trong trình duyệt
 
 Cả chạy trực tiếp và chạy bằng extension đều đưa con trỏ qua các điểm trung gian rồi click khi follow, thả tim, mở trả lời, chọn ô nhập, Post và về trang chủ. Các bước tìm bài, đưa nút vào vùng nhìn thấy và cuộn nhẹ khi nghỉ dùng sự kiện bánh xe theo từng đoạn, có khoảng chờ. Tool đo lại vị trí và kiểm tra nút có bị che/disabled trước khi bấm; Dừng hủy thao tác đang di chuyển hoặc cuộn. Di chuyển diễn ra trong trình duyệt của từng profile.
+
+Bình luận có ảnh: đưa chuột đến **Reply** rồi click → nếu có **Expand composer**, đưa chuột đến và mở rộng → click ô nhập và gõ nội dung → gắn cùng lúc 3 ảnh vào input của đúng hộp trả lời → chờ đủ ảnh xem trước và nút Post ổn định. Riêng ảnh được gắn trực tiếp vào input; không bấm Attach media hay mở hộp chọn file của hệ điều hành. Input của composer nhỏ hoặc bài khác ngoài hộp trả lời không được dùng. Tool chỉ di chuột đến Post và bấm sau khi các kiểm tra này đạt.

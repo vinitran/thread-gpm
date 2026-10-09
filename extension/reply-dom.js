@@ -123,9 +123,15 @@ export function replyAction(action,args,captureErrors=false){
     const dialogs=[...document.querySelectorAll('[role="dialog"]')].filter(visible);
     if(dialogs.length)return {ready:true};
     const scope=area();
+    const candidates=buttons(scope).filter(b=>/expand|mở rộng|full.?screen|toàn màn hình/i.test(label(b)));
+    // An inline file input can exist while the full image composer is not mounted.
+    // Prefer its Expand button before accepting the inline input as ready.
+    if(candidates.length===1){
+      if(!args.expand_requested)return click(candidates[0],{ready:false,expanded:true});
+      return {ready:false};
+    }
     const inputs=[...scope.querySelectorAll('input[type="file"]')].filter(e=>/image\/|\.(png|jpe?g|webp)/i.test(e.accept));
     if(inputs.length===1)return {ready:true};
-    const candidates=buttons(scope).filter(b=>/expand|mở rộng|full.?screen|toàn màn hình/i.test(label(b)));
     if(candidates.length!==1)throw Error('Ô trả lời nhỏ chưa hỗ trợ ảnh; không xác định được nút mở rộng. Các nút: '+buttons(scope).map(label).join(' | '));
     if(!args.expand_requested){return click(candidates[0],{ready:false,expanded:true});}
     return {ready:false};
@@ -136,7 +142,7 @@ export function replyAction(action,args,captureErrors=false){
     const result={before:args.before||anchors().map(a=>path(a.href)),original_media:media(),self_profile:profile?path(profile.href):null};if(args.__nativeInput)return click(e,result);e.focus();if(document.activeElement&&document.activeElement!==e&&!e.contains?.(document.activeElement))throw Error('Ô trả lời chưa nhận focus; đang chờ Threads cập nhật.');return result;
   }
   if(action==='upload'){
-    const inputs=[...document.querySelectorAll('input[type="file"]')].filter(e=>/image\//.test(e.accept));if(inputs.length!==1)throw Error('Không xác định được input nhận ảnh: '+inputs.length);
+    const inputs=[...area().querySelectorAll('input[type="file"]')].filter(e=>/image\/|\.(png|jpe?g|webp)/i.test(e.accept));if(inputs.length!==1)throw Error('Không xác định được input nhận ảnh: '+inputs.length);
     if(!Array.isArray(args.files)||args.files.length!==3)throw Error('Cần 3 ảnh riêng lẻ.');
     if(!inputs[0].multiple)throw Error('Ô upload không cho phép nhiều ảnh.');
     const transfer=new DataTransfer();

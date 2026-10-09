@@ -83,14 +83,15 @@ test('reply modal works without checking source author or quoted text',()=>{
 });
 
 test('upload selects image input, invokes native setter and dispatches both application events',()=>{
- const previous={document:globalThis.document,location:globalThis.location,HTMLInputElement:globalThis.HTMLInputElement,DataTransfer:globalThis.DataTransfer,File:globalThis.File};
+ const previous={document:globalThis.document,location:globalThis.location,HTMLInputElement:globalThis.HTMLInputElement,DataTransfer:globalThis.DataTransfer,File:globalThis.File,getComputedStyle:globalThis.getComputedStyle};
  const events=[];
  class Input{constructor(accept){this.accept=accept;this.multiple=true;}set files(value){this.selected=value;}get files(){return this.selected;}dispatchEvent(e){events.push(e.type);}}
- const input=new Input('image/jpeg,image/png'),other=new Input('application/pdf');
+ const input=new Input('image/jpeg,image/png'),other=new Input('image/png');
  globalThis.HTMLInputElement=Input;
  globalThis.File=class{constructor(parts,name,options){this.name=name;this.type=options.type;}};
  globalThis.DataTransfer=class{constructor(){this.files=[];this.items={add:file=>this.files.push(file)};}};
- globalThis.document={querySelectorAll:()=>[other,input]};globalThis.location={href:'https://www.threads.com/@demo/post/abc'};
+ const dialog={getClientRects:()=>[{}],querySelectorAll:()=>[input]};
+ globalThis.getComputedStyle=()=>({visibility:'visible'});globalThis.document={querySelectorAll:s=>s==='[role="dialog"]'?[dialog]:[other,input]};globalThis.location={href:'https://www.threads.com/@demo/post/abc'};
  try{
   assert.deepEqual(replyAction('upload',attachmentFixture()),{files:3});
   assert.deepEqual(events,['input','change']);assert.equal(input.files[0].name,'a.png');assert.equal(input.files[1].name,'app_store.PNG');assert.equal(input.files[2].name,'b.png');assert.equal(other.files,undefined);
@@ -229,7 +230,7 @@ test('inline reply opens Expand before typing or uploading, and waits for modal'
  const visible={getClientRects:()=>[{}]};let clicks=0,modal=false;
  const reply={...visible,getAttribute:()=> 'Reply'};
  const expand={...visible,getAttribute:()=> 'Expand',click(){clicks++;}};
- const target={querySelectorAll:s=>s==='button,[role="button"]'?[reply,expand]:[]};
+ const target={querySelectorAll:s=>s==='button,[role="button"]'?[reply,expand]:s==='input[type="file"]'?[{accept:'image/png'}]:[]};
  const anchor={...visible,href:'https://www.threads.com/@demo/post/abc',querySelector:()=>({}),parentElement:target};
  globalThis.document={body:{},querySelectorAll(s){if(s==='[role="dialog"]')return modal?[visible]:[];if(s==='a[href*="/post/"]')return [anchor];return [];}};
  globalThis.location={href:anchor.href};globalThis.getComputedStyle=()=>({visibility:'visible'});
