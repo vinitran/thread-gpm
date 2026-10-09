@@ -15,6 +15,46 @@ export function replyAction(action,args,captureErrors=false){
   };
   const editor=()=>{const e=[...area().querySelectorAll('[contenteditable="true"][role="textbox"]')].filter(visible);if(e.length!==1)throw Error('Ô trả lời không duy nhất.');return e[0];};
   const media=()=>[...area().querySelectorAll('img')].filter(visible).map(im=>im.currentSrc||im.src);
+  if(action==='inline-follow-state'||action==='inline-follow-author'){
+    const authorPath=path(args.url).split('/').slice(0,2).join('/');
+    let target;try{target=root();}catch{return {state:'loading'};}
+    const authorLinks=[...target.querySelectorAll('a[href]')].filter(a=>visible(a)&&path(a.href)===authorPath);
+    const avatars=authorLinks.flatMap(a=>[...a.querySelectorAll('img')].filter(visible));
+    const followName=b=>/^(Follow|Follow back|Theo dõi|Theo dõi lại)$/i.test(normalize(label(b)));
+    const knownState=b=>/^(Following|Đang theo dõi|Đã theo dõi)$/i.test(normalize(label(b)))?'following':/^(Requested|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(normalize(label(b)))?'requested':null;
+    const nearAvatar=b=>avatars.some(im=>{
+      const a=im.getBoundingClientRect(),r=b.getBoundingClientRect();
+      return r.width>0&&r.height>0&&r.width<=64&&r.height<=64&&r.left<=a.right+12&&r.right>=a.left-12&&r.top<=a.bottom+12&&r.bottom>=a.top-12;
+    });
+    const dialogs=[...document.querySelectorAll('[role="dialog"]')].filter(visible);
+    if(dialogs.length){
+      // The avatar + may open a confirmation. Only confirm for this exact author.
+      if(!args.inlineClicked||dialogs.length!==1)return {state:'blocked'};
+      const dialog=dialogs[0],username=authorPath.slice(2).toLowerCase();
+      const belongs=[...dialog.querySelectorAll('a[href]')].some(a=>path(a.href)===authorPath)||normalize(dialog.innerText).toLowerCase().split(/[^\w.]+/).includes(username);
+      const confirm=buttons(dialog).filter(followName);
+      if(!belongs||confirm.length!==1)return {state:'blocked'};
+      if(action==='inline-follow-author'){
+        const b=confirm[0];if(b.disabled||b.getAttribute('aria-disabled')==='true')return {state:'blocked'};
+        b.click();return {state:'clicked',available:true};
+      }
+      return {state:'confirm',available:true};
+    }
+    const avatarButtons=buttons(target).filter(nearAvatar);
+    const status=avatarButtons.map(knownState).filter(Boolean);
+    if(status.length===1)return {state:status[0],available:true};
+    const candidates=avatarButtons.filter(b=>followName(b)||/^(\+|Add|Plus|Thêm)$/i.test(normalize(label(b))));
+    if(candidates.length===1){
+      if(action==='inline-follow-author'){
+        const b=candidates[0];if(b.disabled||b.getAttribute('aria-disabled')==='true')return {state:'blocked'};
+        b.click();return {state:'clicked',available:true};
+      }
+      return {state:'not-following',available:true};
+    }
+    // Disappearance is accepted only after our click, with the same author/avatar still present.
+    if(args.inlineClicked&&avatars.length&&avatarButtons.length===0)return {state:'following',available:true};
+    return {state:'unsupported'};
+  }
   if(action==='follow-state'||action==='follow-author'){
     const authorPath=path(args.url).split('/').slice(0,2).join('/');
     if(path(location.href)!==authorPath)return {state:'loading'};

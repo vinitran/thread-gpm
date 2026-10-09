@@ -131,6 +131,38 @@ export async function followAuthorBeforeReply(tabId,url,onProgress=()=>{},option
   const ensureRunning=()=>{if(options.shouldContinue&&!options.shouldContinue())throw Error('Đã dừng trước khi follow/comment.');};
   const step=async message=>{ensureRunning();onProgress(message);await wait(delay);ensureRunning();};
   const authorUrl=new URL(url);authorUrl.pathname=authorUrl.pathname.split('/').slice(0,2).join('/');authorUrl.search='';authorUrl.hash='';
+  let inline;
+  for(let i=0;i<40;i++){
+    ensureRunning();try{inline=await dom(tabId,'inline-follow-state',{url});}catch{break;}
+    if(inline?.state!=='loading')break;
+    await wait(250);
+  }
+  if(inline?.available){
+    if(inline.state==='not-following'){
+      await step('Đang follow bằng nút + ở avatar người đăng…');
+      const clicked=await dom(tabId,'inline-follow-author',{url});
+      if(clicked?.state!=='clicked')throw Error('Không bấm được follow ở avatar; chưa gửi bình luận.');
+      await step('Đang chờ xác nhận follow…');
+      let confirmed=false,confirmationClicked=false;
+      for(let i=0;i<40;i++){
+        ensureRunning();inline=await dom(tabId,'inline-follow-state',{url,inlineClicked:true});
+        if(['following','requested'].includes(inline?.state)){confirmed=true;break;}
+        if(inline?.state==='confirm'&&!confirmationClicked){
+          await step('Đang xác nhận follow người đăng trong popup…');
+          const confirmation=await dom(tabId,'inline-follow-author',{url,inlineClicked:true});
+          if(confirmation?.state!=='clicked')throw Error('Không xác nhận được popup follow.');
+          confirmationClicked=true;
+        }
+        if(inline?.state==='blocked')throw Error('Popup follow chưa xác định đúng người đăng; chưa gửi bình luận.');
+        await wait(250);
+      }
+      if(!confirmed)throw Error('Chưa xác nhận được follow ở avatar; chưa gửi bình luận.');
+      await waitAfterFollow(inline.state,onProgress,options);
+    }
+    await step('Đã kiểm tra follow tại bài · chuẩn bị comment…');
+    return;
+  }
+  if(inline?.state==='blocked')throw Error('Trang đang có popup; chưa follow hoặc gửi bình luận.');
   await step('Đang vào trang người đăng để kiểm tra follow…');
   await retryTabEdit(()=>chrome.tabs.update(tabId,{url:authorUrl.href}),{onProgress,shouldContinue:options.shouldContinue});
   let state,lastError;
@@ -150,16 +182,21 @@ export async function followAuthorBeforeReply(tabId,url,onProgress=()=>{},option
       await wait(250);
     }
     if(!confirmed)throw Error('Chưa xác nhận được follow; chưa gửi bình luận. Kiểm tra trang người đăng trong profile.');
-    const seconds=210+Math.floor((options.random||Math.random)()*61);
-    for(let remaining=seconds;remaining>0;remaining--){
-      ensureRunning();
-      if(remaining===seconds||remaining%15===0)onProgress(`${state.state==='requested'?'Đã gửi yêu cầu follow':'Đã follow'} · còn ${remaining} giây trước khi comment…`);
-      await wait(1000);
-      ensureRunning();
-    }
+    await waitAfterFollow(state.state,onProgress,options);
   }
   await step(state.state==='requested'?'Đã gửi yêu cầu follow · quay lại bài…':state.state==='self'?'Bài của tài khoản hiện tại · quay lại bài…':'Đã theo dõi người đăng · quay lại bài…');
   await retryTabEdit(()=>chrome.tabs.update(tabId,{url}),{onProgress,shouldContinue:options.shouldContinue});
+}
+async function waitAfterFollow(state,onProgress,options){
+    const wait=options.wait||pause;
+    const ensureRunning=()=>{if(options.shouldContinue&&!options.shouldContinue())throw Error('Đã dừng trước khi follow/comment.');};
+    const seconds=210+Math.floor((options.random||Math.random)()*61);
+    for(let remaining=seconds;remaining>0;remaining--){
+      ensureRunning();
+      if(remaining===seconds||remaining%15===0)onProgress(`${state==='requested'?'Đã gửi yêu cầu follow':'Đã follow'} · còn ${remaining} giây trước khi comment…`);
+      await wait(1000);
+      ensureRunning();
+    }
 }
 export async function postReply(url,text,image,onProgress=()=>{},options={}){
   const stepDelayMs=options.stepDelayMs===undefined?2000:options.stepDelayMs;
