@@ -11,7 +11,7 @@ export async function stageManagedExtension(dir){
  const idle=await fs.readFile(new URL('./idle-engagement.mjs',import.meta.url));fingerprint+=idle.toString();await fs.writeFile(path.join(destination,'idle-engagement.js'),idle);
  return {directory:destination,revision:createHash('sha256').update(fingerprint).digest('hex')};
 }
-export function extensionArguments(directory){if(/["\r\n]/.test(directory))throw Error('Đường dẫn extension không hợp lệ.');return '--enable-unsafe-extension-debugging --load-extension="'+directory+'"';}
+export function extensionArguments(directory){if(/["\r\n]/.test(directory))throw Error('Đường dẫn extension không hợp lệ.');return '--enable-unsafe-extension-debugging --proxy-bypass-list="localhost;127.0.0.1;[::1]" --load-extension="'+directory+'"';}
 export async function connectManagedExtension(browser,bridge,{directory,base}){
  const session=await browser.browser.newBrowserCDPSession();
  try{try{await session.send('Extensions.loadUnpacked',{path:directory});}catch{/* Older GPM cores load it through addition_args instead. */}}finally{await session.detach();}
@@ -19,8 +19,8 @@ export async function connectManagedExtension(browser,bridge,{directory,base}){
  try{
   await tab.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/bootstrap.html#'+encodeURIComponent(JSON.stringify({base,token:bridge.token})),{waitUntil:'domcontentloaded',timeout:15000});
   await tab.waitForFunction(()=>document.body.dataset.ready==='true'||document.body.dataset.error==='true',{},{timeout:15000});
-  if(await tab.evaluate(()=>document.body.dataset.error==='true'))throw Error('Extension không nhận cấu hình app.');
+  if(await tab.evaluate(()=>document.body.dataset.error==='true'))throw Error(await tab.locator('#status').innerText());
   await bridge.ready();browser.extensionBridge=bridge;
- }catch{throw Error('Không tự nạp được extension. Cần Chrome hỗ trợ extension trong GPM; thử cập nhật Chrome/GPM. Không chuyển sang bộ chạy trực tiếp.');}
+ }catch(e){throw Error('Không kết nối được bộ chạy extension: '+e.message+' · Kiểm tra app đang mở và Chrome/GPM hỗ trợ extension.');}
  finally{await tab.close().catch(()=>{});}
 }

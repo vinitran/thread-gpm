@@ -8,8 +8,10 @@ const attached=new Set();chrome.debugger.onDetach.addListener(target=>attached.d
 let configured,loopRunning=false;
 async function request(path,body){
  if(!configured)throw Error('Chưa kết nối app HoanXu GPM.');
- const response=await fetch(configured.base+'/api/extension/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Extension-Token':configured.token},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(25000)});
- const value=await response.json();if(!response.ok)throw Error(value.error||'App không phản hồi.');return value;
+ let response;
+ try{response=await fetch(configured.base+'/api/extension/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Extension-Token':configured.token},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(25000)});}
+ catch{throw Error('Không kết nối được app tại '+configured.base+' · kiểm tra app đang mở, proxy cho phép truy cập localhost và bấm Chạy bằng extension lại trong app.');}
+ const value=await response.json();if(response.status===403)throw Error('Kết nối extension đã hết hiệu lực · bấm Chạy bằng extension lại trong app để kết nối phiên mới.');if(!response.ok)throw Error(value.error||'App không phản hồi.');return value;
 }
 async function execute(job){
  const a=job.args;
@@ -40,7 +42,7 @@ async function synchronize(){
  if(!configured)return;
  try{const state=await request('status');await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch{await disconnected();}
 }
-async function disconnected(){await chrome.storage.local.set({autoRun:{status:'disconnected'},managedStatus:{status:'disconnected',message:'Mất kết nối app · đã ngừng thao tác.'}}).catch(()=>{});}
+async function disconnected(error){await chrome.storage.local.set({autoRun:{status:'disconnected'},managedStatus:{status:'disconnected',message:error?.message||'Mất kết nối app · đã ngừng thao tác.'}}).catch(()=>{});}
 async function runLoop(){
  if(loopRunning||!configured)return;loopRunning=true;
  try{while(configured){
@@ -48,7 +50,7 @@ async function runLoop(){
    let result,error;try{result=await execute(job);}catch(e){error=e.message;}
    // Never replay a browser action if its acknowledgement is lost.
    await request('result',{id:job.id,result:result??null,error});
-  }catch{await disconnected();await new Promise(r=>setTimeout(r,1000));}
+  }catch(e){await disconnected(e);await new Promise(r=>setTimeout(r,1000));}
  }}finally{loopRunning=false;}
 }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
@@ -56,7 +58,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message.type==='configure-managed'){
   const config=message.config;
   if(typeof config?.base!=='string'||!/^http:\/\/127\.0\.0\.1:\d+$/.test(config.base)||typeof config.token!=='string'||!/^[a-f0-9]{64}$/.test(config.token)){reply({ok:false,error:'Cấu hình kết nối không hợp lệ.'});return;}
-  chrome.storage.local.set({managedConfig:config}).then(()=>{configured=config;runLoop();synchronize();reply({ok:true});}).catch(e=>reply({ok:false,error:e.message}));return true;
+  chrome.storage.local.set({managedConfig:config}).then(async()=>{configured=config;await request('status');runLoop();await synchronize();reply({ok:true});}).catch(async e=>{await disconnected(e);reply({ok:false,error:e.message});});return true;
  }
  if(message.type==='managed-state'){request('status').then(value=>reply({ok:true,value})).catch(e=>reply({ok:false,error:e.message}));return true;}
  if(message.type==='managed-stop'){request('stop').then(value=>reply({ok:true,value})).catch(e=>reply({ok:false,error:e.message}));return true;}

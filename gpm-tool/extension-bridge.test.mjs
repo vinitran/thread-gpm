@@ -18,5 +18,5 @@ test('RPC delivers once, propagates errors and never repeats a lost acknowledgem
 });
 test('closing bridge aborts pending work, including queued browser operations',async()=>{
  const b=new ExtensionBridge(()=>({status:'stopped'}));const command=b.call('script');const rejection=assert.rejects(command,/Đã đóng/);b.close();await rejection;assert.equal(b.queue.length,0);
- assert.match(extensionArguments('C:\\App Data\\managed-extension'),/--load-extension="C:/);assert.throws(()=>extensionArguments('bad\npath'));
+ assert.match(extensionArguments('C:\\App Data\\managed-extension'),/--load-extension="C:/);assert.match(extensionArguments('/tmp/extension'),/--proxy-bypass-list="localhost;127\.0\.0\.1;\[::1\]"/);assert.throws(()=>extensionArguments('bad\npath'));
 });

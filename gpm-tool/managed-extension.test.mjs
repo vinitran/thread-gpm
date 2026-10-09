@@ -76,20 +76,28 @@ test('real profile worker installs extension through app API, keeps Open free of
   res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true,message:'OK',data:u.pathname.includes('/start/')?{profile_id:'fixture',remote_debugging_port:Number(debugPort)}:{id:'fixture',name:'Fixture',raw_proxy:''}}));
  });await new Promise(r=>gpm.listen(0,'127.0.0.1',r));
  try{
-  context=await chromium.launchPersistentContext(path.join(dir,'chrome'),{executablePath:process.env.TEST_CHROME||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'/usr/bin/google-chrome'),headless:true,args:['--enable-unsafe-extension-debugging','--remote-debugging-port=0'],ignoreDefaultArgs:['--disable-extensions']});
+  context=await chromium.launchPersistentContext(path.join(dir,'chrome'),{executablePath:process.env.TEST_CHROME||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'/usr/bin/google-chrome'),headless:true,args:['--enable-unsafe-extension-debugging','--remote-debugging-port=0','--proxy-server=http://127.0.0.1:9','--proxy-bypass-list=localhost;127.0.0.1;[::1];www.threads.com'],ignoreDefaultArgs:['--disable-extensions']});
   [debugPort]=(await fs.readFile(path.join(dir,'chrome','DevToolsActivePort'),'utf8')).split('\n');
+  await context.route('https://www.threads.com/**',r=>r.fulfill({contentType:'text/html',body:markup}));
   const dataDir=path.join(dir,'fixture'),store=await new Store(dataDir).load();
-  await store.set({settings:{profileId:'fixture',profileName:'Fixture',gpmApi:'http://127.0.0.1:'+gpm.address().port+'/api/v1',proxy:'',cdp:'http://127.0.0.1:'+debugPort,apiKey:'',model:'fixture',prompt:'Fixture',imagesFolder:'',runConfig:AUTO_DEFAULTS}});
+  await store.set({settings:{profileId:'fixture',profileName:'Fixture',gpmApi:'http://127.0.0.1:'+gpm.address().port+'/api/v1',proxy:'',cdp:'http://127.0.0.1:'+debugPort,apiKey:'fixture-key',model:'fixture',prompt:'Fixture',imagesFolder:'',runConfig:AUTO_DEFAULTS}});
   worker=new ProfileWorker(dataDir,()=>{});
   const result=await worker.call('profile-open',{useCurrentProxy:true,engine:'extension'},180000);
   assert.equal(result.engine,'extension');assert.equal((await worker.call('state')).engine,'extension');
   assert.match(routes.find(u=>u.pathname.includes('/start/')).searchParams.get('addition_args'),/--load-extension=/);
   assert.ok(context.pages().every(p=>!p.url().includes('threads.com')));
   const denied=await fetch(worker.base+'/api/extension/status',{method:'POST',headers:{'Content-Type':'application/json','X-Extension-Token':'wrong'},body:'{}'});assert.equal(denied.status,403);
-  const popup=await context.newPage();await popup.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/managed-popup.html');await popup.click('#stop');
+  const origin='chrome-extension://'+MANAGED_EXTENSION_ID;
+  const preflight=await fetch(worker.base+'/api/extension/status',{method:'OPTIONS',headers:{Origin:origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type,x-extension-token','Access-Control-Request-Private-Network':'true'}});
+  assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-origin'),origin);assert.equal(preflight.headers.get('access-control-allow-private-network'),'true');
+  const foreign=await fetch(worker.base+'/api/extension/status',{method:'OPTIONS',headers:{Origin:'https://untrusted.example','Access-Control-Request-Method':'POST'}});assert.equal(foreign.headers.get('access-control-allow-origin'),null);
+  await worker.call('start',{},90000);
+  assert.equal((await worker.call('state')).state.status,'running');assert.ok(context.pages().some(p=>p.url()==='https://www.threads.com/'));
+  const popup=await context.newPage();await popup.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/managed-popup.html');await popup.waitForFunction(()=>!document.getElementById('state').textContent.includes('Đang tải'));assert.ok(!(await popup.locator('#state').innerText()).includes('Failed to fetch'));await popup.click('#stop');
   const deadline=Date.now()+5000;while(!routes.some(u=>u.pathname.includes('/stop/'))&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));
   assert.equal(routes.filter(u=>u.pathname.includes('/stop/')).length,1);assert.equal((await worker.call('state')).state.status,'stopped');
   await worker.close();worker=null;
+  await popup.waitForFunction(()=>document.getElementById('state').textContent.includes('Không kết nối được app'),{},{timeout:10000});
   assert.equal((await new Store(dataDir).load()).value.executionMode,'extension');
  }finally{await worker?.close({force:true});await context?.close();gpm.closeAllConnections();await new Promise(r=>gpm.close(r));await fs.rm(dir,{recursive:true,force:true});}
 });

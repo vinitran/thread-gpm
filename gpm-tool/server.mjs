@@ -76,6 +76,15 @@ const server=http.createServer(async(req,res)=>{
   if(shuttingDown)return json(res,{error:'Tool đang tắt. Hãy mở lại sau.'},503);
   if(req.headers.host!==`127.0.0.1:${port}`&&req.headers.host!==`localhost:${port}`)return json(res,{error:'Invalid host'},403);
   const url=new URL(req.url,`http://127.0.0.1:${port}`);
+  if(isWorker&&extensionBridge&&!extensionBridge.closed&&url.pathname.startsWith('/api/extension/')&&req.headers.origin==='chrome-extension://'+MANAGED_EXTENSION_ID){
+   res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Vary','Origin');
+   if(req.method==='OPTIONS'){
+    if(req.headers['access-control-request-method']!=='POST')return json(res,{error:'Invalid extension method'},403);
+    const requested=(req.headers['access-control-request-headers']||'').toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
+    if(requested.some(h=>!['content-type','x-extension-token'].includes(h)))return json(res,{error:'Invalid extension headers'},403);
+    res.writeHead(204,{'Access-Control-Allow-Methods':'POST','Access-Control-Allow-Headers':'Content-Type, X-Extension-Token','Access-Control-Allow-Private-Network':'true'});return res.end();
+   }
+  }
   if(isWorker&&req.method==='POST'&&url.pathname.startsWith('/api/extension/')){
    if(!extensionBridge?.authorize(req.headers,MANAGED_EXTENSION_ID))return json(res,{error:'Invalid extension origin/token'},403);
    const input=await body(req,8*1024*1024);

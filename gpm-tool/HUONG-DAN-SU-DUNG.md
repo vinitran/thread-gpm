@@ -163,6 +163,8 @@ Chế độ này dùng cùng bộ logic, AI, cấu hình realtime, giới hạn 
 
 App lưu extension trong thư mục dữ liệu riêng của profile, ngoài thư mục cài app. Khi extension thay đổi, app cập nhật các file và nạp lại trước lần chạy tiếp theo. Nếu Chrome đang mở chưa hỗ trợ nạp nóng, app có thể đóng/mở lại đúng profile đã chọn để nạp extension. Nếu GPM/Chrome không cho phép tự nạp extension, app báo lỗi và không tự đổi sang chạy trực tiếp. Cần dùng profile Chrome; Firefox chưa hỗ trợ chế độ này.
 
+**Chạy bằng extension** kiểm tra kết nối extension với app trước, rồi tự mở trang chủ Threads khi bắt đầu phiên. **Mở** riêng vẫn chỉ mở trình duyệt. App cần tiếp tục chạy vì AI, cài đặt và SQLite nằm trong app. Extension kết nối cổng localhost riêng của profile; khi app khởi động lại, bấm Chạy bằng extension trong app để cấp cấu hình kết nối mới. Profile được mở với localhost bỏ qua proxy; lưu lượng Threads vẫn dùng proxy của profile. Nếu không kết nối được, popup hiển thị địa chỉ localhost và hướng dẫn thay cho lỗi `Failed to fetch`. Sau khi cập nhật app, dừng/đóng profile rồi bấm Chạy bằng extension để nạp bản mới.
+
 ## Kiểm tra bình luận sau khi gửi
 
 Cả chế độ trực tiếp và extension đều lưu lần bấm Post trước, chờ ngẫu nhiên 25–35 giây rồi tìm bình luận khớp tài khoản/nội dung và lấy link. Khi cần, tool mở lại bài đích để kiểm tra thêm trong khoảng 5 giây. Bình luận đã xác minh có trạng thái `posted`, link bình luận và thời điểm xác minh trong lịch sử. Nếu chưa xác minh được hoặc bước kiểm tra lỗi, giữ `sent_unverified`, ghi lý do rồi tiếp tục nhịp chạy đã cài đặt; không tự gửi lại. Thời gian chờ này được dùng luôn trước khi về trang chủ, không chờ thêm một lượt 30 giây. Nút Dừng vẫn hủy được thời gian chờ.
