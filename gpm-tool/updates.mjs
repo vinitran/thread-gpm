@@ -59,7 +59,18 @@ export class Updater{
   try{
   if(!this.repo)throw Error('Chưa cấu hình GitHub repository cho cập nhật.');
   if(!((this.platform==='darwin'&&this.arch==='arm64')||(this.platform==='win32'&&this.arch==='x64')))throw Error('Cập nhật chỉ hỗ trợ Mac Apple Silicon và Windows x64.');
-  const r=await githubFetch(this.fetcher,`https://github.com/${this.repo}/releases/latest/download/hoanxu-${this.platform==='win32'?'windows':'macos'}-${this.arch}.json`,AbortSignal.timeout(20000));
+  const filename=`hoanxu-${this.platform==='win32'?'windows':'macos'}-${this.arch}.json`;
+  let r=await githubFetch(this.fetcher,`https://github.com/${this.repo}/releases/latest/download/${filename}`,AbortSignal.timeout(20000));
+  if(r.status===404){
+   // A release can become public as soon as either platform finishes its build.
+   const list=await this.fetcher(`https://api.github.com/repos/${this.repo}/releases?per_page=100`,{redirect:'error',signal:AbortSignal.timeout(20000),headers:{'User-Agent':'HoanXu-GPM-Updater',Accept:'application/vnd.github+json'}});
+   if(list.ok){
+    const releases=await list.json();if(!Array.isArray(releases))throw Error('Danh sách bản cập nhật không hợp lệ.');
+    const matching=releases.filter(v=>!v.draft&&!v.prerelease&&/^v\d+\.\d+\.\d+$/.test(v.tag_name||'')&&v.assets?.some(a=>a.name===filename));
+    matching.sort((a,b)=>newer(a.tag_name.slice(1),b.tag_name.slice(1))?-1:newer(b.tag_name.slice(1),a.tag_name.slice(1))?1:0);
+    if(matching.length)r=await githubFetch(this.fetcher,`https://github.com/${this.repo}/releases/download/${matching[0].tag_name}/${filename}`,AbortSignal.timeout(20000));
+   }else if(list.status!==404)throw Error('Không đọc được các bản cập nhật · HTTP '+list.status);
+  }
   if(!r.ok){if(r.status===404)throw Error('Chưa có bản phát hành phù hợp hoặc repository chưa công khai.');throw Error('Không tải được thông tin cập nhật · HTTP '+r.status);}
   let bytes=Buffer.alloc(0);for await(const chunk of r.body){bytes=Buffer.concat([bytes,Buffer.from(chunk)]);if(bytes.length>16384)throw Error('Thông tin cập nhật quá lớn.');}
   const candidate=validateManifest(JSON.parse(bytes.toString()),this.repo,this.arch,this.platform);

@@ -1,0 +1,81 @@
+name: Build and release windows
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+      publish:
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gpm-tool/package-lock.json
+      - name: Apply release version
+        run: node packaging/release-version.mjs --apply ${{ inputs.version }}
+      - name: Install build-host dependencies
+        working-directory: gpm-tool
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node packaging/validate-tag.mjs
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --no-progress -y
+      - name: Build Windows portable EXE
+        shell: pwsh
+        run: node packaging/windows/build.mjs
+        env:
+          MAKENSIS: C:\Program Files (x86)\NSIS\makensis.exe
+          NSISDIR: C:\Program Files (x86)\NSIS
+          GPM_UPDATE_REPOSITORY: ${{ github.repository }}
+      - name: Upload app files
+        uses: actions/upload-artifact@v4
+        with:
+          name: HoanXu-win-x64
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: HoanXu-win-x64
+          path: release
+      - name: Publish windows immediately
+        run: node packaging/platform-release.mjs publish windows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT: ${{ github.sha }}

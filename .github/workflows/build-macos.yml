@@ -1,0 +1,73 @@
+name: Build and release macos
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+      publish:
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gpm-tool/package-lock.json
+      - name: Apply release version
+        run: node packaging/release-version.mjs --apply ${{ inputs.version }}
+      - name: Install build-host dependencies
+        working-directory: gpm-tool
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node packaging/validate-tag.mjs
+      - name: Build DMG
+        run: node packaging/macos/build.mjs
+        env:
+          BUILD_ARCH: arm64
+          GPM_UPDATE_REPOSITORY: ${{ github.repository }}
+      - name: Upload app files
+        uses: actions/upload-artifact@v4
+        with:
+          name: HoanXu-mac-arm64
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: HoanXu-mac-arm64
+          path: release
+      - name: Publish macos immediately
+        run: node packaging/platform-release.mjs publish macos
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT: ${{ github.sha }}

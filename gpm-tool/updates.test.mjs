@@ -7,6 +7,20 @@ import {createHash} from 'node:crypto';
 import {Updater,APP_ID,assertUpdateIdle,newer,repository,validateManifest} from './updates.mjs';
 const repo='owner/tool';
 const manifest=(extra={})=>({format:'hoanxu-macos-update',bundleId:APP_ID,platform:'darwin',arch:'arm64',version:'0.3.8',bytes:3,sha256:createHash('sha256').update('DMG').digest('hex'),url:'https://github.com/owner/tool/releases/download/v0.3.8/HoanXu-GPM-0.3.8-mac-arm64.dmg',...extra});
+test('platform updater uses the newest available platform release when latest only has the other build',async()=>{
+ const calls=[],u=new Updater({repo,version:'0.3.7',platform:'win32',arch:'x64',fetcher:async url=>{
+  calls.push(url);if(url.includes('/latest/'))return new Response(null,{status:404});
+  if(url.startsWith('https://api.github.com/'))return Response.json([
+   {tag_name:'v0.3.9',assets:[{name:'hoanxu-macos-arm64.json'}]},
+   {tag_name:'v0.3.10',draft:true,assets:[{name:'hoanxu-windows-x64.json'}]},
+   {tag_name:'v0.3.6',assets:[{name:'hoanxu-windows-x64.json'}]},
+   {tag_name:'v0.3.8',assets:[{name:'hoanxu-windows-x64.json'}]}
+  ]);
+  assert.match(url,/\/v0\.3\.8\/hoanxu-windows-x64\.json$/);
+  return Response.json(manifest({format:'hoanxu-windows-update',platform:'win32',arch:'x64',url:'https://github.com/owner/tool/releases/download/v0.3.8/HoanXu-GPM-0.3.8-win-x64-portable.exe'}));
+ }});
+ assert.equal((await u.check()).latestVersion,'0.3.8');assert.equal(u.status().available,true);assert.equal(calls.length,3);
+});
 test('update versions, architecture and pinned GitHub repository',()=>{
  assert(newer('0.3.10','0.3.9'));assert(!newer('0.3.8','0.3.8'));assert(!newer('0.3.7','0.3.8'));assert.throws(()=>newer('v0.3.8','0.3.7'));assert.throws(()=>repository('../outside/repo'));assert.throws(()=>repository('owner/..'));
  assert.equal(validateManifest(manifest(),repo,'arm64').version,'0.3.8');
