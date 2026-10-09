@@ -5,12 +5,12 @@ import {engagementPage} from './idle-engagement.js';
 import {pointerTarget} from './pointer-input.js';
 const functions={autoPage,extractPosts,replyAction,engagementPage,pointerTarget};
 const attached=new Set();chrome.debugger.onDetach.addListener(target=>attached.delete(target.tabId));
-let configured,loopRunning=false;
-async function request(path,body){
- if(!configured)throw Error('Chưa kết nối app HoanXu GPM.');
+let configured,loopRunning=false,configurationEpoch=0;
+async function request(path,body,connection=configured){
+ if(!connection)throw Error('Chưa kết nối app HoanXu GPM.');
  let response;
- try{response=await fetch(configured.base+'/api/extension/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Extension-Token':configured.token},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(25000)});}
- catch{throw Error('Không kết nối được app tại '+configured.base+' · kiểm tra app đang mở, proxy cho phép truy cập localhost và bấm Chạy bằng extension lại trong app.');}
+ try{response=await fetch(connection.base+'/api/extension/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Extension-Token':connection.token},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(25000)});}
+ catch{throw Error('Không kết nối được app tại '+connection.base+' · kiểm tra app đang mở, proxy cho phép truy cập localhost và bấm Chạy bằng extension lại trong app.');}
  const value=await response.json();if(response.status===403)throw Error('Kết nối extension đã hết hiệu lực · bấm Chạy bằng extension lại trong app để kết nối phiên mới.');if(!response.ok)throw Error(value.error||'App không phản hồi.');return value;
 }
 async function execute(job){
@@ -39,18 +39,19 @@ async function loaded(tab){
  throw Error('Trang chưa tải xong sau 30 giây.');
 }
 async function synchronize(){
- if(!configured)return;
- try{const state=await request('status');await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch(e){await disconnected(e);}
+ const connection=configured;if(!connection)return;
+ try{const state=await request('status',undefined,connection);if(configured===connection)await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch(e){if(configured===connection)await disconnected(e);}
 }
 async function disconnected(error){await chrome.storage.local.set({autoRun:{status:'disconnected'},managedStatus:{status:'disconnected',message:error?.message||'Mất kết nối app · đã ngừng thao tác.'}}).catch(()=>{});}
 async function runLoop(){
  if(loopRunning||!configured)return;loopRunning=true;
  try{while(configured){
-  try{const {job,status}=await request('poll');await chrome.storage.local.set({autoRun:{status}});if(!job)continue;
+  const connection=configured;
+  try{const {job,status}=await request('poll',undefined,connection);if(configured!==connection)continue;await chrome.storage.local.set({autoRun:{status}});if(!job||configured!==connection)continue;
    let result,error;try{result=await execute(job);}catch(e){error=e.message;}
    // Never replay a browser action if its acknowledgement is lost.
-   await request('result',{id:job.id,result:result??null,error});
-  }catch(e){await disconnected(e);await new Promise(r=>setTimeout(r,1000));}
+   await request('result',{id:job.id,result:result??null,error},connection);
+  }catch(e){if(configured===connection){await disconnected(e);await new Promise(r=>setTimeout(r,1000));}}
  }}finally{loopRunning=false;}
 }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
@@ -58,7 +59,14 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message.type==='configure-managed'){
   const config=message.config;
   if(typeof config?.base!=='string'||!/^http:\/\/127\.0\.0\.1:\d+$/.test(config.base)||typeof config.token!=='string'||!/^[a-f0-9]{64}$/.test(config.token)){reply({ok:false,error:'Cấu hình kết nối không hợp lệ.'});return;}
-  chrome.storage.local.set({managedConfig:config}).then(async()=>{configured=config;await request('status');runLoop();await synchronize();reply({ok:true});}).catch(async e=>{await disconnected(e);reply({ok:false,error:e.message});});return true;
+  const epoch=++configurationEpoch;configured=config;
+  chrome.storage.local.set({managedConfig:config}).then(async()=>{
+   await request('status',undefined,config);
+   if(epoch!==configurationEpoch)throw Error('Đã nhận cấu hình kết nối mới hơn.');
+   runLoop();await synchronize();
+   if(epoch!==configurationEpoch)throw Error('Đã nhận cấu hình kết nối mới hơn.');
+   reply({ok:true});
+  }).catch(async e=>{if(epoch===configurationEpoch)await disconnected(e);reply({ok:false,error:e.message});});return true;
  }
  if(message.type==='managed-state'){request('status').then(value=>reply({ok:true,value})).catch(e=>reply({ok:false,error:e.message}));return true;}
  if(message.type==='managed-stop'){request('stop').then(value=>reply({ok:true,value})).catch(e=>reply({ok:false,error:e.message}));return true;}
@@ -66,4 +74,5 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
 chrome.alarms.create('managed-keepalive',{periodInMinutes:0.5});
 chrome.alarms.onAlarm.addListener(()=>{runLoop();synchronize();});
 setInterval(()=>{chrome.runtime.getPlatformInfo().catch(()=>{});synchronize();},1000);
-chrome.storage.local.get('managedConfig').then(({managedConfig})=>{configured=managedConfig;runLoop();synchronize();});
+// A delayed startup read must not replace a newer bootstrap configuration.
+chrome.storage.local.get('managedConfig').then(({managedConfig})=>{if(configurationEpoch!==0)return;configured=managedConfig;runLoop();synchronize();});

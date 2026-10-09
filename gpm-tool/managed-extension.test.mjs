@@ -102,11 +102,21 @@ test('real profile worker installs extension through app API, keeps Open free of
   const restored=await popup.evaluate(()=>chrome.runtime.sendMessage({type:'managed-state'}));assert.equal(restored.ok,true);assert.equal(restored.value.status,'running');
   assert.equal(routes.filter(u=>u.pathname.includes('/start/')).length,opens);
   assert.equal((await worker.call('state')).state.status,'running');
-  await popup.click('#stop');
+  // Restart the app-side worker while Chrome and its extension keep running.
+  const oldBase=worker.base;
+  await worker.close();worker=new ProfileWorker(dataDir,()=>{});await worker.boot();
+  assert.notEqual(worker.base,oldBase);
+  const resumeDeadline=Date.now()+30000;let resumed;
+  while(Date.now()<resumeDeadline){resumed=await worker.call('state');if(!resumed.operation)break;await new Promise(r=>setTimeout(r,100));}
+  assert.equal(resumed.operation,null);assert.equal(resumed.state.status,'running');assert.equal(resumed.engine,'extension');
+  const freshPopup=await context.newPage();await freshPopup.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/managed-popup.html');
+  const freshConfig=await freshPopup.evaluate(async()=>({config:(await chrome.storage.local.get('managedConfig')).managedConfig,state:await chrome.runtime.sendMessage({type:'managed-state'})}));
+  assert.equal(freshConfig.config.base,worker.base);assert.equal(freshConfig.state.ok,true);assert.equal(freshConfig.state.value.status,'running');
+  await freshPopup.click('#stop');
   const deadline=Date.now()+5000;while(!routes.some(u=>u.pathname.includes('/stop/'))&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));
   assert.equal(routes.filter(u=>u.pathname.includes('/stop/')).length,1);assert.equal((await worker.call('state')).state.status,'stopped');
   await worker.close();worker=null;
-  await popup.waitForFunction(()=>document.getElementById('state').textContent.includes('Không kết nối được app'),{},{timeout:10000});
+  await freshPopup.waitForFunction(()=>document.getElementById('state').textContent.includes('Không kết nối được app'),{},{timeout:10000});
   assert.equal((await new Store(dataDir).load()).value.executionMode,'extension');
  }finally{await worker?.close({force:true});await context?.close();gpm.closeAllConnections();await new Promise(r=>gpm.close(r));await fs.rm(dir,{recursive:true,force:true});}
 });
