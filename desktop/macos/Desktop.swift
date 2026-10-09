@@ -79,7 +79,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     func connect(_ address: String) {
         api = ToolAPI(address); message.stringValue = "Đã mở app · đang tải dữ liệu…"
         Task { @MainActor in await refresh(); await loadUpdate(); if busy == 0 { spinner.stopAnimation(nil) } }
-        poll?.invalidate(); poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in Task { @MainActor in await self?.refresh(); if let self = self, Date().timeIntervalSince(self.lastUpdateCheck) >= 3600 { await self.checkForUpdate() } } }
+        poll?.invalidate(); poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in Task { @MainActor in await self?.refresh(); if let self = self, Date().timeIntervalSince(self.lastUpdateCheck) >= 60 { await self.checkForUpdate() } } }
     }
     func showMessage(_ text: String, error: Bool = false) { message.stringValue = text; message.textColor = error ? .systemRed : .secondaryLabelColor }
     func tab(_ title: String, _ content: NSView) { let item = NSTabViewItem(identifier: title); item.label = title; let host = NSView(); pin(content, in: host, inset: 16); item.view = host; tabs.addTabViewItem(item) }

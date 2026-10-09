@@ -19,7 +19,31 @@ test('platform updater uses the newest available platform release when latest on
   assert.match(url,/\/v0\.3\.8\/hoanxu-windows-x64\.json$/);
   return Response.json(manifest({format:'hoanxu-windows-update',platform:'win32',arch:'x64',url:'https://github.com/owner/tool/releases/download/v0.3.8/HoanXu-GPM-0.3.8-win-x64-portable.exe'}));
  }});
- assert.equal((await u.check()).latestVersion,'0.3.8');assert.equal(u.status().available,true);assert.equal(calls.length,3);
+ assert.equal((await u.check()).latestVersion,'0.3.8');assert.equal(u.status().available,true);assert.equal(calls.length,2);
+});
+test('Mac discovers a published Mac-only release even when latest/download still returns the old version',async()=>{
+ const calls=[],u=new Updater({repo,version:'0.3.8',platform:'darwin',arch:'arm64',fetcher:async url=>{
+  calls.push(url);
+  if(url.startsWith('https://api.github.com/'))return Response.json([
+   {tag_name:'v0.3.8',assets:[{name:'hoanxu-macos-arm64.json'},{name:'hoanxu-windows-x64.json'}]},
+   {tag_name:'v0.3.9',assets:[{name:'hoanxu-macos-arm64.json'}]},
+   {tag_name:'v0.3.10',draft:true,assets:[{name:'hoanxu-macos-arm64.json'}]},
+   {tag_name:'v0.3.11',prerelease:true,assets:[{name:'hoanxu-macos-arm64.json'}]}
+  ]);
+  if(url.includes('/latest/'))return Response.json(manifest());
+  assert.match(url,/\/v0\.3\.9\/hoanxu-macos-arm64\.json$/);
+  return Response.json(manifest({version:'0.3.9',url:'https://github.com/owner/tool/releases/download/v0.3.9/HoanXu-GPM-0.3.9-mac-arm64.dmg'}));
+ }});
+ assert.equal((await u.check()).latestVersion,'0.3.9');assert.equal(u.status().available,true);assert.equal(calls.length,2);assert.ok(calls.every(url=>!url.includes('/latest/')));
+});
+test('release API failure falls back to public release downloads',async()=>{
+ for(const failure of [403,503,'offline']){
+  const u=new Updater({repo,version:'0.3.7',platform:'darwin',arch:'arm64',fetcher:async url=>{
+   if(url.startsWith('https://api.github.com/')){if(failure==='offline')throw Error('Offline API');return new Response(null,{status:failure});}
+   assert.match(url,/\/latest\/download\//);return Response.json(manifest());
+  }});
+  assert.equal((await u.check()).latestVersion,'0.3.8');assert.equal(u.status().available,true);
+ }
 });
 test('update versions, architecture and pinned GitHub repository',()=>{
  assert(newer('0.3.10','0.3.9'));assert(!newer('0.3.8','0.3.8'));assert(!newer('0.3.7','0.3.8'));assert.throws(()=>newer('v0.3.8','0.3.7'));assert.throws(()=>repository('../outside/repo'));assert.throws(()=>repository('owner/..'));
@@ -34,7 +58,7 @@ test('update install gate blocks running, stopping and outstanding operations',(
 test('GitHub release check handles latest, missing release, redirects and wrong host',async()=>{
  let calls=0;
  const u=new Updater({dir:'/unused',repo,version:'0.3.7',arch:'arm64',platform:'darwin',fetcher:async url=>{calls++;if(url.includes('/latest/'))return new Response(null,{status:302,headers:{location:'https://release-assets.githubusercontent.com/manifest'}});return new Response(JSON.stringify(manifest()));}});
- assert((await u.check()).available);assert.equal(calls,2);assert.equal(u.status().latestVersion,'0.3.8');
+ assert((await u.check()).available);assert.equal(calls,3);assert.equal(u.status().latestVersion,'0.3.8');
  u.version='0.3.8';assert(!(await u.check()).available);
  u.fetcher=async()=>new Response(null,{status:404});await assert.rejects(u.check(),/Chưa có bản/);
  u.fetcher=async()=>new Response(null,{status:302,headers:{location:'http://127.0.0.1/private'}});await assert.rejects(u.check(),/không hợp lệ/);

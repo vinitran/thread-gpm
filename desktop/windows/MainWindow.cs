@@ -78,7 +78,7 @@ sealed class MainWindow : Window
         DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
         var footer = new StackPanel { Margin = new(0, 14, 0, 0) }; footer.Children.Add(progress); message.Text = "Đang khởi động ứng dụng…"; message.TextWrapping = TextWrapping.Wrap; message.Margin = new(0, 8, 0, 0); footer.Children.Add(message); DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
         var tabs = new TabControl(); root.Children.Add(tabs); tabs.Items.Add(new TabItem { Header = "Profile", Content = ProfilesPage() }); tabs.Items.Add(new TabItem { Header = "Cài đặt chung", Content = SettingsPage() }); tabs.Items.Add(new TabItem { Header = "Nhật ký & lịch sử", Content = LogsPage() });
-        poll.Tick += async (_, _) => { await Refresh(); if (DateTime.UtcNow - lastUpdateCheck >= TimeSpan.FromHours(1)) await CheckForUpdate(); };
+        poll.Tick += async (_, _) => { await Refresh(); if (DateTime.UtcNow - lastUpdateCheck >= TimeSpan.FromMinutes(1)) await CheckForUpdate(); };
         backend.Exited += code => Dispatcher.BeginInvoke(new Action(() =>
         {
             if (code == 42) { try { backend.LaunchUpdater(); closing = true; Close(); } catch (Exception e) { Message(e.Message, true); } }
