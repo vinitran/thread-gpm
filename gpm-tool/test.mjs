@@ -274,12 +274,16 @@ test('actual Threads avatar structure outside author link selects inner plus and
  try{
  const context=await browser.newContext(),page=await context.newPage();
  const post=(id)=>`<section class="post"><div role="button" class="avatar"><img alt="demo's profile picture" style="width:36px;height:36px"><div role="button" class="plus" onclick="document.body.dataset.followed='${id}';this.remove()"><svg aria-label="Follow"><title>Follow</title></svg></div></div><a href="/@demo">demo</a><a href="/@demo/post/${id}"><time>now</time></a><button><svg><title>Reply</title></svg></button></section>`;
- const html=`<style>.avatar{position:relative;width:36px;height:36px}.plus{position:absolute;bottom:0;right:0;width:20px;height:20px}.plus svg{width:10px;height:10px}.post{margin:30px}</style><main><header><h1>Demo</h1><div><div role="button" onclick="document.body.dataset.header='1'">Follow</div></div></header>${post('target')}${post('other')}</main>`;
+ const html=`<style>.avatar{position:relative;display:inline-block;vertical-align:middle;width:36px;height:36px}.plus{position:absolute;bottom:0;right:0;width:20px;height:20px}.plus svg{width:10px;height:10px}.post{margin:30px}</style><main><header><h1>Demo</h1><div><div role="button" onclick="document.body.dataset.header='1'">Follow</div></div></header>${post('target')}${post('other')}</main>`;
  await page.route('**/*',r=>r.fulfill({contentType:'text/html',body:html}));await page.goto('https://www.threads.com/@demo');
  const args={url:'https://www.threads.com/@demo/post/target'};
  const act=(action,extra={})=>page.evaluate(({source,action,args})=>{const fn=new Function('return ('+source+')')();return fn(action,args);},{source:replyAction.toString(),action,args:{...args,...extra}});
  assert.equal(await page.evaluate(()=>{const a=document.querySelector('a[href="/@demo/post/target"]');return [...document.querySelectorAll('[role="button"]')].filter(b=>b.compareDocumentPosition(a)&4).length;}),3);
  assert.deepEqual(await act('follow-state'),{state:'not-following'});
+ assert.deepEqual(await act('inline-follow-state'),{state:'not-following',available:true});
+ await page.evaluate(()=>{for(const im of document.querySelectorAll('.avatar img'))im.alt='Ảnh đại diện của demo';});
+ assert.deepEqual(await act('inline-follow-state'),{state:'not-following',available:true});
+ await page.evaluate(()=>{for(const im of document.querySelectorAll('.avatar img'))im.alt='';});
  assert.deepEqual(await act('inline-follow-state'),{state:'not-following',available:true});
  assert.deepEqual(await act('inline-follow-author'),{state:'clicked',available:true});
  assert.equal(await page.evaluate(()=>document.body.dataset.followed),'target');assert.equal(await page.evaluate(()=>document.body.dataset.header),undefined);

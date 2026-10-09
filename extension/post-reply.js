@@ -126,11 +126,18 @@ export async function typeReplyText(text,insert,{delayMs=60,shouldContinue=()=>t
     }
   }
 }
+export async function selectFollowForReply(url,random=Math.random){
+  const {replyFollowDecisions={}}=await chrome.storage.local.get('replyFollowDecisions');
+  if(typeof replyFollowDecisions[url]?.selected==='boolean')return replyFollowDecisions[url].selected;
+  const selected=random()<0.6;
+  replyFollowDecisions[url]={selected,createdAt:new Date().toISOString()};
+  await chrome.storage.local.set({replyFollowDecisions:Object.fromEntries(Object.entries(replyFollowDecisions).slice(-500))});
+  return selected;
+}
 export async function followAuthorBeforeReply(tabId,url,onProgress=()=>{},options={}){
   const wait=options.wait||pause,delay=Math.max(1500,options.stepDelayMs??2000);
   const ensureRunning=()=>{if(options.shouldContinue&&!options.shouldContinue())throw Error('Đã dừng trước khi follow/comment.');};
   const step=async message=>{ensureRunning();onProgress(message);await wait(delay);ensureRunning();};
-  const authorUrl=new URL(url);authorUrl.pathname=authorUrl.pathname.split('/').slice(0,2).join('/');authorUrl.search='';authorUrl.hash='';
   let inline;
   for(let i=0;i<40;i++){
     ensureRunning();try{inline=await dom(tabId,'inline-follow-state',{url});}catch{break;}
@@ -163,29 +170,8 @@ export async function followAuthorBeforeReply(tabId,url,onProgress=()=>{},option
     return;
   }
   if(inline?.state==='blocked')throw Error('Trang đang có popup; chưa follow hoặc gửi bình luận.');
-  await step('Đang vào trang người đăng để kiểm tra follow…');
-  await retryTabEdit(()=>chrome.tabs.update(tabId,{url:authorUrl.href}),{onProgress,shouldContinue:options.shouldContinue});
-  let state,lastError;
-  for(let i=0;i<60;i++){
-    ensureRunning();try{state=await dom(tabId,'follow-state',{url});if(['following','requested','self','not-following'].includes(state?.state))break;}catch(e){lastError=e;}
-    await wait(250);
-  }
-  if(!['following','requested','self','not-following'].includes(state?.state))throw lastError||Error(state?.reason||'Không đọc được trạng thái follow của người đăng.');
-  if(state.state==='not-following'){
-    await step('Đang follow người đăng…');
-    ensureRunning();await dom(tabId,'follow-author',{url});
-    await step('Đang chờ xác nhận follow…');
-    let confirmed=false;
-    for(let i=0;i<40;i++){
-      ensureRunning();state=await dom(tabId,'follow-state',{url});
-      if(['following','requested'].includes(state?.state)){confirmed=true;break;}
-      await wait(250);
-    }
-    if(!confirmed)throw Error('Chưa xác nhận được follow; chưa gửi bình luận. Kiểm tra trang người đăng trong profile.');
-    await waitAfterFollow(state.state,onProgress,options);
-  }
-  await step(state.state==='requested'?'Đã gửi yêu cầu follow · quay lại bài…':state.state==='self'?'Bài của tài khoản hiện tại · quay lại bài…':'Đã theo dõi người đăng · quay lại bài…');
-  await retryTabEdit(()=>chrome.tabs.update(tabId,{url}),{onProgress,shouldContinue:options.shouldContinue});
+  onProgress('Không có nút follow khả dụng ở avatar · bỏ qua follow, tiếp tục comment tại bài.');
+  return {skipped:true};
 }
 async function waitAfterFollow(state,onProgress,options){
     const wait=options.wait||pause;
@@ -219,7 +205,12 @@ export async function postReply(url,text,image,onProgress=()=>{},options={}){
         await retryTabEdit(()=>chrome.tabs.update(tab.id,{url}),{onProgress,shouldContinue:options.shouldContinue});
       }else await pause(stepDelayMs);
     }
-    if(options.followAuthor)await followAuthorBeforeReply(tab.id,url,onProgress,options);
+    if(options.followAuthor){
+      if(await selectFollowForReply(url,options.followRandom||Math.random)){
+        onProgress('Bài này được chọn follow · xác suất 60%.');
+        await followAuthorBeforeReply(tab.id,url,onProgress,options);
+      }else onProgress('Bài này bỏ qua follow · xác suất 40%, tiếp tục comment.');
+    }
     let ready=false;for(let i=0;i<40;i++){ensureRunning();try{ready=await dom(tab.id,'ready',args);if(ready)break;}catch{}await pause(250);}
     if(!ready)throw Error('Không mở được bài để comment.');
     await step('Đang mở ô trả lời…');

@@ -21,7 +21,15 @@ export function replyAction(action,args,captureErrors=false){
     const authorLinks=[...target.querySelectorAll('a[href]')].filter(a=>visible(a)&&path(a.href)===authorPath);
     const username=authorPath.slice(2).toLowerCase();
     const avatars=[...new Set([...authorLinks.flatMap(a=>[...a.querySelectorAll('img')].filter(visible)),
-      ...[...target.querySelectorAll('img')].filter(im=>visible(im)&&normalize(im.getAttribute('alt')).toLowerCase()===`${username}'s profile picture`)])];
+      ...[...target.querySelectorAll('img')].filter(im=>{
+        if(!visible(im))return false;
+        const alt=normalize(im.getAttribute('alt')).toLowerCase();
+        if(alt===`${username}'s profile picture`||alt.includes(username)&&/ảnh đại diện|profile picture|avatar/i.test(alt))return true;
+        // Localized/no-alt avatars are siblings of the username link on Threads.
+        const r=im.getBoundingClientRect();
+        if(r.width<=0||r.height<=0||r.width>96||r.height>96||!im.closest('button,[role="button"],a'))return false;
+        return authorLinks.some(a=>{const l=a.getBoundingClientRect();return Math.abs((r.top+r.bottom)/2-(l.top+l.bottom)/2)<=48&&r.right<=l.right&&l.left-r.right>=-12&&l.left-r.right<=100;});
+      })])];
     const followName=b=>/^(Follow|Follow back|Theo dõi|Theo dõi lại)$/i.test(normalize(label(b)));
     const knownState=b=>/^(Following|Đang theo dõi|Đã theo dõi)$/i.test(normalize(label(b)))?'following':/^(Requested|Đã yêu cầu|Đã gửi yêu cầu)$/i.test(normalize(label(b)))?'requested':null;
     const nearAvatar=b=>avatars.some(im=>{
