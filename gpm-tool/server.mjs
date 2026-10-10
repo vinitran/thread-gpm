@@ -204,12 +204,13 @@ const server=http.createServer(async(req,res)=>{
    if(isWorker&&url.pathname==='/api/extension-reconnect'){
     if(store.value.executionMode!=='extension'||!extensionBridge||extensionBridge.closed||runner.state.status!=='running')throw Error('Phiên extension đã dừng · bấm Dừng & đóng profile rồi Chạy bằng extension lại.');
     const bridge=extensionBridge,epoch=startEpoch;
-    return json(res,await exclusive('kết nối lại extension',async()=>{
-     await connect();
-     await connectManagedExtension(browser,bridge,{directory:path.join(dataDir,'managed-extension'),base:`http://127.0.0.1:${port}`,loadExtension:false});
-     if(epoch!==startEpoch||shuttingDown||bridge.closed)throw Error('Đã hủy kết nối extension do Dừng.');
+    return json(res,await exclusive('thay extension bằng bản hiện tại',()=>runner.withBrowserMaintenance(async()=>{
+     if(epoch!==startEpoch||shuttingDown||bridge.closed||!runner.active())throw Error('Đã hủy nạp extension do Dừng.');
+     try{
+      await enableExtension(store.value.settings,{cdp:store.value.settings.cdp,profileId:store.value.settings.profileId,profileName:store.value.settings.profileName},epoch);
+     }catch(e){if(runner.active())await runner.finish('attention','Không nạp lại được extension: '+e.message);throw e;}
      return {ok:true,alreadyRunning:true,reconnected:true};
-    }));
+    })));
    }
    if(url.pathname==='/api/start'&&manager)return json(res,await manager.start(store.value.settings.profileId,store.value.settings));
    if(url.pathname==='/api/start'){

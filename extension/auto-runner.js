@@ -1,11 +1,12 @@
 const LEGACY_TOPICS='mua sắm, mua đồ, mua quà, shopping, shopee, săn sale, đồ ăn, ăn gì, đặt đồ ăn, quán ăn, nhà hàng, trà sữa, thời trang, quần áo, outfit, phối đồ, váy, giày, túi xách';
-export const AUTO_DEFAULTS={minRestSeconds:120,maxRestSeconds:180,searchDelaySeconds:30,stepSeconds:2,idleScroll:true,tagHoanxu:false,typingDelayMs:60,keywords:'mua sắm online, hỏi mua đồ, xin review, đánh giá sản phẩm, so sánh sản phẩm, săn sale, mã giảm giá, voucher, freeship, giỏ hàng, chốt đơn, shopee, sàn S, tiktok shop, tíc tóc, lazada, mua quà, đồ gia dụng, đồ dùng học tập, phụ kiện điện thoại, mỹ phẩm, skincare, quần áo, thời trang, outfit, váy, giày, túi xách, đồ ăn đặt online'};
+export const AUTO_DEFAULTS={minRestSeconds:120,maxRestSeconds:180,searchDelaySeconds:30,stepSeconds:2,idleScroll:true,tagHoanxu:false,followBeforeComment:false,typingDelayMs:60,keywords:'mua sắm online, hỏi mua đồ, xin review, đánh giá sản phẩm, so sánh sản phẩm, săn sale, mã giảm giá, voucher, freeship, giỏ hàng, chốt đơn, shopee, sàn S, tiktok shop, tíc tóc, lazada, mua quà, đồ gia dụng, đồ dùng học tập, phụ kiện điện thoại, mỹ phẩm, skincare, quần áo, thời trang, outfit, váy, giày, túi xách, đồ ăn đặt online'};
 export function autoConfig(input={}){
  const c={...AUTO_DEFAULTS,...input};if(c.keywords===LEGACY_TOPICS)c.keywords=AUTO_DEFAULTS.keywords;delete c.maxComments;delete c.minMinutes;delete c.maxMinutes;
  const average=input.restAverageSeconds;
  if(average!==undefined){if(!Number.isFinite(average)||average<0||!Number.isFinite(average*1.2))throw Error('Thời gian nghỉ trung bình cần là số không âm hợp lệ.');c.minRestSeconds=Math.round(average*.8);c.maxRestSeconds=Math.round(average*1.2);}
  if(average===undefined&&Number.isFinite(c.minRestSeconds)&&Number.isFinite(c.maxRestSeconds)&&c.minRestSeconds>=40&&c.minRestSeconds<=c.maxRestSeconds&&c.maxRestSeconds<=60){c.minRestSeconds=120;c.maxRestSeconds=180;}
  for(const [key,min,max] of [['minRestSeconds',120,180],['maxRestSeconds',120,180],['searchDelaySeconds',1,180],['stepSeconds',.5,10],['typingDelayMs',0,500]])if(!(['minRestSeconds','maxRestSeconds'].includes(key)&&average!==undefined)&&(!Number.isFinite(c[key])||c[key]<min||c[key]>max))throw Error('Cấu hình tự động không hợp lệ: '+key);
+ if(typeof c.followBeforeComment!=='boolean')throw Error('Tùy chọn theo dõi không hợp lệ.');
  if(typeof c.tagHoanxu!=='boolean')throw Error('Tùy chọn tag không hợp lệ.');
  if(typeof c.idleScroll!=='boolean')throw Error('Chế độ cuộn khi nghỉ không hợp lệ.');
  if(c.idleEngagement!==undefined&&typeof c.idleEngagement!=='boolean')throw Error('Chế độ Thả tim khi nghỉ không hợp lệ.');

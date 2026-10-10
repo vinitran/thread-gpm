@@ -269,3 +269,7 @@ test('failed after-Post verification continues normal cadence without rechecking
  assert.equal(f.saved().status,'running');assert.equal(f.saved().current,null);assert.equal(f.saved().source,1);assert.equal(f.checks(),0);assert.equal(recoveries,0);assert.equal(f.saved().stats.sent,1);
  assert.equal(f.saved().nextAt-f.deps.now(),120000);assert.equal(f.saved().history[p.url].state,'sent_unverified');
 });
+
+test('follow before comment is opt-in and rejects non-boolean settings',()=>{
+ assert.equal(autoConfig({}).followBeforeComment,false);assert.equal(autoConfig({followBeforeComment:true}).followBeforeComment,true);assert.equal(autoConfig({followBeforeComment:false}).followBeforeComment,false);assert.throws(()=>autoConfig({followBeforeComment:'true'}),/theo dõi/);
+});

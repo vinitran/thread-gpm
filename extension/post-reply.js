@@ -241,6 +241,9 @@ export async function postReply(url,text,image,onProgress=()=>{},options={}){
     }
     let ready=false;for(let i=0;i<40;i++){ensureRunning();try{ready=await dom(tab.id,'ready',args);if(ready)break;}catch{}await pause(250);}
     if(!ready)throw Error('Không mở được bài để comment.');
+    if(options.followBeforeComment===true&&await selectFollowForReply(url,options.followRandom||Math.random)){
+      ensureRunning();await followAuthorBeforeReply(tab.id,url,onProgress,options);ensureRunning();
+    }
     await step('Đang mở ô trả lời…');
     Object.assign(args,await dom(tab.id,'prepare',args));
     await step('Đang mở rộng ô trả lời để thêm ảnh…');

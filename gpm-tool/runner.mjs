@@ -13,13 +13,13 @@ import {engagementPage} from './idle-engagement.mjs';
 export const root=path.dirname(fileURLToPath(import.meta.url));
 export {attachments} from './assets.mjs';
 export function createRunner(store,browser){
- let timer;
+ let timer,maintenance=false;
  const settings=async()=>{const {settings}=await store.get('settings');return settings;};
  const home=async()=>{const tabs=(await browser.query()).filter(t=>t.url.startsWith('https://www.threads.com/'));const t=tabs.find(t=>new URL(t.url).pathname==='/')||tabs[0];if(!t)return (await browser.create({url:'https://www.threads.com/',active:true})).id;await browser.update(t.id,{url:'https://www.threads.com/',active:true});return t.id;};
  const runner=new AutoRunner({now:Date.now,random:Math.random,read:async()=> (await store.get('autoRun')).autoRun,write:autoRun=>store.set({autoRun}),
  aiRetryPolicy:{maxRetries:3,delayMs:120000,retryAllErrors:true},
  idleCandidates:id=>browser.evaluate(id,engagementPage,[{action:'candidates'}]),idleEngage:(id,url,until)=>browser.evaluate(id,engagementPage,[{action:'engage',url,until,stepDelayMs:(runner.state.config.stepSeconds||2)*1000}]),
- schedule:async when=>{clearTimeout(timer);timer=setTimeout(()=>runner.tick().catch(async e=>{await runner.finish('attention',e.message);}),Math.max(1000,when-Date.now()));},clear:async()=>clearTimeout(timer),keepAlive:()=>null,endKeepAlive:()=>{},
+ schedule:async when=>{clearTimeout(timer);timer=setTimeout(()=>maintenance?undefined:runner.tick().catch(async e=>{await runner.finish('attention',e.message);}),Math.max(1000,when-Date.now()));},clear:async()=>clearTimeout(timer),keepAlive:()=>null,endKeepAlive:()=>{},
  prepare:async()=>{const s=await settings();if(!s.apiKey)throw Error('Nhập API key trong cài đặt.');await browser.connect(s.cdp);browser.installChrome();await assetSummary(s.imagesFolder);await attachments(s.imagesFolder);},source:home,
  closeSource:async id=>{if((await browser.query()).some(t=>t.id===id&&t.url.startsWith('https://www.threads.com/')))await closeTabPreservingWindow(id,'nghỉ phiên GPM');},
  newSource:async()=> (await browser.create({url:'https://www.threads.com/'},{shouldContinue:()=>runner.active()})).id,
@@ -38,10 +38,18 @@ export function createRunner(store,browser){
  post:async(url,stepDelayMs,shouldContinue,typingDelayMs,withImages)=>{
   const response=(await store.get('aiResults')).aiResults?.[url];if(!response)throw Error('Chưa có response AI');
   const image=withImages?await attachments((await settings()).imagesFolder):{files:[],names:[]};
-  return postReply(url,response.text,image,m=>runner.progress(m).catch(()=>{}),{stepDelayMs,typingDelayMs,tabId:runner.state.source,shouldContinue,skipVerification:true,verifyAfterPost:true,waitBeforeHome:true});
+  return postReply(url,response.text,image,m=>runner.progress(m).catch(()=>{}),{followBeforeComment:(await settings()).runConfig?.followBeforeComment===true,stepDelayMs,typingDelayMs,tabId:runner.state.source,shouldContinue,skipVerification:true,verifyAfterPost:true,waitBeforeHome:true});
  },
  check:async url=>{const {replyReceipts={}}=await store.get('replyReceipts'),receipt=replyReceipts[url],progress=m=>runner.progress(m),options={waitBeforeHome:true,shouldContinue:()=>runner.active()};if(receipt?.state==='sent_unverified'){await verifyAfterPost(receipt,progress,options);return returnToFeed(receipt,progress,options);}return checkReply(url,progress);}
  });
  runner.dispose=()=>clearTimeout(timer);
+ runner.withBrowserMaintenance=async work=>{
+  maintenance=true;clearTimeout(timer);
+  try{
+   const deadline=Date.now()+90000;
+   while(runner.running){if(Date.now()>deadline)throw Error('Thao tác hiện tại chưa hoàn tất; thử nạp extension lại sau.');await new Promise(r=>setTimeout(r,200));}
+   clearTimeout(timer);return await work();
+  }finally{maintenance=false;if(runner.active())await runner.scheduleNext();}
+ };
  return runner;
 }

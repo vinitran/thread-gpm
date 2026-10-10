@@ -102,7 +102,8 @@ test('real profile worker installs extension through app API, keeps Open free of
   assert.equal(broken.ok,false);assert.match(broken.error,/Không kết nối được app/);
   const opens=routes.filter(u=>u.pathname.includes('/start/')).length;
   assert.equal((await worker.call('extension-reconnect',{},45000)).reconnected,true);
-  const restored=await popup.evaluate(()=>chrome.runtime.sendMessage({type:'managed-state'}));assert.equal(restored.ok,true);assert.equal(restored.value.status,'running');
+  const replacementPopup=await context.newPage();await replacementPopup.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/managed-popup.html');
+  const restored=await replacementPopup.evaluate(()=>chrome.runtime.sendMessage({type:'managed-state'}));assert.equal(restored.ok,true);assert.equal(restored.value.status,'running');
   assert.equal(routes.filter(u=>u.pathname.includes('/start/')).length,opens);
   assert.equal((await worker.call('state')).state.status,'running');
   // Restart the app-side worker while Chrome and its extension keep running.
@@ -122,4 +123,38 @@ test('real profile worker installs extension through app API, keeps Open free of
   await freshPopup.waitForFunction(()=>document.getElementById('state').textContent.includes('Không kết nối được app'),{},{timeout:10000});
   assert.equal((await new Store(dataDir).load()).value.executionMode,'extension');
  }finally{await worker?.close({force:true});await context?.close();gpm.closeAllConnections();await new Promise(r=>gpm.close(r));await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('four isolated profile workers connect concurrently and replacing one extension leaves the other three connected', {timeout:120000},async()=>{
+ const {Store}=await import('./store.mjs'),{ProfileWorker}=await import('./profile-manager.mjs'),{AUTO_DEFAULTS}=await import('../extension/auto-runner.js');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-four-')),profiles=[];
+ const gpm=http.createServer((req,res)=>{
+  const u=new URL(req.url,'http://localhost'),id=u.pathname.split('/').pop(),p=profiles.find(p=>p.id===id);
+  res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true,data:u.pathname.includes('/start/')?{profile_id:id,remote_debugging_port:Number(p?.port)}:{id,name:id,raw_proxy:''}}));
+ });await new Promise(r=>gpm.listen(0,'127.0.0.1',r));
+ try{
+  await Promise.all(Array.from({length:4},async(_,i)=>{
+   const p={id:'fixture-'+i};profiles.push(p);p.dir=path.join(dir,p.id);
+   p.context=await chromium.launchPersistentContext(path.join(dir,'chrome-'+i),{executablePath:process.env.TEST_CHROME||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'/usr/bin/google-chrome'),headless:true,args:['--enable-unsafe-extension-debugging','--remote-debugging-port=0'],ignoreDefaultArgs:['--disable-extensions']});
+   [p.port]=(await fs.readFile(path.join(dir,'chrome-'+i,'DevToolsActivePort'),'utf8')).split('\n');
+   const store=await new Store(p.dir).load();await store.set({settings:{profileId:p.id,profileName:p.id,gpmApi:'http://127.0.0.1:'+gpm.address().port+'/api/v1',cdp:'http://127.0.0.1:'+p.port,apiKey:'fixture-key',model:'fixture',prompt:'Fixture',proxy:'',imagesFolder:'',runConfig:AUTO_DEFAULTS}});
+   p.worker=new ProfileWorker(p.dir,()=>{});assert.equal((await p.worker.call('profile-open',{useCurrentProxy:true,engine:'extension'},90000)).engine,'extension');
+   p.popup=await p.context.newPage();await p.popup.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/managed-popup.html');
+   p.config=await p.popup.evaluate(async()=>{const c=(await chrome.storage.local.get('managedConfig')).managedConfig;await chrome.storage.local.set({obsoleteFixture:true});return c;});
+   assert.equal(p.config.base,p.worker.base);
+  }));
+  assert.equal(new Set(profiles.map(p=>p.config.base)).size,4);assert.equal(new Set(profiles.map(p=>p.config.token)).size,4);
+  const first=profiles[0];await fs.writeFile(path.join(first.dir,'managed-extension','obsolete-fixture.js'),'obsolete');
+  await first.worker.call('profile-open',{useCurrentProxy:true,engine:'extension'},90000);
+  await assert.rejects(fs.access(path.join(first.dir,'managed-extension','obsolete-fixture.js')));
+  first.popup=await first.context.newPage();await first.popup.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/managed-popup.html');
+  assert.equal(await first.popup.evaluate(async()=>(await chrome.storage.local.get('obsoleteFixture')).obsoleteFixture),undefined);
+  const rejected=await fetch(first.worker.base+'/api/extension/status',{method:'POST',headers:{'Content-Type':'application/json','X-Extension-Token':first.config.token},body:'{}'});assert.equal(rejected.status,403);
+  for(const p of profiles){
+   const result=await p.popup.evaluate(()=>chrome.runtime.sendMessage({type:'managed-state'}));assert.equal(result.ok,true);assert.equal(result.value.status,'idle');
+   assert.ok(p.context.pages().every(page=>!page.url().includes('threads.com')));
+  }
+ }finally{
+  await Promise.allSettled(profiles.map(async p=>{await p.worker?.close({force:true});await p.context?.close();}));gpm.closeAllConnections();await new Promise(r=>gpm.close(r));await fs.rm(dir,{recursive:true,force:true});
+ }
 });

@@ -112,12 +112,12 @@ export class ProfileManager{
  async connect(settings){return this.locked(settings.profileId,async()=>{await this.configure(settings);return this.worker(settings.profileId).call('connect',{});});}
  async start(id,settings,engine='direct'){
   if(!valid(id))throw Error('Profile ID không hợp lệ.');if(this.closing)throw Error('Tool đang tắt.');if(this.stoppingProfiles.has(id))throw Error('Profile đang dừng.');
-  if(this.views.get(id)?.state?.status==='running'){if((this.views.get(id).engine||'direct')!==engine)throw Error('Dừng profile trước khi đổi bộ chạy.');return engine==='extension'?this.locked(id,()=>this.worker(id).call('extension-reconnect',{},45000)):{ok:true,alreadyRunning:true};}const epoch=(this.cancelled.get(id)||0);
+  if(this.views.get(id)?.state?.status==='running'){if((this.views.get(id).engine||'direct')!==engine)throw Error('Dừng profile trước khi đổi bộ chạy.');return engine==='extension'?this.locked(id,()=>this.worker(id).call('extension-reconnect',{},150000)):{ok:true,alreadyRunning:true};}const epoch=(this.cancelled.get(id)||0);
   return this.locked(id,async()=>{
    if(settings){await this.configure(settings);}else if(!this.store.value.profileRegistry?.[id])throw Error('Profile chưa có cấu hình đã lưu.');
    if(this.closing||(this.cancelled.get(id)||0)!==epoch)return {ok:true,cancelled:true};
    const worker=this.worker(id);const current=await worker.call('state');
-   if(current.state.status==='running'){if((current.engine||'direct')!==engine)throw Error('Dừng profile trước khi đổi bộ chạy.');return engine==='extension'?worker.call('extension-reconnect',{},45000):{ok:true,alreadyRunning:true};}
+   if(current.state.status==='running'){if((current.engine||'direct')!==engine)throw Error('Dừng profile trước khi đổi bộ chạy.');return engine==='extension'?worker.call('extension-reconnect',{},150000):{ok:true,alreadyRunning:true};}
    const data=await this.profileStore(id);if(this.closing||(this.cancelled.get(id)||0)!==epoch)return {ok:true,cancelled:true};
    try{await worker.call('profile-open',{useCurrentProxy:true,engine},engine==='extension'?180000:90000);}catch(e){if(this.closing||(this.cancelled.get(id)||0)!==epoch){if(!this.closing)await this.gpmStop(id);return {ok:true,cancelled:true};}throw e;}
    if(this.closing||(this.cancelled.get(id)||0)!==epoch){if(!this.closing)await this.gpmStop(id);return {ok:true,cancelled:true};}

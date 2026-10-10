@@ -4,7 +4,7 @@ import {MANAGED_EXTENSION_ID} from './managed-extension-id.mjs';
 export {MANAGED_EXTENSION_ID};
 const source=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../extension');
 export async function stageManagedExtension(dir){
- const destination=path.join(dir,'managed-extension');await fs.mkdir(destination,{recursive:true});
+ const destination=path.join(dir,'managed-extension');await fs.rm(destination,{recursive:true,force:true});await fs.mkdir(destination,{recursive:true});
  const files=['auto-dom.js','extract.js','reply-dom.js','pointer-input.js'];let fingerprint='';
  for(const name of files){const data=await fs.readFile(path.join(source,name));fingerprint+=data.toString();await fs.writeFile(path.join(destination,name),data);}
  for(const name of (await fs.readdir(path.join(source,'managed'))).sort()){const data=await fs.readFile(path.join(source,'managed',name));fingerprint+=data.toString();await fs.writeFile(path.join(destination,name),data);}
@@ -15,7 +15,20 @@ export function extensionArguments(directory){if(/["\r\n]/.test(directory))throw
 export async function connectManagedExtension(browser,bridge,{directory,base,loadExtension=true}){
  if(loadExtension){
   const session=await browser.browser.newBrowserCDPSession();
-  try{try{await session.send('Extensions.loadUnpacked',{path:directory});}catch{/* Older GPM cores load it through addition_args instead. */}}finally{await session.detach();}
+  let loaded=false;
+  try{
+   // The fixed ID belongs only to this app; never remove the user's other extensions.
+   try{await session.send('Extensions.uninstall',{id:MANAGED_EXTENSION_ID});}catch{}
+   try{await session.send('Extensions.loadUnpacked',{path:directory});loaded=true;}catch{}
+  }finally{await session.detach();}
+  if(!loaded){
+   // Older GPM cores use --load-extension. Reload the same ID to discard the old worker.
+   const previous=await browser.context.newPage();
+   try{
+    await previous.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/bootstrap.html',{waitUntil:'domcontentloaded',timeout:15000});
+    await Promise.all([previous.waitForEvent('close',{timeout:10000}),previous.evaluate(()=>{setTimeout(()=>chrome.runtime.reload(),0);})]);
+   }finally{await previous.close().catch(()=>{});}
+  }
  }
  const tab=await browser.context.newPage();
  try{
