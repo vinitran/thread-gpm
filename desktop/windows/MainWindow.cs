@@ -184,7 +184,7 @@ sealed class MainWindow : Window
             snapshot = await api.Request("state"); if (EditingProfileForm) return; if (!loaded) { FillSettings(J.O(snapshot["settings"])); loaded = true; Message("Sẵn sàng · dữ liệu được lưu trên máy"); }
             var ids = new HashSet<string>(); foreach (var data in J.Rows(snapshot["profiles"])) { var id = J.S(data["id"]); ids.Add(id); if (!allRows.TryGetValue(id, out var row)) { row = new(); row.PropertyChanged += (_, e) => { if (e.PropertyName == "Selected") { Controls(); RenderLogs(); } }; allRows[id] = row; } row.Data = data; row.Changed(); }
             foreach (var id in allRows.Keys.Except(ids).ToArray()) allRows.Remove(id);
-            Filter(); RenderLogs(); Controls();
+            Filter(); RenderLogs(); RenderVersion(); Controls();
             var download = J.O(snapshot["updateDownload"]); var phase = J.S(download["phase"]);
             if (phase is "downloading" or "verifying" or "ready") { message.Text = updateText.Text = updateWarning.Text = J.S(download["message"]); progress.Visibility = Visibility.Visible; progress.IsIndeterminate = phase != "downloading"; if (double.TryParse(J.S(download["percent"]), out var percent)) progress.Value = percent; }
             else progress.IsIndeterminate = true;
@@ -282,10 +282,20 @@ sealed class MainWindow : Window
         var historyText = string.Join(Environment.NewLine, recent); if (history.Text != historyText) history.Text = historyText.Length == 0 ? "Chưa có lịch sử gửi bình luận." : historyText;
     }
     async Task LoadUpdate(bool check = true) { if (api == null) return; try { update = await api.Request("update-status"); RenderUpdate(); if (check) await CheckForUpdate(); } catch (Exception e) { updateText.Text = "Chưa đọc được phiên bản: " + e.Message; } }
+    void RenderVersion()
+    {
+        var installed = System.Reflection.Assembly.GetExecutingAssembly().GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false).OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion.Split('+')[0] ?? "";
+        var runtime = J.S(snapshot["version"]);
+        var current = runtime.Length > 0 ? runtime : J.S(update["currentVersion"]).Length > 0 ? J.S(update["currentVersion"]) : installed;
+        versionText.Text = current.Length == 0 ? "Đang đọc phiên bản…" : "Phiên bản " + current;
+        if (installed.Length > 0 && runtime.Length > 0 && installed != runtime) versionText.Text += " · app " + installed + " · hãy thoát các bản app cũ rồi mở lại";
+        else if (updateChecking) versionText.Text += " · đang kiểm tra…";
+        else if (J.S(update["checkError"]).Length > 0) versionText.Text += " · chưa kiểm tra được bản mới";
+    }
     void RenderUpdate()
     {
-        var current = J.S(update["currentVersion"]); var error = J.S(update["checkError"]); var available = J.B(update["available"]);
-        versionText.Text = "Phiên bản " + current + (updateChecking ? " · đang kiểm tra…" : error.Length > 0 ? " · chưa kiểm tra được bản mới" : "");
+        var current = J.S(snapshot["version"]).Length > 0 ? J.S(snapshot["version"]) : J.S(update["currentVersion"]); var error = J.S(update["checkError"]); var available = J.B(update["available"]);
+        RenderVersion();
         updateBanner.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         updateWarning.Text = "Bạn chưa dùng phiên bản mới nhất: " + current + " → " + J.S(update["latestVersion"]) + ". Dừng profile và lưu cài đặt trước khi cập nhật.";
         updateText.Text = available ? updateWarning.Text : error.Length > 0 ? "Chưa xác định được bản mới nhất: " + error : J.S(update["repository"]).Length == 0 ? "Cập nhật từ xa đang tắt · tải bản mới thủ công từ GitHub Releases." : update["checkedAt"] == null ? "Chưa kiểm tra phiên bản mới." : "Bạn đang dùng bản mới nhất · " + current;

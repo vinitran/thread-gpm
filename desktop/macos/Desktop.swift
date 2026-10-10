@@ -176,7 +176,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     func refresh() async {
         guard let api = api, !refreshing, !editingProfileForm else { return }; refreshing = true; defer { refreshing = false }
-        do { snapshot = try await api.request("state"); if editingProfileForm { return }; profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; renderProfiles(); renderLogs(); controls()
+        do { snapshot = try await api.request("state"); if editingProfileForm { return }; profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; renderProfiles(); renderLogs(); renderVersion(); controls()
             let download = object(snapshot["updateDownload"])
             if ["downloading","verifying","ready"].contains(string(download["phase"])) { let text = string(download["message"]); showMessage(text); updateText.stringValue = text; updateWarning.stringValue = text }
         }
@@ -297,10 +297,20 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     @objc func loadHistory() { Task { @MainActor in await refresh() } }
     @objc func openData() { if let delegate = NSApp.delegate as? AppDelegate { NSWorkspace.shared.open(delegate.data) } }
-    func loadUpdate() async { guard let api = api else { return }; do { updater = try await api.request("update-status"); renderUpdate(); if !string(updater["repository"]).isEmpty { await checkForUpdate() } } catch { updateText.stringValue = error.localizedDescription; versionText.stringValue = "Chưa đọc được phiên bản" } }
+    func loadUpdate() async { guard let api = api else { return }; do { updater = try await api.request("update-status"); renderUpdate(); if !string(updater["repository"]).isEmpty { await checkForUpdate() } } catch { updateText.stringValue = error.localizedDescription; renderVersion() } }
+    func renderVersion() {
+        let installed = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let runtime = string(snapshot["version"])
+        let current = !runtime.isEmpty ? runtime : !string(updater["currentVersion"]).isEmpty ? string(updater["currentVersion"]) : installed
+        versionText.stringValue = current.isEmpty ? "Đang đọc phiên bản…" : "Phiên bản " + current
+        if !installed.isEmpty && !runtime.isEmpty && installed != runtime {
+            versionText.stringValue += " · app " + installed + " · hãy thoát các bản app cũ rồi mở lại"
+        } else if updateChecking { versionText.stringValue += " · đang kiểm tra…" }
+        else if !string(updater["checkError"]).isEmpty { versionText.stringValue += " · chưa kiểm tra được bản mới" }
+    }
     func renderUpdate() {
-        let current = string(updater["currentVersion"]), latest = string(updater["latestVersion"]), available = updater["available"] as? Bool == true, error = string(updater["checkError"])
-        versionText.stringValue = "Phiên bản " + current + (updateChecking ? " · đang kiểm tra…" : !error.isEmpty ? " · chưa kiểm tra được bản mới" : "")
+        let current = !string(snapshot["version"]).isEmpty ? string(snapshot["version"]) : string(updater["currentVersion"]), latest = string(updater["latestVersion"]), available = updater["available"] as? Bool == true, error = string(updater["checkError"])
+        renderVersion()
         updateBanner.isHidden = !available; updateWarning.stringValue = "Bạn chưa dùng phiên bản mới nhất: " + current + " → " + latest + ". Dừng profile và lưu cài đặt trước khi cập nhật."
         updateText.stringValue = available ? updateWarning.stringValue : !error.isEmpty ? "Chưa xác định được bản mới nhất: " + error : string(updater["repository"]).isEmpty ? "Cập nhật từ xa đang tắt · tải bản mới thủ công từ GitHub Releases." : string(updater["checkedAt"]).isEmpty ? "Chưa kiểm tra phiên bản mới." : "Bạn đang dùng bản mới nhất · " + current
         if available { updateText.stringValue += "\nSau khi cập nhật: dừng và đóng profile, rồi bấm Chạy bằng extension để nạp lại bộ chạy." }
