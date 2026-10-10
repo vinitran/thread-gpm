@@ -64,3 +64,15 @@ test('an action already dispatched reports its result only to its original conne
  action.resolve({id:1,status:'complete'});await flush();
  assert.deepEqual(urls.filter(url=>url.endsWith('/result')),[config(50001).base+'/api/extension/result']);assert.equal(w.calls.length,1);
 });
+
+test('popup opened during worker startup waits for saved configuration instead of reporting disconnected',async()=>{
+ const urls=[],w=worker(async url=>{urls.push(url);if(url.endsWith('/poll'))return new Promise(()=>{});return Response.json({status:'running'});});
+ const result=w.message({type:'managed-state'});await flush();
+ w.startup.resolve({managedConfig:config(50002)});
+ assert.equal((await result).ok,true);assert.ok(urls.includes(config(50002).base+'/api/extension/status'));
+});
+
+test('a fresh extension without saved configuration directs the user to Run by extension in the app',async()=>{
+ let requests=0;const w=worker(async()=>{requests++;return Response.json({});});w.startup.resolve({});await flush();
+ const result=await w.message({type:'managed-state'});assert.equal(result.ok,false);assert.match(result.error,/Chạy bằng extension trong app/);assert.match(result.error,/Nút Mở/);assert.equal(requests,0);
+});

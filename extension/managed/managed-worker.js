@@ -6,8 +6,9 @@ import {pointerTarget} from './pointer-input.js';
 const functions={autoPage,extractPosts,replyAction,engagementPage,pointerTarget};
 const attached=new Set();chrome.debugger.onDetach.addListener(target=>attached.delete(target.tabId));
 let configured,loopRunning=false,configurationEpoch=0;
-async function request(path,body,connection=configured){
- if(!connection)throw Error('Chưa kết nối app HoanXu GPM.');
+async function request(path,body,connection){
+ if(!connection){if(!configured)await initialization;connection=configured;}
+ if(!connection)throw Error('Chưa nhận cấu hình từ app · chọn profile và bấm Chạy bằng extension trong app HoanXu GPM. Nút Mở chỉ mở trình duyệt.');
  let response;
  try{response=await fetch(connection.base+'/api/extension/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Extension-Token':connection.token},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(25000)});}
  catch{throw Error('Không kết nối được app tại '+connection.base+' · kiểm tra app đang mở, proxy cho phép truy cập localhost và bấm Chạy bằng extension lại trong app.');}
@@ -75,4 +76,4 @@ chrome.alarms.create('managed-keepalive',{periodInMinutes:0.5});
 chrome.alarms.onAlarm.addListener(()=>{runLoop();synchronize();});
 setInterval(()=>{chrome.runtime.getPlatformInfo().catch(()=>{});synchronize();},1000);
 // A delayed startup read must not replace a newer bootstrap configuration.
-chrome.storage.local.get('managedConfig').then(({managedConfig})=>{if(configurationEpoch!==0)return;configured=managedConfig;runLoop();synchronize();});
+const initialization=chrome.storage.local.get('managedConfig').then(({managedConfig})=>{if(configurationEpoch!==0)return;configured=managedConfig;runLoop();synchronize();}).catch(e=>disconnected(Error('Không đọc được cấu hình extension: '+e.message)));
