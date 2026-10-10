@@ -20,8 +20,8 @@ export function searchWaitMs(seconds,random=Math.random){return Math.round(Math.
 export const SESSION_LIMIT=10;
 export const sessionSendCount=stats=>(stats?.posted||0)+Math.max(stats?.sent||0,stats?.unknown||0);
 export class AutoRunner{
- constructor(deps){this.d=deps;this.state=null;this.running=false;this.starting=false;}
- async load(){if(!this.state){this.loading??=this.d.read();this.state=await this.loading||{status:'idle',history:{},events:[]};if(this.state.config){this.state.config=autoConfig(this.state.config);if(this.state.activity?.phase==='resting'&&this.state.nextAt)this.state.nextAt=Math.min(this.state.nextAt,this.d.now()+this.state.config.maxRestSeconds*1000);}}return this.state;}
+ constructor(deps){this.d=deps;this.state=null;this.running=false;this.starting=false;this.stopEpoch=0;}
+ async load(){if(!this.state){this.loading??=this.d.read();this.state=await this.loading||{status:'idle',history:{},events:[]};if(this.state.config){this.state.config=autoConfig(this.state.config);if(this.state.activity?.phase==='resting'&&this.state.nextAt&&!this.state.current&&!this.state.selectionBatch&&!this.state.sessionRest)this.state.nextAt=Math.min(this.state.nextAt,this.d.now()+this.state.config.maxRestSeconds*1000);}}return this.state;}
  async save(){
   this.state.history=Object.fromEntries(Object.entries(this.state.history||{}).slice(-5000));
   const snapshot=structuredClone(this.state);
@@ -84,12 +84,12 @@ export class AutoRunner{
   finally{this.running=false;if(this.state.status==='stopping')await this.finish('stopped','Đã dừng');}
  }
  async start(input){
-  await this.load();if(this.starting||this.running||['running','stopping'].includes(this.state.status))throw Error('Phiên tự động đang chạy.');
-  const config=autoConfig(input);this.starting=true;try{await this.d.prepare();const source=await this.d.source();
+  const epoch=this.stopEpoch;await this.load();if(epoch!==this.stopEpoch)return this.state;if(this.starting||this.running||['running','stopping'].includes(this.state.status))throw Error('Phiên tự động đang chạy.');
+  const config=autoConfig(input);this.starting=true;try{await this.d.prepare();if(epoch!==this.stopEpoch)return this.state;const source=await this.d.source();if(epoch!==this.stopEpoch)return this.state;
   this.state={imageRepliesSinceTag:this.state.imageRepliesSinceTag||0,status:'running',config,source,current:null,queue:[],selectionBatch:null,needsScroll:false,idleEngagementHistory:this.state.idleEngagementHistory||{},history:Object.fromEntries(Object.entries(this.state.history||{}).filter(([,v])=>v.state!=='queued')),events:[],stats:{scanned:0,selected:0,posted:0,failed:0,unknown:0},authors:[],emptyScans:0,nextAt:this.d.now()+15000,startedAt:new Date(this.d.now()).toISOString()};
   this.event('Bắt đầu phiên tự động');await this.activity('waiting','Đang chờ trang chủ Threads tải xong');await this.scheduleNext();return this.state;}finally{this.starting=false;}
  }
- async stop(){await this.load();this.state.status=this.running?'stopping':'stopped';await this.activity(this.running?'stopping':'stopped',this.running?'Đã yêu cầu dừng · đang kết thúc thao tác hiện tại':'Đã dừng');await this.d.clear();return this.state;}
+ async stop(){this.stopEpoch++;await this.load();this.state.status=this.running?'stopping':'stopped';await this.activity(this.running?'stopping':'stopped',this.running?'Đã yêu cầu dừng · đang kết thúc thao tác hiện tại':'Đã dừng');await this.d.clear();return this.state;}
  async finish(status,message){this.state.status=status;this.state.nextAt=null;await this.activity(status,message);await this.d.clear();}
  async restBetweenSessions(){
   const s=this.state;if(!this.active())return this.finish('stopped','Đã dừng');

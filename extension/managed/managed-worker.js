@@ -6,6 +6,7 @@ import {pointerTarget} from './pointer-input.js';
 const functions={autoPage,extractPosts,replyAction,engagementPage,pointerTarget};
 const attached=new Set();chrome.debugger.onDetach.addListener(target=>attached.delete(target.tabId));
 let configured,loopRunning=false,configurationEpoch=0;
+const synchronizing=new Map();
 const sameConnection=(a,b)=>!!a&&!!b&&a.base===b.base&&a.token===b.token;
 async function request(path,body,connection){
  if(!connection){if(!configured)await initialization;connection=configured;}
@@ -42,7 +43,12 @@ async function loaded(tab){
 }
 async function synchronize(){
  const connection=configured;if(!connection)return;
- try{const state=await request('status',undefined,connection);if(sameConnection(configured,connection))await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch(e){if(sameConnection(configured,connection))await disconnected(e);}
+ const key=connection.base+'|'+connection.token;
+ if(synchronizing.has(key))return synchronizing.get(key);
+ const pending=(async()=>{
+  try{const state=await request('status',undefined,connection);if(sameConnection(configured,connection))await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch(e){if(sameConnection(configured,connection))await disconnected(e);}
+ })().finally(()=>synchronizing.delete(key));
+ synchronizing.set(key,pending);return pending;
 }
 async function disconnected(error){await chrome.storage.local.set({autoRun:{status:'disconnected'},managedStatus:{status:'disconnected',message:error?.message||'Mất kết nối app · đã ngừng thao tác.'}}).catch(()=>{});}
 async function runLoop(){

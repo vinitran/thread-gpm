@@ -12,6 +12,17 @@ export async function stageManagedExtension(dir){
  return {directory:destination,revision:createHash('sha256').update(fingerprint).digest('hex')};
 }
 export function extensionArguments(directory){if(/["\r\n]/.test(directory))throw Error('Đường dẫn extension không hợp lệ.');return '--enable-unsafe-extension-debugging --proxy-bypass-list="localhost;127.0.0.1;[::1]" --load-extension="'+directory+'"';}
+async function openBootstrap(tab){
+ const url='chrome-extension://'+MANAGED_EXTENSION_ID+'/bootstrap.html',deadline=Date.now()+15000;
+ while(true){
+  try{await tab.goto(url,{waitUntil:'domcontentloaded',timeout:Math.max(1,Math.min(3000,deadline-Date.now()))});return;}
+  catch(e){
+   // runtime.reload closes the old page before Chrome has registered the new extension.
+   if(tab.isClosed()||Date.now()>=deadline||!/ERR_BLOCKED_BY_CLIENT|ERR_FILE_NOT_FOUND|ERR_FAILED|ERR_ABORTED|Timeout/.test(e.message))throw e;
+   await new Promise(r=>setTimeout(r,200));
+  }
+ }
+}
 export async function connectManagedExtension(browser,bridge,{directory,base,loadExtension=true}){
  if(loadExtension){
   const session=await browser.browser.newBrowserCDPSession();
@@ -25,14 +36,14 @@ export async function connectManagedExtension(browser,bridge,{directory,base,loa
    // Older GPM cores use --load-extension. Reload the same ID to discard the old worker.
    const previous=await browser.context.newPage();
    try{
-    await previous.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/bootstrap.html',{waitUntil:'domcontentloaded',timeout:15000});
+    await openBootstrap(previous);
     await Promise.all([previous.waitForEvent('close',{timeout:10000}),previous.evaluate(()=>{setTimeout(()=>chrome.runtime.reload(),0);})]);
    }finally{await previous.close().catch(()=>{});}
   }
  }
  const tab=await browser.context.newPage();
  try{
-  await tab.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/bootstrap.html',{waitUntil:'domcontentloaded',timeout:15000});
+  await openBootstrap(tab);
   // Send through the extension page's runtime directly, rather than a URL fragment.
   const handshake=await tab.evaluate(async config=>{
    const result=await chrome.runtime.sendMessage({type:'configure-managed',config});

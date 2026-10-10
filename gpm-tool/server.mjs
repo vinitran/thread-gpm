@@ -49,23 +49,24 @@ async function exclusive(name,fn){if(operation)throw Error('Đang xử lý '+ope
 async function body(req,limit=100000){let data='';for await(const chunk of req){data+=chunk;if(Buffer.byteLength(data)>limit)throw Error('Request quá lớn');}return data?JSON.parse(data):{};}
 function json(res,value,status=200){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));}
 async function connect(){const s=store.value.settings;await browser.connect(s.cdp);browser.installChrome();if(isWorker)browser.profileId=s.profileId;}
-async function enableExtension(configured,result,epoch=startEpoch){
- const staged=await stageManagedExtension(dataDir),api=new GpmApi(configured.gpmApi);
+async function enableExtension(configured,result,epoch=startEpoch,staged){
+ staged??=await stageManagedExtension(dataDir);const api=new GpmApi(configured.gpmApi);
  extensionBridge?.close();browser.extensionBridge=null;
  const bridge=new ExtensionBridge(()=>({status:runner.state.status,message:runner.state.activity?.message||'Sẵn sàng',engine:'extension'}));extensionBridge=bridge;
  const check=()=>{if(shuttingDown||startEpoch!==epoch)throw Error('Đã hủy kết nối extension do Dừng.');};
+ let restarted=false;
  const restart=async()=>{
   check();await api.stop(configured.profileId);check();
   const deadline=Date.now()+10000;while(browser.browser?.isConnected()&&Date.now()<deadline)await new Promise(r=>setTimeout(r,200));
   if(browser.browser?.isConnected())throw Error('GPM chưa đóng profile để nạp extension.');
   check();result=await api.open(configured.profileId,{additionArgs:extensionArguments(staged.directory)});check();
-  await store.set({settings:{...configured,cdp:result.cdp,profileName:result.profileName}});await connect();
+  await store.set({settings:{...configured,cdp:result.cdp,profileName:result.profileName}});await connect();restarted=true;
  };
  try{
   if(store.value.extensionRevision&&store.value.extensionRevision!==staged.revision)await restart();
   check();await connect();
-  try{await connectManagedExtension(browser,bridge,{directory:staged.directory,base:`http://127.0.0.1:${port}`});}
-  catch{check();await restart();await connectManagedExtension(browser,bridge,{directory:staged.directory,base:`http://127.0.0.1:${port}`});}
+  try{await connectManagedExtension(browser,bridge,{directory:staged.directory,base:`http://127.0.0.1:${port}`,loadExtension:!restarted});}
+  catch{check();await restart();await connectManagedExtension(browser,bridge,{directory:staged.directory,base:`http://127.0.0.1:${port}`,loadExtension:false});}
   check();browser.installChrome();await store.set({executionMode:'extension',extensionRevision:staged.revision});return result;
  }catch(e){bridge.close();if(extensionBridge===bridge)extensionBridge=null;browser.extensionBridge=null;throw e;}
 }
@@ -86,9 +87,14 @@ const server=http.createServer(async(req,res)=>{
    }
   }
   if(isWorker&&req.method==='POST'&&url.pathname.startsWith('/api/extension/')){
-   if(!extensionBridge?.authorize(req.headers,MANAGED_EXTENSION_ID))return json(res,{error:'Invalid extension origin/token'},403);
+   const bridge=extensionBridge;
+   if(!bridge?.authorize(req.headers,MANAGED_EXTENSION_ID))return json(res,{error:'Invalid extension origin/token'},403);
    const input=await body(req,8*1024*1024);
-   if(url.pathname==='/api/extension/poll')return json(res,await extensionBridge.poll());
+   if(bridge!==extensionBridge||!bridge.authorize(req.headers,MANAGED_EXTENSION_ID))return json(res,{error:'Extension connection replaced'},403);
+   if(url.pathname==='/api/extension/poll'){
+    const aborted=new AbortController(),disconnected=()=>aborted.abort();res.once('close',disconnected);if(res.destroyed)aborted.abort();
+    try{const result=await bridge.poll(aborted.signal);if(!res.destroyed)return json(res,result);return;}finally{res.off('close',disconnected);}
+   }
    if(url.pathname==='/api/extension/result')return json(res,{ok:extensionBridge.result(input)});
    if(url.pathname==='/api/extension/status'){extensionBridge.touch();return json(res,extensionBridge.status());}
    if(url.pathname==='/api/extension/stop'){startEpoch++;const results=await Promise.allSettled([new GpmApi(store.value.settings.gpmApi).stop(store.value.settings.profileId),runner.stop()]);extensionBridge?.close();for(const r of results)if(r.status==='rejected')throw r.reason;return json(res,{ok:true});}
@@ -195,7 +201,7 @@ const server=http.createServer(async(req,res)=>{
      if(openEpoch!==startEpoch||shuttingDown)throw Error('Đã hủy mở profile do Dừng.');
      if(browser.browser?.isConnected()&&browser.address!==new URL(result.cdp).href){const deadline=Date.now()+10000;while(browser.browser?.isConnected()&&Date.now()<deadline)await new Promise(r=>setTimeout(r,200));if(browser.browser?.isConnected())throw Error('Profile cũ chưa đóng. Đóng profile rồi bấm Mở profile lại.');}
      await store.set({settings:{...configured,cdp:result.cdp,profileName:result.profileName},proxyAppliedAt:new Date().toISOString()});
-     if(engine==='extension')result=await enableExtension(configured,result,openEpoch);
+     if(engine==='extension')result=await enableExtension(configured,result,openEpoch,staged);
      else{extensionBridge?.close();extensionBridge=null;browser.extensionBridge=null;await connect();await store.set({executionMode:'direct'});}
      browser.profileId=result.profileId;
      return {ok:true,...result,hasProxy:!!raw,engine};

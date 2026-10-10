@@ -273,3 +273,17 @@ test('failed after-Post verification continues normal cadence without rechecking
 test('follow before comment is opt-in and rejects non-boolean settings',()=>{
  assert.equal(autoConfig({}).followBeforeComment,false);assert.equal(autoConfig({followBeforeComment:true}).followBeforeComment,true);assert.equal(autoConfig({followBeforeComment:false}).followBeforeComment,false);assert.throws(()=>autoConfig({followBeforeComment:'true'}),/theo dõi/);
 });
+
+test('Stop during startup preparation prevents opening a source or scheduling a session',async()=>{
+ const f=fixture();let release,entered,opened=0,scheduled=0;
+ const preparing=new Promise(r=>entered=r);f.deps.prepare=async()=>{entered();await new Promise(r=>release=r);};
+ f.deps.source=async()=>{opened++;return 1;};f.deps.schedule=async()=>{scheduled++;};
+ const starting=f.runner.start();await preparing;await f.runner.stop();release();await starting;
+ assert.equal(f.runner.state.status,'stopped');assert.equal(opened,0);assert.equal(scheduled,0);
+});
+test('Stop while the source is opening cannot be overwritten by startup completion',async()=>{
+ const f=fixture();let release,entered,scheduled=0;
+ const opening=new Promise(r=>entered=r);f.deps.source=async()=>{entered();await new Promise(r=>release=r);return 1;};f.deps.schedule=async()=>{scheduled++;};
+ const starting=f.runner.start();await opening;await f.runner.stop();release();await starting;
+ assert.equal(f.runner.state.status,'stopped');assert.equal(scheduled,0);
+});

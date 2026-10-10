@@ -7,11 +7,11 @@ const config=port=>({base:'http://127.0.0.1:'+port,token:'a'.repeat(64)});
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 const flush=async()=>{for(let i=0;i<15;i++)await Promise.resolve();};
 function worker(fetcher){
- const startup=deferred(),data={},calls=[];let listener;
+ const startup=deferred(),data={},calls=[];let listener,heartbeat;
  const chrome={debugger:{onDetach:{addListener(){}},attach:async()=>{},sendCommand:async()=>{}},runtime:{id:'fixture',onMessage:{addListener(fn){listener=fn;}},getPlatformInfo:async()=>({})},alarms:{create(){},onAlarm:{addListener(){}}},storage:{local:{get:()=>startup.promise,set:async patch=>Object.assign(data,patch)}},tabs:{create:async options=>{calls.push(options);return {id:1,status:'complete'};},get:async()=>({id:1,status:'complete'})}};
- vm.runInNewContext(source,{chrome,fetch:fetcher,AbortSignal,Error,setInterval(){},setTimeout(){},autoPage(){},extractPosts(){},replyAction(){},engagementPage(){},pointerTarget(){}});
+ vm.runInNewContext(source,{chrome,fetch:fetcher,AbortSignal,Error,setInterval(fn){heartbeat=fn;},setTimeout(){},autoPage(){},extractPosts(){},replyAction(){},engagementPage(){},pointerTarget(){}});
  const message=body=>new Promise(resolve=>listener(body,{id:'fixture'},resolve));
- return {startup,data,calls,message,chrome};
+ return {startup,data,calls,message,chrome,heartbeat:()=>heartbeat()};
 }
 test('slow startup storage read cannot overwrite configuration accepted from the app',async()=>{
  const urls=[],w=worker(async url=>{urls.push(url);if(url.endsWith('/poll'))return new Promise(()=>{});return Response.json({status:'running'});});
@@ -85,4 +85,13 @@ test('repeating the same configuration does not discard a command delivered to t
  assert.equal((await w.message({type:'configure-managed',config:config(50001)})).ok,true);
  poll.resolve(Response.json({status:'running',job:{id:'current',method:'tabs.create',args:{options:{url:'about:blank'}}}}));await flush();
  assert.equal(w.calls.length,1);
+});
+
+
+test('slow app status checks do not accumulate one request per heartbeat per profile',async()=>{
+ const status=deferred();let requests=0;
+ const w=worker(async url=>{if(url.endsWith('/poll'))return new Promise(()=>{});requests++;return status.promise;});
+ w.startup.resolve({managedConfig:config(50001)});await flush();
+ for(let i=0;i<20;i++)w.heartbeat();await flush();assert.equal(requests,1);
+ status.resolve(Response.json({status:'running'}));await flush();w.heartbeat();await flush();assert.equal(requests,2);
 });

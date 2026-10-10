@@ -47,11 +47,11 @@ test('GPM retries every AI error three times at two-minute intervals and preserv
   const post={url:'https://www.threads.com/@demo/post/a',author:'demo'};
   const configure=()=>{runner=createRunner(store,{});runner.d.now=()=>time;runner.d.schedule=async()=>{};runner.d.post=async()=>{posted++;};runner.d[stage==='filtering'?'classify':'generate']=async()=>{calls++;throw Error(message);};};
   try{
-   await store.set({autoRun:{status:'running',config:{...AUTO_DEFAULTS,idleScroll:false},source:1,history:{},events:[],stats:{failed:0},queue:[],nextAt:0,...(stage==='filtering'?{selectionBatch:{posts:[post],batch:{posts:[post]},retries:0}}:{current:{post,phase:'generating',withImages:false}})}});
+   await store.set({autoRun:{status:'running',config:{...AUTO_DEFAULTS,restAverageSeconds:30,idleScroll:false},source:1,history:{},events:[],stats:{failed:0},queue:[],nextAt:0,...(stage==='filtering'?{selectionBatch:{posts:[post],batch:{posts:[post]},retries:0}}:{current:{post,phase:'generating',withImages:false}})}});
    configure();
    for(let retry=1;retry<=3;retry++){
     await runner.tick();assert.equal(calls,retry);assert.equal(store.value.autoRun.status,'running');assert.equal(store.value.autoRun.nextAt,time+120000);
-    if(retry===1){runner.dispose();configure();}
+    if(retry===1){runner.dispose();configure();await runner.load();assert.equal(runner.state.nextAt,time+120000);}
     time+=119999;await runner.tick();assert.equal(calls,retry);time++;
    }
    await runner.tick();assert.equal(calls,4);assert.equal(store.value.autoRun.status,'attention');assert.match(store.value.autoRun.activity.message,/sau 3 lần gọi lại/);assert.equal(posted,0);
@@ -97,7 +97,7 @@ test('real CDP adapter runs shared text-post DOM flow, resumes stable IDs and pr
   assert.equal(result.state,'sent_unverified');assert.equal(await page.evaluate(()=>sessionStorage.getItem('sent')),'test @hoanxu.app');assert.equal(page.url(),'https://www.threads.com/');assert.equal(await page.evaluate(()=>sessionStorage.getItem('trusted')),'true');
   await page.evaluate(()=>{const profile=document.createElement('a');profile.href='/@me';profile.setAttribute('aria-label','Profile');document.body.prepend(profile);const space=document.createElement('div');space.style.height='2000px';document.body.append(space);window.trustedWheel=false;document.addEventListener('wheel',e=>{window.trustedWheel=e.isTrusted;});});
   await browser.evaluate(tab.id,autoPage,['scroll']);assert.equal(await page.evaluate(()=>window.trustedWheel),true);assert.ok(await page.evaluate(()=>scrollY)>0);
-  await page.evaluate(()=>{const input=document.createElement('input');input.type='file';input.accept='image/png,image/jpeg';input.multiple=true;document.body.append(input);input.addEventListener('change',()=>document.body.dataset.uploaded=String(input.files.length));});
+  await page.evaluate(()=>{const input=document.createElement('input');input.type='file';input.accept='image/png,image/jpeg';input.multiple=true;const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.append(input);document.body.append(dialog);input.addEventListener('change',()=>document.body.dataset.uploaded=String(input.files.length));});
   const files=await attachments();const upload=await browser.evaluate(tab.id,replyAction,['upload',{files:files.files}]);assert.equal(upload.files,3);assert.equal(await page.locator('body').getAttribute('data-uploaded'),'3');
   const browser2=new GpmBrowser(store);await browser2.connect('http://127.0.0.1:'+port);assert.equal((await browser2.query()).find(t=>t.url==='https://www.threads.com/').id,tab.id);
   await closeTabPreservingWindow(tab.id,'fixture close');assert.ok(browser.browser.isConnected());assert.ok((await browser.query()).some(t=>t.url==='about:blank'));assert.equal(store.value.tabLifecycle.at(-1).reason,'fixture close');

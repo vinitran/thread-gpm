@@ -20,3 +20,18 @@ test('closing bridge aborts pending work, including queued browser operations',a
  const b=new ExtensionBridge(()=>({status:'stopped'}));const command=b.call('script');const rejection=assert.rejects(command,/Đã đóng/);b.close();await rejection;assert.equal(b.queue.length,0);
  assert.match(extensionArguments('C:\\App Data\\managed-extension'),/--load-extension="C:/);assert.match(extensionArguments('/tmp/extension'),/--proxy-bypass-list="localhost;127\.0\.0\.1;\[::1\]"/);assert.throws(()=>extensionArguments('bad\npath'));
 });
+
+test('a disconnected long poll cannot consume the next browser command',async()=>{
+ const b=new ExtensionBridge(()=>({status:'running'})),controller=new AbortController();
+ const disconnected=b.poll(controller.signal);controller.abort();
+ const command=b.call('tabs.create',{options:{url:'about:blank'}},1000);command.catch(()=>{});
+ try{
+  assert.equal((await disconnected).job,null);
+  const {job}=await b.poll();assert.equal(job.method,'tabs.create');b.result({id:job.id,result:{id:7}});assert.deepEqual(await command,{id:7});
+ }finally{b.close();}
+});
+test('closing a bridge releases all waiting polls immediately',async()=>{
+ const b=new ExtensionBridge(()=>({status:'stopped'}));const first=b.poll(),second=b.poll();b.close();
+ const result=await Promise.race([Promise.all([first,second]),new Promise(r=>setTimeout(()=>r('timeout'),100))]);
+ assert.notEqual(result,'timeout');assert.ok(result.every(r=>r.job===null));
+});
