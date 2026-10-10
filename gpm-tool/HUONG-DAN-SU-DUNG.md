@@ -93,7 +93,7 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 
 Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở profile nếu cần, bắt đầu tìm bài, gọi AI và đăng bình luận bằng cài đặt chung đã lưu. Nên chạy một profile trước để quan sát kết quả.
 
-Mỗi bài có xác suất 60% được chọn follow trước khi bình luận; 40% còn lại chỉ bình luận. Tool lưu lựa chọn theo bài trong từng profile, không bốc lại khi thử lại. Follow chỉ dùng nút (+) ở avatar ngay trong bài và xử lý popup xác nhận đúng tài khoản; không chuyển sang trang cá nhân. Nếu chưa bấm nút và không thấy nút follow khả dụng, tool ghi log bỏ qua follow rồi tiếp tục bình luận tại bài. Người đã theo dõi được bỏ qua; tool không bấm unfollow. Sau khi xác nhận follow mới, tool đợi ngẫu nhiên 210–270 giây (quanh 4 phút) rồi bình luận. Log cập nhật thời gian còn lại mỗi 15 giây; có thể bấm Dừng trong lúc chờ. Nếu đã bấm follow nhưng trạng thái hoặc popup chưa rõ, tool báo lỗi và chưa gửi bình luận. Chế độ dry-run và nút Mở không follow hay gửi bình luận.
+Tool bình luận trực tiếp vào bài viết, không follow người đăng và không chờ 4 phút trước khi bình luận. Áp dụng cho cả chạy trực tiếp và chạy bằng extension.
 
 Muốn chạy nhiều profile, kiểm tra đăng nhập từng profile và lưu cài đặt chung trước, rồi chọn các profile cần chạy. Thanh thao tác giữ trên màn hình khi cuộn; **Bỏ chọn** xoá toàn bộ lựa chọn. Nếu chọn profile nằm ngoài bộ lọc hiện tại, tool báo số lượng cạnh phần chọn.
 
@@ -175,6 +175,6 @@ Tool hiện thao tác giao diện Chrome, không gọi endpoint đăng bình lu�
 
 ## Thao tác chuột trong trình duyệt
 
-Cả chạy trực tiếp và chạy bằng extension đều đưa con trỏ qua các điểm trung gian rồi click khi follow, thả tim, mở trả lời, chọn ô nhập, Post và về trang chủ. Các bước tìm bài, đưa nút vào vùng nhìn thấy và cuộn nhẹ khi nghỉ dùng sự kiện bánh xe theo từng đoạn, có khoảng chờ. Tool đo lại vị trí và kiểm tra nút có bị che/disabled trước khi bấm; Dừng hủy thao tác đang di chuyển hoặc cuộn. Di chuyển diễn ra trong trình duyệt của từng profile.
+Cả chạy trực tiếp và chạy bằng extension đều đưa con trỏ qua các điểm trung gian rồi click khi thả tim, mở trả lời, chọn ô nhập, Post và về trang chủ. Các bước tìm bài, đưa nút vào vùng nhìn thấy và cuộn nhẹ khi nghỉ dùng sự kiện bánh xe theo từng đoạn, có khoảng chờ. Tool đo lại vị trí và kiểm tra nút có bị che/disabled trước khi bấm; Dừng hủy thao tác đang di chuyển hoặc cuộn. Di chuyển diễn ra trong trình duyệt của từng profile.
 
 Bình luận có ảnh: đưa chuột đến **Reply** rồi click → nếu có **Expand composer**, đưa chuột đến và mở rộng → click ô nhập và gõ nội dung → gắn cùng lúc 3 ảnh vào input của đúng hộp trả lời → chờ đủ ảnh xem trước và nút Post ổn định. Riêng ảnh được gắn trực tiếp vào input; không bấm Attach media hay mở hộp chọn file của hệ điều hành. Input của composer nhỏ hoặc bài khác ngoài hộp trả lời không được dùng. Tool chỉ di chuột đến Post và bấm sau khi các kiểm tra này đạt.

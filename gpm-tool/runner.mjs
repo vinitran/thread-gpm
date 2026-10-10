@@ -38,7 +38,7 @@ export function createRunner(store,browser){
  post:async(url,stepDelayMs,shouldContinue,typingDelayMs,withImages)=>{
   const response=(await store.get('aiResults')).aiResults?.[url];if(!response)throw Error('Chưa có response AI');
   const image=withImages?await attachments((await settings()).imagesFolder):{files:[],names:[]};
-  return postReply(url,response.text,image,m=>runner.progress(m).catch(()=>{}),{followAuthor:true,stepDelayMs,typingDelayMs,tabId:runner.state.source,shouldContinue,skipVerification:true,verifyAfterPost:true,waitBeforeHome:true});
+  return postReply(url,response.text,image,m=>runner.progress(m).catch(()=>{}),{stepDelayMs,typingDelayMs,tabId:runner.state.source,shouldContinue,skipVerification:true,verifyAfterPost:true,waitBeforeHome:true});
  },
  check:async url=>{const {replyReceipts={}}=await store.get('replyReceipts'),receipt=replyReceipts[url],progress=m=>runner.progress(m),options={waitBeforeHome:true,shouldContinue:()=>runner.active()};if(receipt?.state==='sent_unverified'){await verifyAfterPost(receipt,progress,options);return returnToFeed(receipt,progress,options);}return checkReply(url,progress);}
  });

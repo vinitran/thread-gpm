@@ -239,12 +239,6 @@ export async function postReply(url,text,image,onProgress=()=>{},options={}){
         await retryTabEdit(()=>chrome.tabs.update(tab.id,{url}),{onProgress,shouldContinue:options.shouldContinue});
       }else await pause(stepDelayMs);
     }
-    if(options.followAuthor){
-      if(await selectFollowForReply(url,options.followRandom||Math.random)){
-        onProgress('Bài này được chọn follow · xác suất 60%.');
-        await followAuthorBeforeReply(tab.id,url,onProgress,options);
-      }else onProgress('Bài này bỏ qua follow · xác suất 40%, tiếp tục comment.');
-    }
     let ready=false;for(let i=0;i<40;i++){ensureRunning();try{ready=await dom(tab.id,'ready',args);if(ready)break;}catch{}await pause(250);}
     if(!ready)throw Error('Không mở được bài để comment.');
     await step('Đang mở ô trả lời…');
