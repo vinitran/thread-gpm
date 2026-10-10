@@ -19,9 +19,19 @@ export async function connectManagedExtension(browser,bridge,{directory,base,loa
  }
  const tab=await browser.context.newPage();
  try{
-  await tab.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/bootstrap.html#'+encodeURIComponent(JSON.stringify({base,token:bridge.token})),{waitUntil:'domcontentloaded',timeout:15000});
-  await tab.waitForFunction(()=>document.body.dataset.ready==='true'||document.body.dataset.error==='true',{},{timeout:15000});
-  if(await tab.evaluate(()=>document.body.dataset.error==='true'))throw Error(await tab.locator('#status').innerText());
+  await tab.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/bootstrap.html',{waitUntil:'domcontentloaded',timeout:15000});
+  // Send through the extension page's runtime directly, rather than a URL fragment.
+  const handshake=await tab.evaluate(async config=>{
+   const result=await chrome.runtime.sendMessage({type:'configure-managed',config});
+   if(!result?.ok)return {ok:false,error:result?.error||'Extension không xác nhận cấu hình.'};
+   const saved=(await chrome.storage.local.get('managedConfig')).managedConfig;
+   if(saved?.base!==config.base||saved?.token!==config.token)return {ok:false,error:'Extension chưa lưu đúng cấu hình kết nối.'};
+   const status=await chrome.runtime.sendMessage({type:'managed-state'});
+   return status?.ok?{ok:true}:{ok:false,error:status?.error||'Extension chưa đọc được trạng thái app.'};
+  },{base,token:bridge.token});
+  if(!handshake?.ok)throw Error(handshake?.error||'Extension chưa nhận cấu hình từ app.');
+  // Status alone is insufficient: verify the command polling loop also responds.
+  await bridge.call('tabs.query',{},20000);
   await bridge.ready();browser.extensionBridge=bridge;
  }catch(e){throw Error('Không kết nối được bộ chạy extension: '+e.message+' · Kiểm tra app đang mở và Chrome/GPM hỗ trợ extension.');}
  finally{await tab.close().catch(()=>{});}

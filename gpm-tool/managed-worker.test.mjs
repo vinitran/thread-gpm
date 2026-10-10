@@ -76,3 +76,13 @@ test('a fresh extension without saved configuration directs the user to Run by e
  let requests=0;const w=worker(async()=>{requests++;return Response.json({});});w.startup.resolve({});await flush();
  const result=await w.message({type:'managed-state'});assert.equal(result.ok,false);assert.match(result.error,/Chạy bằng extension trong app/);assert.match(result.error,/Nút Mở/);assert.equal(requests,0);
 });
+
+test('repeating the same configuration does not discard a command delivered to the existing poll',async()=>{
+ const poll=deferred();let first=true;
+ const w=worker(async url=>{if(url.endsWith('/poll')){if(first){first=false;return poll.promise;}return new Promise(()=>{});}return Response.json({status:'running'});});
+ w.startup.resolve({managedConfig:config(50001)});await flush();
+ assert.equal((await w.message({type:'configure-managed',config:config(50002)})).ok,true);
+ assert.equal((await w.message({type:'configure-managed',config:config(50001)})).ok,true);
+ poll.resolve(Response.json({status:'running',job:{id:'current',method:'tabs.create',args:{options:{url:'about:blank'}}}}));await flush();
+ assert.equal(w.calls.length,1);
+});

@@ -15,6 +15,8 @@ test('real MV3 extension loads automatically and performs native tab, DOM, Like 
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  try{
   const staged=await stageManagedExtension(dir);
+  // An old bootstrap script can fail to read its fragment; the app must still configure directly.
+  await fs.writeFile(path.join(staged.directory,'bootstrap.js'),"document.body.dataset.error='true';document.getElementById('status').textContent='Fixture bootstrap failed';");
   // Official Chrome supports Extensions.loadUnpacked with this debugging flag.
   context=await chromium.launchPersistentContext(path.join(dir,'chrome'),{executablePath:process.env.TEST_CHROME||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'/usr/bin/google-chrome'),headless:true,args:['--enable-unsafe-extension-debugging','--remote-debugging-port=0'],ignoreDefaultArgs:['--disable-extensions']});
   await context.route('https://www.threads.com/**',r=>r.fulfill({contentType:'text/html',body:markup}));

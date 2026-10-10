@@ -1,4 +1,5 @@
 (async()=>{try{
+ if(!location.hash)return; // New app versions configure this page directly through CDP.
  const config=JSON.parse(decodeURIComponent(location.hash.slice(1)));history.replaceState(null,'',location.pathname);
  const result=await chrome.runtime.sendMessage({type:'configure-managed',config});if(!result.ok)throw Error(result.error);
  document.getElementById('status').textContent='Đã kết nối extension với app.';document.body.dataset.ready='true';

@@ -6,6 +6,7 @@ import {pointerTarget} from './pointer-input.js';
 const functions={autoPage,extractPosts,replyAction,engagementPage,pointerTarget};
 const attached=new Set();chrome.debugger.onDetach.addListener(target=>attached.delete(target.tabId));
 let configured,loopRunning=false,configurationEpoch=0;
+const sameConnection=(a,b)=>!!a&&!!b&&a.base===b.base&&a.token===b.token;
 async function request(path,body,connection){
  if(!connection){if(!configured)await initialization;connection=configured;}
  if(!connection)throw Error('Chưa nhận cấu hình từ app · chọn profile và bấm Chạy bằng extension trong app HoanXu GPM. Nút Mở chỉ mở trình duyệt.');
@@ -41,18 +42,18 @@ async function loaded(tab){
 }
 async function synchronize(){
  const connection=configured;if(!connection)return;
- try{const state=await request('status',undefined,connection);if(configured===connection)await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch(e){if(configured===connection)await disconnected(e);}
+ try{const state=await request('status',undefined,connection);if(sameConnection(configured,connection))await chrome.storage.local.set({autoRun:{status:state.status},managedStatus:state});}catch(e){if(sameConnection(configured,connection))await disconnected(e);}
 }
 async function disconnected(error){await chrome.storage.local.set({autoRun:{status:'disconnected'},managedStatus:{status:'disconnected',message:error?.message||'Mất kết nối app · đã ngừng thao tác.'}}).catch(()=>{});}
 async function runLoop(){
  if(loopRunning||!configured)return;loopRunning=true;
  try{while(configured){
   const connection=configured;
-  try{const {job,status}=await request('poll',undefined,connection);if(configured!==connection)continue;await chrome.storage.local.set({autoRun:{status}});if(!job||configured!==connection)continue;
+  try{const {job,status}=await request('poll',undefined,connection);if(!sameConnection(configured,connection))continue;await chrome.storage.local.set({autoRun:{status}});if(!job||!sameConnection(configured,connection))continue;
    let result,error;try{result=await execute(job);}catch(e){error=e.message;}
    // Never replay a browser action if its acknowledgement is lost.
    await request('result',{id:job.id,result:result??null,error},connection);
-  }catch(e){if(configured===connection){await disconnected(e);await new Promise(r=>setTimeout(r,1000));}}
+  }catch(e){if(sameConnection(configured,connection)){await disconnected(e);await new Promise(r=>setTimeout(r,1000));}}
  }}finally{loopRunning=false;}
 }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
@@ -60,7 +61,9 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message.type==='configure-managed'){
   const config=message.config;
   if(typeof config?.base!=='string'||!/^http:\/\/127\.0\.0\.1:\d+$/.test(config.base)||typeof config.token!=='string'||!/^[a-f0-9]{64}$/.test(config.token)){reply({ok:false,error:'Cấu hình kết nối không hợp lệ.'});return;}
-  const epoch=++configurationEpoch;configured=config;
+  const epoch=++configurationEpoch;
+  // Reconnecting to the same bridge must keep its outstanding poll valid.
+  if(configured?.base!==config.base||configured?.token!==config.token)configured=config;
   chrome.storage.local.set({managedConfig:config}).then(async()=>{
    await request('status',undefined,config);
    if(epoch!==configurationEpoch)throw Error('Đã nhận cấu hình kết nối mới hơn.');
