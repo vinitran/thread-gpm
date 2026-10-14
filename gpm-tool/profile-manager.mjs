@@ -4,6 +4,7 @@ import {GpmApi} from './gpm-api.mjs';
 import {Store} from './store.mjs';
 import {dashboard,profileLogs} from './dashboard.mjs';
 import {redact,sharedProfileSettings,validateSettings,assertLiveSettings} from './settings.mjs';
+import {DEFAULT_PRESET_ID,ensurePresetCatalog,getPreset,validatePreset} from './settings-presets.mjs';
 const valid=id=>typeof id==='string'&&/^[-\w]{1,100}$/.test(id);
 const busy=view=>['running','stopping'].includes(view?.state?.status)||!!view?.operation;
 export class ProfileWorker{
@@ -33,7 +34,7 @@ export class ProfileWorker{
 }
 export class ProfileManager{
  constructor(store,{workerFactory=(dir,onView)=>new ProfileWorker(dir,onView),onChange=()=>{},gpmFactory=base=>new GpmApi(base)}={}){this.gpmFactory=gpmFactory;this.store=store;this.workerFactory=workerFactory;this.onChange=onChange;this.workers=new Map();this.views=new Map();this.locks=new Map();this.cancelled=new Map();this.closing=false;this.live=new Map();this.syncing=null;this.endpoints=new Map();this.stoppingProfiles=new Map();}
- rows(){return Object.values(this.store.value.profileRegistry||{}).map(({view:discarded,...row})=>({...row,...(this.live.get(row.id)?.metadata||{}),gpm:this.live.get(row.id)?{...this.live.get(row.id),metadata:undefined}:{status:'unknown',fresh:false},view:this.views.get(row.id)||{state:{status:'idle',events:[]},counts:{today:0,total:0,session:0,unverified:0,sessions:0},recent:[],connected:false}})).map(row=>({...row,view:{...row.view,logs:profileLogs(row,row.view)}})).sort((a,b)=>(b.lastUsedAt||'').localeCompare(a.lastUsedAt||''));}
+ rows(){return Object.values(this.store.value.profileRegistry||{}).map(({view:discarded,...row})=>({...row,...(this.live.get(row.id)?.metadata||{}),gpm:this.live.get(row.id)?{...this.live.get(row.id),metadata:undefined}:{status:'unknown',fresh:false},view:this.views.get(row.id)||{state:{status:'idle',events:[]},counts:{today:0,total:0,session:0,unverified:0,sessions:0},recent:[],connected:false}})).map(row=>({...row,settingPresetName:this.store.value.settingsPresets?.find(p=>p.id===(row.settingPresetId||DEFAULT_PRESET_ID))?.name||'Mặc định',view:{...row.view,logs:profileLogs(row,row.view)}})).sort((a,b)=>(b.lastUsedAt||'').localeCompare(a.lastUsedAt||''));}
  startSync(intervalMs=3000){if(this.syncTimer)return;const tick=()=>this.syncLive().catch(()=>{});tick();this.syncTimer=setInterval(tick,intervalMs);this.syncTimer.unref();}
  async syncLive(){
   if(this.syncing)return this.syncing;
@@ -54,13 +55,13 @@ export class ProfileManager{
  }
  async currentSettings(settings){const profile=await this.gpmFactory(settings.gpmApi||'http://localhost:9495').call('/profiles/'+encodeURIComponent(settings.profileId));if(profile?.id!==settings.profileId)throw Error('Profile không khớp ID.');return {...settings,profileName:profile.name,proxy:profile.raw_proxy||''};}
  async register(settings,action){
-  if(!valid(settings.profileId))throw Error('Chọn profile và lưu cài đặt trước.');const id=settings.profileId,registry=this.store.value.profileRegistry||{},old=registry[id];
+  if(!valid(settings.profileId))throw Error('Chọn profile và lưu cài đặt trước.');await ensurePresetCatalog(this.store,settings);const id=settings.profileId,registry=this.store.value.profileRegistry||{},old=registry[id];settings={...settings,settingPresetId:settings.settingPresetId||old?.settingPresetId||DEFAULT_PRESET_ID};getPreset(this.store.value.settingsPresets,settings.settingPresetId);
   const log=action||(!old||old.proxy!==(settings.proxy||'')?'lưu cấu hình':null);
   this.endpoints.set(id,settings.gpmApi||this.store.value.settings?.gpmApi||'http://localhost:9495');
-  registry[id]={...old,gpmApi:this.endpoints.get(id),runLog:log?[...(old?.runLog||[]),{time:new Date().toISOString(),action:log,proxy:settings.proxy||''}].slice(-100):old?.runLog||[],id,name:settings.profileName||old?.name||id,proxy:settings.proxy||'',lastUsedAt:new Date().toISOString()};await this.store.set({profileRegistry:registry});await this.profileStore(id,settings);return registry[id];
+  registry[id]={...old,settingPresetId:settings.settingPresetId,gpmApi:this.endpoints.get(id),runLog:log?[...(old?.runLog||[]),{time:new Date().toISOString(),action:log,proxy:settings.proxy||''}].slice(-100):old?.runLog||[],id,name:settings.profileName||old?.name||id,proxy:settings.proxy||'',lastUsedAt:new Date().toISOString()};await this.store.set({profileRegistry:registry});await this.profileStore(id,settings);return registry[id];
  }
  async init(){
-  const s=this.store.value.settings;
+  const s=this.store.value.settings;await ensurePresetCatalog(this.store,s);
   if(valid(s?.profileId)&&!this.store.value.profileMigrationDone){
    await this.register(s);const target=await this.profileStore(s.profileId,s);
    const patch={};for(const key of ['autoRun','replyReceipts','aiResults','browserTargets','tabLifecycle'])if(this.store.value[key]!==undefined)patch[key]=this.store.value[key];
@@ -70,9 +71,10 @@ export class ProfileManager{
   if(!this.store.value.profileMigrationDone)await this.store.set({profileMigrationDone:true});
   const registry=this.store.value.profileRegistry||{};let cleaned=false;for(const row of Object.values(registry)){if('view' in row){delete row.view;cleaned=true;}}if(cleaned)await this.store.set({profileRegistry:registry});
   for(const row of this.rows()){
-   const data=await this.profileStore(row.id);if(this.store.value.sharedSettings&&data.value.settings){const settings=sharedProfileSettings(this.store.value.sharedSettings,data.value.settings);await data.set({settings,...(data.value.autoRun?.config?{autoRun:{...data.value.autoRun,config:settings.runConfig}}:{})});}this.endpoints.set(row.id,data.value.settings?.gpmApi||row.gpmApi||this.store.value.settings?.gpmApi||'http://localhost:9495');const view=dashboard(data.value,false);this.views.set(row.id,view);
+   const data=await this.profileStore(row.id);if(data.value.settings){const settings=this.effectiveSettings({...data.value.settings,settingPresetId:row.settingPresetId||DEFAULT_PRESET_ID});await data.set({settings,...(data.value.autoRun?.config?{autoRun:{...data.value.autoRun,config:settings.runConfig}}:{})});}this.endpoints.set(row.id,data.value.settings?.gpmApi||row.gpmApi||this.store.value.settings?.gpmApi||'http://localhost:9495');const view=dashboard(data.value,false);this.views.set(row.id,view);registry[row.id]={...registry[row.id],settingPresetId:data.value.settings?.settingPresetId||DEFAULT_PRESET_ID};
    if(data.value.autoRun?.status==='running')this.worker(row.id).boot().catch(e=>this.fail(row.id,e));
   }
+  await this.store.set({profileRegistry:registry});
  }
  async profileStore(id,settings){if(!valid(id))throw Error('Profile ID không hợp lệ.');const data=await new Store(path.join(this.store.dir,'profiles',id)).load();if(!data.value.settings&&settings)await data.set({settings:{...settings,profileId:id}});return data;}
  worker(id){if(!this.workers.has(id)){const worker=this.workerFactory(path.join(this.store.dir,'profiles',id),view=>{
@@ -89,11 +91,37 @@ export class ProfileManager{
  }
  async applySharedSettings(shared){
   const targets=[];
-  for(const row of this.rows()){const data=await this.profileStore(row.id);if(!data.value.settings)throw Error('Profile '+row.name+' chưa có cấu hình.');const merged=sharedProfileSettings(shared,data.value.settings);const validated=validateSettings(merged,data.value.settings);assertLiveSettings(validated,data.value.settings,busy(this.views.get(row.id)));if(this.locks.has(row.id)&&validated.gpmApi!==data.value.settings.gpmApi)throw Error('Profile '+row.name+' đang xử lý · đợi hoàn tất trước khi đổi GPM Local API.');targets.push({id:row.id,name:row.name,settings:{...merged,gpmApi:validated.gpmApi,runConfig:validated.runConfig}});}
+  for(const row of this.rows()){const data=await this.profileStore(row.id);if(!data.value.settings)throw Error('Profile '+row.name+' chưa có cấu hình.');const merged=sharedProfileSettings(shared,data.value.settings,this.store.value.settingsPresets);const validated=validateSettings(merged,data.value.settings);assertLiveSettings(validated,data.value.settings,busy(this.views.get(row.id)));if(this.locks.has(row.id)&&validated.gpmApi!==data.value.settings.gpmApi)throw Error('Profile '+row.name+' đang xử lý · đợi hoàn tất trước khi đổi GPM Local API.');targets.push({id:row.id,name:row.name,settings:{...merged,gpmApi:validated.gpmApi,runConfig:validated.runConfig}});}
   await this.store.set({sharedSettings:shared});
   const results=[];
   for(const target of targets){try{await this.locked(target.id,()=>this.updateSettings(target.settings));results.push({id:target.id,name:target.name,ok:true});}catch(e){results.push({id:target.id,name:target.name,ok:false,error:redact(e.message,target.settings)});}}
   return results;
+ }
+ effectiveSettings(profile){return sharedProfileSettings(this.store.value.sharedSettings||this.store.value.settings||profile,profile,this.store.value.settingsPresets);}
+ async savePreset(input){
+  await ensurePresetCatalog(this.store,input);const presets=this.store.value.settingsPresets,preset=validatePreset(input);
+  if(input.id)getPreset(presets,input.id);else if(presets.length>=100)throw Error('Tối đa 100 bộ cài đặt.');
+  if(presets.some(p=>p.id!==preset.id&&p.name.toLocaleLowerCase()===preset.name.toLocaleLowerCase()))throw Error('Tên bộ cài đặt đã tồn tại.');
+  await this.store.set({settingsPresets:[...presets.filter(p=>p.id!==preset.id),preset].sort((a,b)=>a.id===DEFAULT_PRESET_ID?-1:b.id===DEFAULT_PRESET_ID?1:a.name.localeCompare(b.name))});
+  const results=[];
+  for(const row of this.rows().filter(r=>(r.settingPresetId||DEFAULT_PRESET_ID)===preset.id)){
+   try{await this.locked(row.id,async()=>{const data=await this.profileStore(row.id);await this.updateSettings(this.effectiveSettings(data.value.settings));});results.push({id:row.id,name:row.name,ok:true});}
+   catch(e){results.push({id:row.id,name:row.name,ok:false,error:e.message});}
+  }
+  return {ok:results.every(r=>r.ok),preset,results};
+ }
+ async deletePreset(id){
+  getPreset(this.store.value.settingsPresets,id);if(id===DEFAULT_PRESET_ID)throw Error('Không thể xóa bộ Mặc định.');
+  if(this.rows().some(r=>r.settingPresetId===id))throw Error('Bộ này đang được profile dùng. Đổi bộ cài đặt của các profile trước khi xóa.');
+  await this.store.set({settingsPresets:this.store.value.settingsPresets.filter(p=>p.id!==id)});this.onChange();return {ok:true};
+ }
+ async assignPreset(ids,presetId){
+  getPreset(this.store.value.settingsPresets,presetId);
+  if(!Array.isArray(ids)||!ids.length||ids.length>500||ids.some(id=>!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id)))throw Error('Chọn 1–500 profile đã thêm.');
+  const results=[];for(const id of new Set(ids)){
+   try{await this.locked(id,async()=>{const data=await this.profileStore(id);await this.updateSettings(this.effectiveSettings({...data.value.settings,settingPresetId:presetId}));});results.push({id,ok:true});}
+   catch(e){results.push({id,ok:false,error:e.message});}
+  }return {ok:results.every(r=>r.ok),results};
  }
  async configure(settings){const id=settings.profileId;if(busy(this.views.get(id)))throw Error('Dừng profile này trước khi đổi cấu hình.');await this.register(settings);await this.profileStore(id,settings);return this.worker(id).call('settings',settings);}
  gpmStop(id){const base=this.endpoints.get(id)||this.store.value.profileRegistry?.[id]?.gpmApi||this.store.value.settings?.gpmApi||'http://localhost:9495';return this.gpmFactory(base).call('/profiles/stop/'+encodeURIComponent(id));}
@@ -118,7 +146,7 @@ export class ProfileManager{
    if(this.closing||(this.cancelled.get(id)||0)!==epoch)return {ok:true,cancelled:true};
    const worker=this.worker(id);const current=await worker.call('state');
    if(current.state.status==='running'){if((current.engine||'direct')!==engine)throw Error('Dừng profile trước khi đổi bộ chạy.');return engine==='extension'?worker.call('extension-reconnect',{},150000):{ok:true,alreadyRunning:true};}
-   const data=await this.profileStore(id);if(this.closing||(this.cancelled.get(id)||0)!==epoch)return {ok:true,cancelled:true};
+   const data=await this.profileStore(id);await this.updateSettings(this.effectiveSettings(data.value.settings));if(this.closing||(this.cancelled.get(id)||0)!==epoch)return {ok:true,cancelled:true};
    try{await worker.call('profile-open',{useCurrentProxy:true,engine},engine==='extension'?180000:90000);}catch(e){if(this.closing||(this.cancelled.get(id)||0)!==epoch){if(!this.closing)await this.gpmStop(id);return {ok:true,cancelled:true};}throw e;}
    if(this.closing||(this.cancelled.get(id)||0)!==epoch){if(!this.closing)await this.gpmStop(id);return {ok:true,cancelled:true};}
    const result=await worker.call('start',{});

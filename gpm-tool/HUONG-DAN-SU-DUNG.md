@@ -78,22 +78,32 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 
 ## 5. Cài đặt AI và nhịp chạy
 
-1. Mở phần **Cài đặt**; phạm vi mặc định là tất cả profile.
+1. Mở phần **Cài đặt**; phần cài đặt chung áp dụng cho tất cả profile.
 2. Điền API key của dịch vụ AI mà tool đang dùng: `https://ai.hoanxu.com/v1`. Không tự thay bằng key của một dịch vụ khác.
 3. Chọn model được key đó hỗ trợ; có thể dùng **Tải danh sách model**. Khi đổi key, lưu trước rồi tải danh sách vì nút tải dùng key đã lưu.
-4. Kiểm tra **Hướng dẫn cho AI (prompt)** và **Chủ đề muốn tìm** để phù hợp nội dung muốn xử lý.
+4. Chọn hoặc tạo bộ **prompt / chủ đề**, sửa nội dung phù hợp rồi bấm **Lưu bộ**.
 5. Người mới có thể giữ mặc định: gõ 60ms, chờ giữa bước 2 giây, nghỉ tìm bài 30 giây, nghỉ trung bình 150 giây (tự dao động 120–180 giây).
 6. Chọn bật/tắt **Cuộn nhẹ lên/xuống khi nghỉ** và **Thả tim khi chờ**.
 7. Ảnh: để trống folder để dùng ảnh đi kèm. Folder riêng cần `app_store.png` và ít nhất 2 ảnh khác; bấm **Kiểm tra folder** trước khi lưu.
-8. Bấm **Lưu cho tất cả profile**, đợi báo đã lưu.
+8. Bấm **Lưu cài đặt chung**, đợi báo đã lưu.
 
-Để trống API key khi sửa cài đặt sẽ giữ key đã lưu. AI, model, prompt, ảnh, chủ đề và nhịp chạy dùng chung cho tất cả profile. Proxy, kết nối và lịch sử được giữ riêng. Có thể đổi nhịp chạy, chủ đề và AI khi đang chạy: bấm **Lưu cho tất cả profile**, bước tiếp theo dùng cài đặt mới; thao tác đang thực hiện tiếp tục hoàn tất. Đổi kết nối hoặc proxy cần dừng profile trước.
+Để trống API key khi sửa cài đặt sẽ giữ key đã lưu. Model AI, API key, ảnh, nhịp chạy và các tùy chọn dùng chung cho tất cả profile. Chỉ prompt và chủ đề được lưu trong các bộ cài đặt riêng, chọn cho từng profile. Proxy, kết nối và lịch sử được giữ riêng. Có thể đổi nhịp chạy, chủ đề và AI khi đang chạy: bấm **Lưu cài đặt chung** hoặc **Lưu bộ** theo phần đang sửa, bước tiếp theo dùng cài đặt mới; thao tác đang thực hiện tiếp tục hoàn tất. Đổi kết nối hoặc proxy cần dừng profile trước.
+
+### Bộ prompt và chủ đề cho từng profile
+
+- Trong **Cài đặt**, chọn bộ đang xem rồi bấm **Tạo bộ mới…**. Đặt tên, sửa **Hướng dẫn cho AI (prompt)** và **Chủ đề muốn tìm**, bấm **Lưu bộ**. Tạo mới sao chép nội dung bộ đang xem để bạn chỉnh tiếp.
+- Bộ **Mặc định** lấy prompt và chủ đề đã lưu trước khi cập nhật. Các profile đã thêm cũ tự dùng bộ này; lịch sử được giữ nguyên. Có thể sửa nội dung bộ Mặc định, không xóa bộ này.
+- Khi **Tạo mới**, **Từ GPM** hoặc **Nhập file**, chọn bộ prompt/chủ đề trước khi xác nhận thêm profile. Không chọn thì dùng Mặc định.
+- Bảng profile hiển thị cột **Bộ cài đặt**. Chọn một hoặc nhiều profile rồi bấm **Đổi bộ cài đặt…** để gán bộ khác.
+- **Lưu bộ** chỉ áp dụng cho các profile đang dùng bộ đó. Các lượt AI/comment đang thực hiện sẽ hoàn tất; bước tiếp theo dùng nội dung mới. Cả chạy tự động và chạy bằng extension dùng bộ đã chọn.
+- **Lưu cài đặt chung** áp dụng model, API key, nhịp chạy, ảnh, follow/tag/thả tim cho tất cả profile, giữ nguyên bộ prompt/chủ đề của từng profile.
+- Muốn xóa một bộ, đổi các profile đang dùng bộ đó sang bộ khác trước, rồi bấm **Xóa bộ**. Danh sách bộ và lựa chọn của profile được lưu trong SQLite trên máy.
 
 ## 6. Chạy tool
 
 Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở profile nếu cần, bắt đầu tìm bài, gọi AI và đăng bình luận bằng cài đặt chung đã lưu. Nên chạy một profile trước để quan sát kết quả.
 
-Mặc định tool bình luận trực tiếp vào bài viết, không follow và không chờ 4 phút. Nếu cần, bật **Theo dõi trước khi bình luận** trong Cài đặt rồi Lưu cho tất cả profile. Tùy chọn áp dụng cho cả chạy trực tiếp và chạy bằng extension.
+Mặc định tool bình luận trực tiếp vào bài viết, không follow và không chờ 4 phút. Nếu cần, bật **Theo dõi trước khi bình luận** trong Cài đặt rồi Lưu cài đặt chung. Tùy chọn áp dụng cho cả chạy trực tiếp và chạy bằng extension.
 
 Muốn chạy nhiều profile, kiểm tra đăng nhập từng profile và lưu cài đặt chung trước, rồi chọn các profile cần chạy. Thanh thao tác giữ trên màn hình khi cuộn; **Bỏ chọn** xoá toàn bộ lựa chọn. Nếu chọn profile nằm ngoài bộ lọc hiện tại, tool báo số lượng cạnh phần chọn.
 
@@ -118,7 +128,7 @@ Luồng lần đầu: mở GPM → thêm/nhập profile → nhập proxy → M�
 
 Thời gian nghỉ sau bình luận dùng một giá trị trung bình: mặc định 150 giây, mỗi lượt dao động ngẫu nhiên ±20% (120–180 giây). Bấm Lưu và áp dụng để dùng giá trị mới từ lượt nghỉ tiếp theo.
 
-Đổi model rồi bấm **Lưu cho tất cả profile** sẽ áp dụng chính model đang chọn (Sol, Luna hoặc model khác) cho mọi profile đã thêm và profile mới. Lượt AI đang thực hiện hoàn tất; lần gọi AI tiếp theo dùng model mới. Nhật ký ghi model được dùng khi lọc bài và tạo bình luận. Nếu một profile chưa áp dụng được, giao diện báo lỗi để bấm Lưu thử lại.
+Đổi model rồi bấm **Lưu cài đặt chung** sẽ áp dụng chính model đang chọn (Sol, Luna hoặc model khác) cho mọi profile đã thêm và profile mới. Lượt AI đang thực hiện hoàn tất; lần gọi AI tiếp theo dùng model mới. Nhật ký ghi model được dùng khi lọc bài và tạo bình luận. Nếu một profile chưa áp dụng được, giao diện báo lỗi để bấm Lưu thử lại.
 
 ## 8. Chuyển profile sang máy khác, giữ cookie/phiên Threads
 
@@ -154,12 +164,12 @@ App lưu dữ liệu trong SQLite `tool.sqlite` bên ngoài thư mục cài đ�
 ## Chạy bằng extension trong app macOS / Windows
 
 1. Trong tab **Profile**, chọn các profile muốn chạy.
-2. Lưu API key, model, chủ đề và nhịp chạy ở **Cài đặt** như bình thường.
+2. Lưu API key, model và nhịp chạy chung ở **Cài đặt**; chọn bộ prompt/chủ đề cho profile như bình thường.
 3. Bấm **Chạy bằng extension**. App đọc profile/proxy từ GPM, tự chuẩn bị extension theo từng profile, nạp extension nếu thiếu rồi bắt đầu chạy. Không cần cài thủ công từ Chrome Web Store.
 4. Xem tiến độ, log và lịch sử ở app. Giữ app mở trong suốt quá trình chạy; extension nhận lệnh từ app trên máy này.
 5. Bấm **Dừng & đóng** để dừng và đóng profile qua GPM. Dừng trước khi đổi giữa **Chạy tự động** và **Chạy bằng extension**.
 
-Chế độ này dùng cùng bộ logic, AI, cấu hình realtime, giới hạn phiên và SQLite với chế độ chạy hiện tại. Các thao tác tab/DOM, nhập chữ, đính kèm ảnh và bấm nút được thực hiện qua API Chrome của extension. **Theo dõi trước khi bình luận** trong Cài đặt mặc định tắt: tool chỉ tìm bài và bình luận, không follow hoặc chờ sau follow. Khi bật và Lưu cho tất cả profile, các lượt sau dùng xác suất 60%, follow bằng nút avatar và chờ 210–270 giây sau follow mới; không vào trang cá nhân. Khi nghỉ vẫn chỉ thả tim ngẫu nhiên 2–5 bài. Không sử dụng bộ chạy độc lập của extension cũ.
+Chế độ này dùng cùng bộ logic, AI, cấu hình realtime, giới hạn phiên và SQLite với chế độ chạy hiện tại. Các thao tác tab/DOM, nhập chữ, đính kèm ảnh và bấm nút được thực hiện qua API Chrome của extension. **Theo dõi trước khi bình luận** trong Cài đặt mặc định tắt: tool chỉ tìm bài và bình luận, không follow hoặc chờ sau follow. Khi bật và Lưu cài đặt chung, các lượt sau dùng xác suất 60%, follow bằng nút avatar và chờ 210–270 giây sau follow mới; không vào trang cá nhân. Khi nghỉ vẫn chỉ thả tim ngẫu nhiên 2–5 bài. Không sử dụng bộ chạy độc lập của extension cũ.
 
 App lưu extension trong thư mục dữ liệu riêng của profile, ngoài thư mục cài app. Mỗi lần bấm Chạy bằng extension, app xoá file extension cũ trong thư mục riêng, chép bản hiện tại và thay extension có cùng ID. Không xoá các extension khác. Chrome cũ không hỗ trợ gỡ/nạp qua CDP sẽ tải lại extension cùng ID. Nếu Chrome đang mở chưa hỗ trợ nạp nóng, app có thể đóng/mở lại đúng profile đã chọn để nạp extension. Nếu GPM/Chrome không cho phép tự nạp extension, app báo lỗi và không tự đổi sang chạy trực tiếp. Cần dùng profile Chrome; Firefox chưa hỗ trợ chế độ này.
 

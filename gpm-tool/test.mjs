@@ -297,3 +297,10 @@ test('actual Threads avatar structure outside author link selects inner plus and
  assert.equal(await page.locator('.plus').count(),1);
  }finally{await browser.close();}
 });
+
+
+test('missing account from extension DOM reports a login check before collecting posts or calling AI',async()=>{
+ let reads=0;const store={value:{},get:async()=>({settings:{}})},browser={describe:async()=>({url:'https://www.threads.com/'}),evaluate:async()=>{reads++;return null;}};
+ const runner=createRunner(store,browser);
+ try{await assert.rejects(()=>runner.d.capture(1,[]),/Không xác nhận được đăng nhập Threads/);assert.equal(reads,1);}finally{runner.dispose();}
+});

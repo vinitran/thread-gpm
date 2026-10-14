@@ -21,6 +21,7 @@ sealed class ProfileRow : INotifyPropertyChanged
     bool selected;
     public string Id => J.S(Data["id"]);
     public string Name => J.S(Data["name"]);
+    public string Preset => J.S(Data["settingPresetName"]);
     public string Proxy => J.S(Data["proxy"]) is { Length: > 0 } value ? value : "Không proxy";
     public JsonObject State => J.O(J.O(Data["view"])["state"]);
     public string Category
@@ -59,6 +60,10 @@ sealed class MainWindow : Window
     bool updateChecking; DateTime lastUpdateCheck = DateTime.MinValue;
     readonly ProgressBar progress = new() { IsIndeterminate = true, Height = 3, Visibility = Visibility.Collapsed };
     readonly Dictionary<string, TextBox> fields = new();
+    readonly ComboBox presetPicker = new() { Width = 260, DisplayMemberPath = "Value", SelectedValuePath = "Key" };
+    readonly TextBlock presetNote = new() { TextWrapping = TextWrapping.Wrap };
+    string presetId = "default", presetSignature = ""; bool presetDirty, fillingPresets;
+    internal JsonObject[] SettingPresets => J.Rows(snapshot["settingsPresets"]).ToArray();
     readonly Dictionary<string, CheckBox> checks = new();
     readonly Dictionary<string, Button> buttons = new();
     readonly DispatcherTimer poll = new() { Interval = TimeSpan.FromSeconds(2) };
@@ -77,7 +82,7 @@ sealed class MainWindow : Window
         var banner = new DockPanel(); var installTop = Action("Cập nhật & mở lại", "install-update-top", InstallUpdate); DockPanel.SetDock(installTop, Dock.Right); banner.Children.Add(installTop); banner.Children.Add(updateWarning); updateBanner.Child = banner; header.Children.Add(updateBanner);
         DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
         var footer = new StackPanel { Margin = new(0, 14, 0, 0) }; footer.Children.Add(progress); message.Text = "Đang khởi động ứng dụng…"; message.TextWrapping = TextWrapping.Wrap; message.Margin = new(0, 8, 0, 0); footer.Children.Add(message); DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
-        var tabs = new TabControl(); root.Children.Add(tabs); tabs.Items.Add(new TabItem { Header = "Profile", Content = ProfilesPage() }); tabs.Items.Add(new TabItem { Header = "Cài đặt chung", Content = SettingsPage() }); tabs.Items.Add(new TabItem { Header = "Nhật ký & lịch sử", Content = LogsPage() });
+        var tabs = new TabControl(); root.Children.Add(tabs); tabs.Items.Add(new TabItem { Header = "Profile", Content = ProfilesPage() }); tabs.Items.Add(new TabItem { Header = "Cài đặt", Content = SettingsPage() }); tabs.Items.Add(new TabItem { Header = "Nhật ký & lịch sử", Content = LogsPage() });
         poll.Tick += async (_, _) => { await Refresh(); if (DateTime.UtcNow - lastUpdateCheck >= TimeSpan.FromMinutes(1)) await CheckForUpdate(); };
         backend.Exited += code => Dispatcher.BeginInvoke(new Action(() =>
         {
@@ -121,6 +126,7 @@ sealed class MainWindow : Window
         foreach (var id in new[] { "check-update", "check-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.S(update["repository"]).Length > 0;
         selection.Text = Selected.Any() ? $"Đã chọn {Selected.Count()} profile" : "Chưa chọn profile";
         foreach (var field in fields.Values) field.IsEnabled = api != null && loaded && busy == 0;
+        presetPicker.IsEnabled = api != null && loaded && busy == 0; fields.GetValueOrDefault("presetName")?.SetCurrentValue(IsEnabledProperty, api != null && loaded && busy == 0 && presetId != "default"); buttons["delete-preset"].IsEnabled = api != null && loaded && busy == 0 && presetId != "default"; buttons["assign-preset"].IsEnabled = api != null && loaded && busy == 0 && Ids.Length > 0;
         foreach (var check in checks.Values) check.IsEnabled = api != null && loaded && busy == 0;
         model.IsEnabled = key.IsEnabled = api != null && loaded && busy == 0; prompt.IsReadOnly = !loaded || busy > 0;
     }
@@ -135,11 +141,11 @@ sealed class MainWindow : Window
         var bottom = new StackPanel { Margin = new(0, 12, 0, 0) }; selection.Width = 170; selection.VerticalAlignment = VerticalAlignment.Center;
         bottom.Children.Add(Row(selection, Action("Mở trình duyệt", "open-selected", OpenSelected), Action("Chạy thử · không đăng", "dry-run-selected", DryRunSelected), Action("Dừng & đóng", "stop-selected", () => { openEpoch++; Batch("close"); })));
         bottom.Children.Add(Row(Action("Chạy tự động", "start-selected", () => Batch("start")), Action("Chạy bằng extension", "start-extension", () => Batch("start-extension")), Note("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")));
-        bottom.Children.Add(Row(Action("Sửa tên / proxy…", "edit-profile", EditProfile), Action("Xóa khỏi GPM…", "delete-profile", DeleteProfile), Note("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")));
+        bottom.Children.Add(Row(Action("Đổi bộ cài đặt…", "assign-preset", AssignPreset), Action("Sửa tên / proxy…", "edit-profile", EditProfile), Action("Xóa khỏi GPM…", "delete-profile", DeleteProfile), Note("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")));
         DockPanel.SetDock(bottom, Dock.Bottom); page.Children.Add(bottom);
         profiles.Name = "ProfilesTable"; profiles.ItemsSource = rows; profiles.IsReadOnly = false; profiles.CanUserAddRows = false; profiles.CanUserDeleteRows = false; profiles.AutoGenerateColumns = false; profiles.HeadersVisibility = DataGridHeadersVisibility.Column; profiles.RowHeight = 46; profiles.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal; profiles.AlternatingRowBackground = Brushes.White; profiles.Background = Brushes.WhiteSmoke;
         profiles.Columns.Add(new DataGridCheckBoxColumn { Header = "✓", Binding = new Binding("Selected") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 40 });
-        foreach (var (path, title, width) in new[] { ("Name", "Profile", 215d), ("Proxy", "Proxy", 200d), ("Status", "Trạng thái / thao tác", 360d), ("Counts", "Hôm nay / tổng", 120d) }) profiles.Columns.Add(new DataGridTextColumn { Header = title, Binding = new Binding(path), Width = width, IsReadOnly = true });
+        foreach (var (path, title, width) in new[] { ("Name", "Profile", 215d), ("Preset", "Bộ cài đặt", 150d), ("Proxy", "Proxy", 160d), ("Status", "Trạng thái / thao tác", 360d), ("Counts", "Hôm nay / tổng", 120d) }) profiles.Columns.Add(new DataGridTextColumn { Header = title, Binding = new Binding(path), Width = width, IsReadOnly = true });
         var rowStyle = new Style(typeof(DataGridRow)); var selected = new DataTrigger { Binding = new Binding("Selected"), Value = true }; selected.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(213, 239, 229)))); rowStyle.Triggers.Add(selected); profiles.RowStyle = rowStyle;
         profiles.PreviewMouseLeftButtonDown += (_, e) => { var source = e.OriginalSource as DependencyObject; if (Find<CheckBox>(source) != null || Find<Button>(source) != null || Find<ScrollBar>(source) != null) return; if (Find<DataGridRow>(source)?.Item is ProfileRow p) { p.Selected = !p.Selected; e.Handled = true; } };
         page.Children.Add(profiles); return page;
@@ -147,24 +153,27 @@ sealed class MainWindow : Window
     internal static T? Find<T>(DependencyObject? source) where T : DependencyObject { while (source != null) { if (source is T item) return item; source = source is Visual ? VisualTreeHelper.GetParent(source) : LogicalTreeHelper.GetParent(source); } return null; }
     UIElement Field(string title, string name, double width = 300)
     {
-        var panel = new StackPanel { Width = width, Margin = new(0, 0, 15, 10) }; panel.Children.Add(Note(title)); var box = new TextBox { MinHeight = 28, Padding = new(6), Name = name }; fields[name] = box; box.TextChanged += (_, _) => Edited(); panel.Children.Add(box); return panel;
+        var panel = new StackPanel { Width = width, Margin = new(0, 0, 15, 10) }; panel.Children.Add(Note(title)); var box = new TextBox { MinHeight = 28, Padding = new(6), Name = name }; fields[name] = box; box.TextChanged += (_, _) => { if (name is "keywords" or "presetName") PresetEdited(); else Edited(); }; panel.Children.Add(box); return panel;
     }
     UIElement SettingsPage()
     {
         var page = new StackPanel { Margin = new(18) };
-        page.Children.Add(Row(Note("Dùng chung cho tất cả profile + profile thêm mới"), Action("Lưu cho tất cả profile", "save-settings", SaveSettings))); saved.TextWrapping = TextWrapping.Wrap; page.Children.Add(saved);
+        page.Children.Add(Row(Note("Cài đặt chung · model, nhịp chạy và tùy chọn cho tất cả profile"), Action("Lưu cài đặt chung", "save-settings", SaveSettings))); saved.TextWrapping = TextWrapping.Wrap; page.Children.Add(saved);
         page.Children.Add(Field("GPM Local API · đúng địa chỉ trong cài đặt GPM", "gpmApi", 850));
         page.Children.Add(Row(Action("Kiểm tra / tìm GPM", "check-gpm", CheckGpm), Note("Mở GPM trước · tìm cổng 9495 hoặc 19995")));
         var modelPanel = new StackPanel { Width = 320, Margin = new(0, 0, 15, 10) }; modelPanel.Children.Add(Note("Model AI")); model.MinHeight = 30; modelPanel.Children.Add(model); model.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => Edited()));
         var keyPanel = new StackPanel { Width = 320, Margin = new(0, 0, 15, 10) }; keyPanel.Children.Add(Note("API key · để trống giữ key đã lưu")); key.MinHeight = 30; key.PasswordChanged += (_, _) => Edited(); keyPanel.Children.Add(key);
-        page.Children.Add(Row(modelPanel, keyPanel, Action("Tải model", "load-models", () => Perform("Đang lấy danh sách model…", async api => { var r = await api.Request("models", new()); var current = model.Text; model.Items.Clear(); foreach (var node in r["models"] as JsonArray ?? new()) model.Items.Add(J.S(node)); model.Text = current; return "Chọn model rồi bấm Lưu cho tất cả profile."; }))));
-        page.Children.Add(Field("Chủ đề muốn tìm · phân cách bằng dấu phẩy", "keywords", 850));
+        page.Children.Add(Row(modelPanel, keyPanel, Action("Tải model", "load-models", () => Perform("Đang lấy danh sách model…", async api => { var r = await api.Request("models", new()); var current = model.Text; model.Items.Clear(); foreach (var node in r["models"] as JsonArray ?? new()) model.Items.Add(J.S(node)); model.Text = current; return "Chọn model rồi bấm Lưu cài đặt chung."; }))));
         page.Children.Add(Row(Field("Nghỉ trung bình · giây (±20%)", "restAverageSeconds", 255), Field("Gõ mỗi ký tự · ms", "typingDelayMs", 255), Field("Chờ giữa thao tác · giây", "stepSeconds", 255)));
         page.Children.Add(Row(Field("Chờ tìm bài mới · giây", "searchDelaySeconds", 255), Field("Folder ảnh · trống dùng ảnh đi kèm", "imagesFolder", 430), Action("Chọn folder…", "choose-images", () => { var d = new OpenFolderDialog(); if (d.ShowDialog(this) == true) fields["imagesFolder"].Text = d.FolderName; })));
         foreach (var (name, text) in new[] { ("followBeforeComment", "Theo dõi trước khi bình luận · 60% bài, chờ 210–270 giây sau follow mới"), ("tagHoanxu", "Tag @hoanxu.app · sau mỗi 4 bài ảnh, thêm 1 bài chữ có tag"), ("idleScroll", "Cuộn nhẹ khi nghỉ"), ("idleEngagement", "Thả tim khi chờ · ngẫu nhiên 2–5 bài") }) { var check = new CheckBox { Content = text, Margin = new(0, 0, 0, 12) }; check.Checked += (_, _) => Edited(); check.Unchecked += (_, _) => Edited(); checks[name] = check; page.Children.Add(check); }
-        page.Children.Add(Note("Hướng dẫn cho AI (prompt)")); prompt.Name = "Prompt"; prompt.AcceptsReturn = true; prompt.TextWrapping = TextWrapping.Wrap; prompt.VerticalScrollBarVisibility = ScrollBarVisibility.Auto; prompt.Height = 230; prompt.TextChanged += (_, _) => Edited(); page.Children.Add(prompt);
+        page.Children.Add(new Separator()); page.Children.Add(Note("Bộ cài đặt riêng · chỉ prompt và chủ đề · chọn cho từng profile"));
+        page.Children.Add(Row(presetPicker, Action("Tạo bộ mới…", "new-preset", NewPreset), Action("Lưu bộ", "save-preset", SavePreset), Action("Xóa bộ", "delete-preset", DeletePreset)));
+        presetPicker.SelectionChanged += (_, _) => PresetChanged();
+        page.Children.Add(Field("Tên bộ cài đặt", "presetName", 850)); page.Children.Add(Field("Chủ đề muốn tìm · phân cách bằng dấu phẩy", "keywords", 850)); page.Children.Add(presetNote);
+        page.Children.Add(Note("Hướng dẫn cho AI (prompt)")); prompt.Name = "Prompt"; prompt.AcceptsReturn = true; prompt.TextWrapping = TextWrapping.Wrap; prompt.VerticalScrollBarVisibility = ScrollBarVisibility.Auto; prompt.Height = 230; prompt.TextChanged += (_, _) => PresetEdited(); page.Children.Add(prompt);
         page.Children.Add(Row(Action("Nhập prompt .txt…", "import-prompt", ImportPrompt), Action("Kiểm tra ảnh", "check-images", () => Perform("Đang kiểm tra folder ảnh…", async api => { var r = await api.Request("assets", new() { ["folder"] = fields["imagesFolder"].Text }); if (J.S(r["error"]).Length > 0) throw new Exception(J.S(r["error"])); return $"Folder hợp lệ · {J.S(r["count"])} ảnh. Lưu để áp dụng."; }))));
-        page.Children.Add(Note("Bấm Lưu để áp dụng AI, chủ đề và nhịp chạy từ bước tiếp theo. Lượt AI/comment đang thực hiện sẽ hoàn tất."));
+        page.Children.Add(Note("Lưu cài đặt chung cho tất cả profile. Lưu bộ chỉ đổi prompt/chủ đề của profile dùng bộ đó, từ bước tiếp theo. Lượt AI/comment đang thực hiện sẽ hoàn tất."));
         page.Children.Add(new Separator { Margin = new(0, 12, 0, 12) }); page.Children.Add(Row(Action("Kiểm tra cập nhật", "check-update", () => _ = CheckForUpdate()), Action("Cài bản mới & mở lại", "install-update", InstallUpdate)));
         updateText.TextWrapping = TextWrapping.Wrap; page.Children.Add(updateText); return new ScrollViewer { Content = page, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -184,7 +193,7 @@ sealed class MainWindow : Window
             snapshot = await api.Request("state"); if (EditingProfileForm) return; if (!loaded) { FillSettings(J.O(snapshot["settings"])); loaded = true; Message("Sẵn sàng · dữ liệu được lưu trên máy"); }
             var ids = new HashSet<string>(); foreach (var data in J.Rows(snapshot["profiles"])) { var id = J.S(data["id"]); ids.Add(id); if (!allRows.TryGetValue(id, out var row)) { row = new(); row.PropertyChanged += (_, e) => { if (e.PropertyName == "Selected") { Controls(); RenderLogs(); } }; allRows[id] = row; } row.Data = data; row.Changed(); }
             foreach (var id in allRows.Keys.Except(ids).ToArray()) allRows.Remove(id);
-            Filter(); RenderLogs(); RenderVersion(); Controls();
+            SyncPresets(); Filter(); RenderLogs(); RenderVersion(); Controls();
             var download = J.O(snapshot["updateDownload"]); var phase = J.S(download["phase"]);
             if (phase is "downloading" or "verifying" or "ready") { message.Text = updateText.Text = updateWarning.Text = J.S(download["message"]); progress.Visibility = Visibility.Visible; progress.IsIndeterminate = phase != "downloading"; if (double.TryParse(J.S(download["percent"]), out var percent)) progress.Value = percent; }
             else progress.IsIndeterminate = true;
@@ -202,21 +211,21 @@ sealed class MainWindow : Window
     void FillSettings(JsonObject settings)
     {
         filling = true; var config = J.O(settings["runConfig"]);
-        foreach (var (name, field) in fields) field.Text = J.S(name is "keywords" or "restAverageSeconds" or "typingDelayMs" or "stepSeconds" or "searchDelaySeconds" ? config[name] : settings[name]);
+        foreach (var (name, field) in fields.Where(p => p.Key is not ("keywords" or "presetName"))) field.Text = J.S(name is "keywords" or "restAverageSeconds" or "typingDelayMs" or "stepSeconds" or "searchDelaySeconds" ? config[name] : settings[name]);
         if (config["restAverageSeconds"] == null) fields["restAverageSeconds"].Text = ((double.Parse(J.S(config["minRestSeconds"] ?? JsonValue.Create(120)), CultureInfo.InvariantCulture) + double.Parse(J.S(config["maxRestSeconds"] ?? JsonValue.Create(180)), CultureInfo.InvariantCulture)) / 2).ToString(CultureInfo.InvariantCulture);
-        model.Text = J.S(settings["model"]); key.Password = ""; prompt.Text = J.S(settings["prompt"]); foreach (var (name, check) in checks) check.IsChecked = config[name] == null ? name == "idleEngagement" : J.B(config[name]);
+        model.Text = J.S(settings["model"]); key.Password = ""; foreach (var (name, check) in checks) check.IsChecked = config[name] == null ? name == "idleEngagement" : J.B(config[name]);
         filling = false; dirty = false; saved.Text = "Đã lưu · áp dụng cho tất cả profile"; saved.Foreground = Brushes.DimGray;
     }
     JsonObject SettingsBody()
     {
         var value = J.O(snapshot["settings"]).DeepClone().AsObject(); var config = J.O(value["runConfig"]).DeepClone().AsObject();
-        foreach (var (name, field) in fields)
+        foreach (var (name, field) in fields.Where(p => p.Key is not ("keywords" or "presetName")))
         {
             if (name is "restAverageSeconds" or "typingDelayMs" or "stepSeconds" or "searchDelaySeconds") { if (!double.TryParse(field.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) || !double.IsFinite(n) || n < 0) throw new Exception(name + ": nhập số không âm."); config[name] = n; }
-            else if (name == "keywords") config[name] = field.Text; else value[name] = field.Text.Trim();
+            else value[name] = field.Text.Trim();
         }
         foreach (var (name, check) in checks) config[name] = check.IsChecked == true;
-        value["model"] = model.Text.Trim(); value["apiKey"] = key.Password; value["prompt"] = prompt.Text; value["scope"] = "all"; value["runConfig"] = config; return value;
+        value["model"] = model.Text.Trim(); value["apiKey"] = key.Password; value["scope"] = "all"; value["runConfig"] = config; return value;
     }
     async Task<string> Save(ToolApi api)
     {
@@ -224,6 +233,42 @@ sealed class MainWindow : Window
         var failed = J.Rows(r["results"]).Where(p => !J.B(p["ok"])).ToArray();
         if (failed.Length > 0) throw new Exception("Đã lưu cấu hình chung, còn profile chưa áp dụng: " + string.Join(" · ", failed.Select(p => J.S(p["name"]) + ": " + J.S(p["error"]))));
         return "Đã lưu cho tất cả profile · model " + J.S(J.O(r["settings"])["model"]) + " · dùng từ bước tiếp theo.";
+    }
+    void PresetEdited() { if (filling || fillingPresets || !loaded) return; presetDirty = true; presetNote.Text = "Bộ có thay đổi chưa lưu"; presetNote.Foreground = Brushes.DarkOrange; }
+    void SyncPresets(bool force = false)
+    {
+        var signature = string.Join("|", SettingPresets.Select(p => p.ToJsonString())); if (!force && (presetDirty || signature == presetSignature)) return; presetSignature = signature; fillingPresets = true;
+        presetPicker.Items.Clear(); foreach (var p in SettingPresets) presetPicker.Items.Add(new KeyValuePair<string, string>(J.S(p["id"]), J.S(p["name"])));
+        if (!SettingPresets.Any(p => J.S(p["id"]) == presetId)) presetId = "default"; presetPicker.SelectedValue = presetId; fillingPresets = false; LoadPreset();
+    }
+    void LoadPreset()
+    {
+        var preset = SettingPresets.FirstOrDefault(p => J.S(p["id"]) == presetId); if (preset == null) return; fillingPresets = true;
+        fields["presetName"].Text = J.S(preset["name"]); fields["keywords"].Text = J.S(preset["keywords"]); prompt.Text = J.S(preset["prompt"]); fillingPresets = false; presetDirty = false;
+        presetNote.Text = "Lưu bộ sẽ áp dụng cho các profile dùng bộ này từ bước tiếp theo."; presetNote.Foreground = Brushes.Gray; Controls();
+    }
+    void PresetChanged()
+    {
+        if (fillingPresets) return; if (presetDirty) { fillingPresets = true; presetPicker.SelectedValue = presetId; fillingPresets = false; Message("Lưu bộ đang sửa trước khi chọn bộ khác.", true); return; }
+        presetId = presetPicker.SelectedValue?.ToString() ?? "default"; LoadPreset();
+    }
+    void SavePresetBody(JsonObject body)
+    {
+        Perform("Đang lưu bộ prompt và chủ đề…", async api => { var r = await api.Request("settings-preset-save", body); presetId = J.S(J.O(r["preset"])["id"]); presetDirty = false; snapshot = await api.Request("state"); SyncPresets(true);
+            var failed = J.Rows(r["results"]).Where(p => !J.B(p["ok"])).ToArray(); if (failed.Length > 0) throw new Exception("Đã lưu bộ; profile chưa áp dụng: " + string.Join(" · ", failed.Select(p => J.S(p["name"]) + ": " + J.S(p["error"]))));
+            return "Đã lưu bộ · áp dụng từ bước tiếp theo cho các profile dùng bộ này."; });
+    }
+    void SavePreset() => SavePresetBody(new() { ["id"] = presetId, ["name"] = fields["presetName"].Text, ["prompt"] = prompt.Text, ["keywords"] = fields["keywords"].Text });
+    void NewPreset() { var values = FormDialog.Ask(this, "Tạo bộ mới · sao chép prompt/chủ đề đang xem", ("Tên bộ", "")); if (values != null) SavePresetBody(new() { ["name"] = values[0], ["prompt"] = prompt.Text, ["keywords"] = fields["keywords"].Text }); }
+    void DeletePreset()
+    {
+        if (presetId == "default" || MessageBox.Show(this, "Xóa bộ cài đặt này?", "Xóa bộ", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return; var id = presetId;
+        Perform("Đang xóa bộ…", async api => { await api.Request("settings-preset-delete", new() { ["id"] = id }); presetDirty = false; presetId = "default"; return "Đã xóa bộ cài đặt."; });
+    }
+    void AssignPreset()
+    {
+        var ids = Ids; if (ids.Length == 0) return; var values = FormDialog.AskWithPreset(this, $"Chọn bộ cho {ids.Length} profile", SettingPresets); if (values == null) return;
+        Perform("Đang đổi bộ cài đặt…", async api => { var r = await api.Request("profiles-setting-preset", new() { ["ids"] = J.Strings(ids), ["settingPresetId"] = values[0] }); return Results(r); });
     }
     void CheckGpm() { var address = fields["gpmApi"].Text.Trim(); Perform("Đang kiểm tra GPM Local API…", async api => { var r = await api.Request("gpm-check", new() { ["gpmApi"] = address }); if (J.B(r["discovered"])) fields["gpmApi"].Text = J.S(r["gpmApi"]); return J.S(r["message"]); }); }
     void SaveSettings() => Perform("Đang lưu cho tất cả profile…", Save);
@@ -239,8 +284,8 @@ sealed class MainWindow : Window
     public Task<JsonObject> ParseProxy(string value) => api!.Request("proxy-parse", new() { ["proxy"] = value });
     void CreateProfile()
     {
-        var values = FormDialog.Ask(this, "Tạo profile GPM", ("Tên profile", ""), ("Proxy · IP:port:user:pass (trống = không dùng)", ""), ("Chrome · để trống tự chọn", "")); if (values == null) return;
-        Perform("Đang tạo profile GPM…", async api => { var r = await api.Request("profile-create", new() { ["name"] = values[0], ["proxy"] = values[1], ["browserVersion"] = values[2] }); await Refresh(); SelectOnly([J.S(J.O(r["profile"])["id"])]); return "Đã tạo profile. Bấm Mở trình duyệt để kiểm tra đăng nhập."; });
+        var values = FormDialog.AskWithPreset(this, "Tạo profile GPM", SettingPresets, ("Tên profile", ""), ("Proxy · IP:port:user:pass (trống = không dùng)", ""), ("Chrome · để trống tự chọn", "")); if (values == null) return;
+        Perform("Đang tạo profile GPM…", async api => { var r = await api.Request("profile-create", new() { ["name"] = values[0], ["proxy"] = values[1], ["browserVersion"] = values[2], ["settingPresetId"] = values[3] }); await Refresh(); SelectOnly([J.S(J.O(r["profile"])["id"])]); return "Đã tạo profile. Bấm Mở trình duyệt để kiểm tra đăng nhập."; });
     }
     void EditProfile()
     {
@@ -312,7 +357,7 @@ sealed class MainWindow : Window
         try { update = await api.Request("update-check", new()); } catch (Exception e) { update["checkError"] = e.Message; }
         finally { updateChecking = false; RenderUpdate(); }
     }
-    void InstallUpdate() { if (dirty) { Message("Lưu cài đặt đang sửa trước khi cập nhật.", true); return; } Perform("Đang tải và xác minh bản cập nhật…", async api => { await api.Request("update-install", new()); return "Đang cài và mở lại app…"; }); }
+    void InstallUpdate() { if (dirty || presetDirty) { Message("Lưu cài đặt đang sửa trước khi cập nhật.", true); return; } Perform("Đang tải và xác minh bản cập nhật…", async api => { await api.Request("update-install", new()); return "Đang cài và mở lại app…"; }); }
     public void SelectOnly(IEnumerable<string> ids) { var set = ids.ToHashSet(); foreach (var p in allRows.Values) p.Selected = set.Contains(p.Id); search.Text = ""; category.SelectedIndex = 0; Controls(); }
     async Task Smoke()
     {
@@ -329,7 +374,9 @@ sealed class MainWindow : Window
 
 sealed class FormDialog : Window
 {
-    public static string[]? Ask(Window owner, string title, params (string Label, string Value)[] fields)
+    public static string[]? Ask(Window owner, string title, params (string Label, string Value)[] fields) => AskCore(owner, title, null, fields);
+    public static string[]? AskWithPreset(Window owner, string title, JsonObject[] presets, params (string Label, string Value)[] fields) => AskCore(owner, title, presets, fields);
+    static string[]? AskCore(Window owner, string title, JsonObject[]? presets, (string Label, string Value)[] fields)
     {
         var dialog = new FormDialog { Owner = owner, Title = title, Width = 510, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var page = new StackPanel { Margin = new(22) }; dialog.Content = page; var inputs = new List<TextBox>(); var parsing = false;
         foreach (var (label, value) in fields) { page.Children.Add(MainWindow.Note(label)); var input = new TextBox { Text = value, MinHeight = 30, Padding = new(6) }; inputs.Add(input);
@@ -339,6 +386,7 @@ sealed class FormDialog : Window
                 parse.Click += async (_, _) => { parsing = true; parse.IsEnabled = false; note.Text = "Đang parse proxy…"; try { var r = await main.ParseProxy(input.Text); input.Text = J.S(r["proxy"]); note.Text = "Hợp lệ · " + J.S(r["label"]); } catch (Exception e) { note.Text = e.Message; } finally { parsing = false; parse.IsEnabled = true; } };
             } else page.Children.Add(input);
         }
-        var ok = new Button { Content = "Lưu", IsDefault = true, Margin = new(0, 20, 10, 0), Padding = new(18, 6, 18, 6) }; ok.Click += (_, _) => { if (!parsing) dialog.DialogResult = true; }; var cancel = new Button { Content = "Hủy", IsCancel = true, Margin = new(0, 20, 0, 0), Padding = new(18, 6, 18, 6) }; page.Children.Add(MainWindow.Row(ok, cancel)); if (owner is MainWindow editing) editing.EditingProfileForm = true; try { return dialog.ShowDialog() == true ? inputs.Select(i => i.Text).ToArray() : null; } finally { if (owner is MainWindow finished) finished.EditingProfileForm = false; }
+        var choice = new ComboBox { DisplayMemberPath = "Value", SelectedValuePath = "Key", MinHeight = 30 }; if (presets != null) { page.Children.Add(MainWindow.Note("Bộ prompt / chủ đề")); foreach (var p in presets) choice.Items.Add(new KeyValuePair<string, string>(J.S(p["id"]), J.S(p["name"]))); choice.SelectedIndex = 0; page.Children.Add(choice); }
+        var ok = new Button { Content = "Lưu", IsDefault = true, Margin = new(0, 20, 10, 0), Padding = new(18, 6, 18, 6) }; ok.Click += (_, _) => { if (!parsing) dialog.DialogResult = true; }; var cancel = new Button { Content = "Hủy", IsCancel = true, Margin = new(0, 20, 0, 0), Padding = new(18, 6, 18, 6) }; page.Children.Add(MainWindow.Row(ok, cancel)); if (owner is MainWindow editing) editing.EditingProfileForm = true; try { return dialog.ShowDialog() == true ? inputs.Select(i => i.Text).Concat(presets == null ? Array.Empty<string>() : new[] { choice.SelectedValue?.ToString() ?? "default" }).ToArray() : null; } finally { if (owner is MainWindow finished) finished.EditingProfileForm = false; }
     }
 }

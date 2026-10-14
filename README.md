@@ -22,6 +22,10 @@ Mở http://127.0.0.1:4317. Tự mở profile GPM và đăng nhập Threads, nh�
 
 UI có Start/Stop, log trực tiếp, thống kê, xuất lịch sử, chỉnh prompt và folder ảnh. Bảng profile cho chọn chạy đồng thời; phiên, lịch sử và lịch nghỉ được tính riêng theo Profile ID. Tool chạy bằng Node độc lập, không cần cài extension trong profile. Dừng phiên extension trước khi dùng tool.
 
+## Bộ cài đặt theo profile
+
+Trong app native, **Cài đặt** có các bộ prompt/chủ đề đặt tên để tạo, sửa và chọn cho từng profile. Chỉ hai trường này thuộc bộ riêng; model, API key, nhịp chạy, ảnh và các tùy chọn còn lại dùng chung. Profile cũ tự chọn **Mặc định** từ nội dung đã lưu trước khi cập nhật. Khi tạo hoặc nhập từ GPM, chọn bộ trước khi xác nhận; đổi sau bằng nút **Đổi bộ cài đặt…** ở bảng profile. Xem [hướng dẫn](gpm-tool/HUONG-DAN-SU-DUNG.md#bộ-prompt-và-chủ-đề-cho-từng-profile).
+
 ## Chrome extension
 
 Mở chrome://extensions, bật Developer mode, chọn Load unpacked với thư mục extension. Nhập API key trong UI và Lưu. Bản GitHub/ZIP kết hợp không chứa key mặc định.

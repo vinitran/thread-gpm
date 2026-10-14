@@ -155,7 +155,9 @@ test('four isolated profile workers connect concurrently and replacing one exten
    assert.equal(p.config.base,p.worker.base);
   }));
   assert.equal(new Set(profiles.map(p=>p.config.base)).size,4);assert.equal(new Set(profiles.map(p=>p.config.token)).size,4);
-  await Promise.all(profiles.map(async p=>{await p.worker.call('start',{},90000);assert.equal((await p.worker.call('state')).state.status,'running');assert.ok(p.context.pages().some(page=>page.url()==='https://www.threads.com/'));}));
+  // Attach fixture interception before extension navigation begins, so no live Threads request is used.
+  await Promise.all(profiles.map(async p=>{p.source=await p.context.newPage();await p.source.goto('https://www.threads.com/');}));
+  await Promise.all(profiles.map(async p=>{await p.worker.call('start',{},90000);assert.equal((await p.worker.call('state')).state.status,'running');const source=p.context.pages().find(page=>page.url()==='https://www.threads.com/');assert.ok(source);await source.setContent('<a href="/@me" aria-label="Profile">Me</a><main style="height:2400px">Empty fixture feed</main>');}));
   const first=profiles[0];await fs.writeFile(path.join(first.dir,'managed-extension','obsolete-fixture.js'),'obsolete');
   // A slow old-token request must be checked again after its body arrives, not applied to a fresh bridge.
   let staleRequest;
@@ -168,8 +170,9 @@ test('four isolated profile workers connect concurrently and replacing one exten
   first.popup=await first.context.newPage();await first.popup.goto('chrome-extension://'+MANAGED_EXTENSION_ID+'/managed-popup.html');
   assert.equal(await first.popup.evaluate(async()=>(await chrome.storage.local.get('obsoleteFixture')).obsoleteFixture),undefined);
   const rejected=await fetch(first.worker.base+'/api/extension/status',{method:'POST',headers:{'Content-Type':'application/json','X-Extension-Token':first.config.token},body:'{}'});assert.equal(rejected.status,403);
+  if(process.env.TEST_FOUR_IDLE)await new Promise(r=>setTimeout(r,17000));
   for(const p of profiles){
-   const result=await p.popup.evaluate(()=>chrome.runtime.sendMessage({type:'managed-state'}));assert.equal(result.ok,true);assert.equal(result.value.status,'running');
+   const result=await p.popup.evaluate(()=>chrome.runtime.sendMessage({type:'managed-state'}));assert.equal(result.ok,true);assert.equal(result.value.status,'running',JSON.stringify(result.value));
    assert.ok(p.context.pages().some(page=>page.url()==='https://www.threads.com/'));
   }
  }finally{

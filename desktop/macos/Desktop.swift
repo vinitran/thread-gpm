@@ -55,6 +55,9 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     let updateBanner = NSStackView(), updateWarning = NSTextField(wrappingLabelWithString:""), versionText = NSTextField(labelWithString:"Phiên bản…")
     var updateChecking = false, lastUpdateCheck = Date.distantPast
     var tableSignature = "", editingProfileForm = false
+    let presetPicker = NSPopUpButton(), presetNote = NSTextField(wrappingLabelWithString:"")
+    var presetIDs:[String] = [], presetID = "default", presetSignature = "", presetDirty = false
+    var settingPresets:[JSONObject] { objects(snapshot["settingsPresets"]) }
     var picker: ProfilePicker?, updater: JSONObject = [:]
     override func loadView() {
         view = NSView(); view.identifier = NSUserInterfaceItemIdentifier("native-workspace")
@@ -68,7 +71,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         tabs.setContentHuggingPriority(.defaultLow, for: .vertical); tabs.setContentCompressionResistancePriority(.defaultLow, for: .vertical); tabs.tabViewType = .topTabsBezelBorder; tabs.identifier = NSUserInterfaceItemIdentifier("workspace-tabs")
         root.addArrangedSubview(tabs); tabs.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true; tabs.heightAnchor.constraint(greaterThanOrEqualToConstant:360).isActive = true
         let profilesPage = column(), settingsPage = column(), logPage = column()
-        tab("Profile", profilesPage); tab("Cài đặt chung", settingsPage); tab("Nhật ký & lịch sử", logPage)
+        tab("Profile", profilesPage); tab("Cài đặt", settingsPage); tab("Nhật ký & lịch sử", logPage)
         buildProfiles(profilesPage); buildSettings(settingsPage); buildLogs(logPage)
         spinner.style = .spinning; spinner.controlSize = .small; spinner.isDisplayedWhenStopped = false
         let feedback = row([spinner,message]); feedback.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
@@ -118,11 +121,11 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         filter.addItems(withTitles:["Tất cả","Đang chạy","Đang nghỉ","Cần kiểm tra","Đã dừng"]); filter.target = self; filter.action = #selector(filterChanged)
         let tools = row([search,filter,button("Chọn tất cả","select-all",#selector(selectAllProfiles)),button("Bỏ chọn","clear-selection",#selector(clearSelection))]); search.widthAnchor.constraint(greaterThanOrEqualToConstant:300).isActive = true; addWide(tools,to:page)
         table.identifier = NSUserInterfaceItemIdentifier("profiles-table"); table.delegate = self; table.dataSource = self; table.allowsMultipleSelection = true; table.rowHeight = 48; table.usesAlternatingRowBackgroundColors = true; table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        for (key,title,width) in [("name","Profile",220.0),("proxy","Proxy",185.0),("status","Trạng thái / thao tác",350.0),("counts","Hôm nay / tổng",130.0)] { let c = NSTableColumn(identifier:NSUserInterfaceItemIdentifier(key)); c.title = title; c.width = width; c.minWidth = 80; table.addTableColumn(c) }
+        for (key,title,width) in [("name","Profile",220.0),("settingPresetName","Bộ cài đặt",150.0),("proxy","Proxy",160.0),("status","Trạng thái / thao tác",350.0),("counts","Hôm nay / tổng",130.0)] { let c = NSTableColumn(identifier:NSUserInterfaceItemIdentifier(key)); c.title = title; c.width = width; c.minWidth = 80; table.addTableColumn(c) }
         addWide(scroll(table),to:page)
         addWide(row([selection,button("Mở trình duyệt","open-selected",#selector(openSelected)),button("Chạy thử · không đăng","dry-run-selected",#selector(dryRunSelected)),button("Dừng & đóng","stop-selected",#selector(stopSelected))]),to:page)
         addWide(row([button("Chạy tự động","start-selected",#selector(startSelected)),button("Chạy bằng extension","start-extension",#selector(startExtensionSelected)),label("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")]),to:page)
-        addWide(row([button("Sửa tên / proxy…","edit-profile",#selector(editProfile)),button("Xóa khỏi GPM…","delete-profile",#selector(deleteProfile)),label("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")]),to:page)
+        addWide(row([button("Đổi bộ cài đặt…","assign-preset",#selector(assignPreset)),button("Sửa tên / proxy…","edit-profile",#selector(editProfile)),button("Xóa khỏi GPM…","delete-profile",#selector(deleteProfile)),label("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")]),to:page)
         table.setContentHuggingPriority(.defaultLow,for:.vertical)
     }
     func field(_ title: String, _ key: String, value: String = "", secure: Bool = false, width: CGFloat = 200) -> NSView {
@@ -130,23 +133,29 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         input.identifier = NSUserInterfaceItemIdentifier(key); input.delegate = self; inputs[key] = input; stack.addArrangedSubview(input); input.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive = true; stack.widthAnchor.constraint(greaterThanOrEqualToConstant:width).isActive = true; return stack
     }
     func buildSettings(_ page: NSStackView) {
-        addWide(row([label("Dùng chung cho tất cả profile, kể cả profile thêm mới"),button("Lưu cho tất cả profile","save-settings",#selector(saveSettings))]),to:page)
+        addWide(row([label("Cài đặt chung · model, nhịp chạy và các tùy chọn cho tất cả profile"),button("Lưu cài đặt chung","save-settings",#selector(saveSettings))]),to:page)
         saved.font = .systemFont(ofSize:12); addWide(saved,to:page)
         let form = column(); form.spacing = 14
         addWide(field("GPM Local API · đúng địa chỉ trong cài đặt GPM","gpmApi",width:600),to:form)
         addWide(row([button("Kiểm tra / tìm GPM","check-gpm",#selector(checkGpm)),label("Mở GPM trước · tìm cổng 9495 hoặc 19995")]),to:form)
         addWide(row([field("Model AI","model",width:270),field("API key · để trống để giữ key đã lưu","apiKey",secure:true,width:300),button("Tải model…","load-models",#selector(loadModels))]),to:form)
-        addWide(field("Chủ đề muốn tìm · phân cách bằng dấu phẩy","keywords",width:600),to:form)
         addWide(row([field("Nghỉ trung bình · giây (±20%)","restAverageSeconds"),field("Gõ mỗi ký tự · ms","typingDelayMs"),field("Chờ giữa thao tác · giây","stepSeconds")]),to:form)
         addWide(row([field("Chờ tìm bài mới · giây","searchDelaySeconds"),field("Folder ảnh · trống dùng ảnh đi kèm","imagesFolder",width:330),button("Chọn folder…","choose-images",#selector(chooseImages))]),to:form)
         let idle = NSButton(checkboxWithTitle:"Cuộn nhẹ khi nghỉ",target:self,action:#selector(settingsEdited)), likes = NSButton(checkboxWithTitle:"Thả tim khi chờ · ngẫu nhiên 2–5 bài",target:self,action:#selector(settingsEdited)); checks["idleScroll"] = idle; checks["idleEngagement"] = likes; addWide(row([idle,likes]),to:form)
         let follow = NSButton(checkboxWithTitle:"Theo dõi trước khi bình luận · 60% bài, chờ 210–270 giây sau follow mới",target:self,action:#selector(settingsEdited)); checks["followBeforeComment"] = follow; addWide(follow,to:form)
         let tag = NSButton(checkboxWithTitle:"Tag @hoanxu.app · sau mỗi 4 bài ảnh, thêm 1 bài chữ có tag",target:self,action:#selector(settingsEdited)); checks["tagHoanxu"] = tag; addWide(tag,to:form)
+        let presetLine = NSBox(); presetLine.boxType = .separator; addWide(presetLine,to:form)
+        form.addArrangedSubview(label("Bộ cài đặt riêng · chỉ prompt và chủ đề · chọn cho từng profile"))
+        presetPicker.target = self; presetPicker.action = #selector(presetChanged)
+        addWide(row([presetPicker,button("Tạo bộ mới…","new-preset",#selector(newPreset)),button("Lưu bộ","save-preset",#selector(savePreset)),button("Xóa bộ","delete-preset",#selector(deletePreset))]),to:form)
+        addWide(field("Tên bộ cài đặt","presetName",width:600),to:form)
+        addWide(field("Chủ đề muốn tìm · phân cách bằng dấu phẩy","keywords",width:600),to:form)
+        addWide(presetNote,to:form)
         form.addArrangedSubview(label("Hướng dẫn cho AI (prompt)")); prompt.identifier = NSUserInterfaceItemIdentifier("prompt"); prompt.font = .systemFont(ofSize:13); prompt.isRichText = false; prompt.isAutomaticQuoteSubstitutionEnabled = false
-        NotificationCenter.default.addObserver(self,selector:#selector(settingsEdited),name:NSText.didChangeNotification,object:prompt)
+        NotificationCenter.default.addObserver(self,selector:#selector(presetEdited),name:NSText.didChangeNotification,object:prompt)
         addWide(scroll(prompt,height:230),to:form)
         addWide(row([button("Nhập prompt .txt…","import-prompt",#selector(importPrompt)),button("Kiểm tra ảnh","check-images",#selector(checkImages))]),to:form)
-        form.addArrangedSubview(label("Bấm Lưu để áp dụng model, chủ đề và nhịp chạy từ bước tiếp theo. Lượt AI/comment đang làm sẽ hoàn tất."))
+        form.addArrangedSubview(label("Bấm Lưu cài đặt chung cho tất cả profile. Lưu bộ chỉ đổi prompt/chủ đề của profile dùng bộ đó, từ bước tiếp theo. Lượt AI/comment đang làm sẽ hoàn tất."))
         let line = NSBox(); line.boxType = .separator; addWide(line,to:form)
         addWide(row([button("Kiểm tra cập nhật","check-update",#selector(checkUpdate)),button("Cài bản mới & mở lại","install-update",#selector(installUpdate))]),to:form); addWide(updateText,to:form)
         let sc = scroll(form); sc.drawsBackground = false; addWide(sc,to:page); form.translatesAutoresizingMaskIntoConstraints = false; form.widthAnchor.constraint(equalTo:sc.contentView.widthAnchor,constant:-18).isActive = true
@@ -156,7 +165,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         for text in [logs,history] { text.isEditable = false; text.isRichText = false; text.font = .monospacedSystemFont(ofSize:12,weight:.regular); text.isVerticallyResizable = true }
         addWide(scroll(logs),to:page); addWide(row([button("Làm mới nhật ký & lịch sử","load-history",#selector(loadHistory)),button("Mở thư mục dữ liệu","open-data",#selector(openData))]),to:page); addWide(scroll(history,height:130),to:page)
     }
-    func controlTextDidChange(_ notification: Notification) { if notification.object as? NSSearchField === search { renderProfiles() } else { settingsEdited() } }
+    func controlTextDidChange(_ notification: Notification) { if notification.object as? NSSearchField === search { renderProfiles() } else if notification.object as? NSTextField === inputs["keywords"] || notification.object as? NSTextField === inputs["presetName"] { presetEdited() } else { settingsEdited() } }
     @objc func settingsEdited() { dirty = true; saved.stringValue = "Có thay đổi chưa lưu"; saved.textColor = .systemOrange }
     func setBusy(_ delta: Int) { busy += delta; if busy > 0 { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }; controls() }
     func controls() {
@@ -164,8 +173,9 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected","start-extension"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","dry-run-selected"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
         for key in ["install-update","install-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && (updater["available"] as? Bool == true) && (updater["installSupported"] as? Bool == true) }
         for key in ["check-update","check-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && !string(updater["repository"]).isEmpty }
+        presetPicker.isEnabled = ready && busy == 0; buttons["delete-preset"]?.isEnabled = ready && busy == 0 && presetID != "default"; buttons["assign-preset"]?.isEnabled = ready && any && busy == 0
         selection.stringValue = selected.isEmpty ? "Chưa chọn profile" : "Đã chọn \(selected.count) profile"
-        for input in inputs.values { input.isEnabled = ready && busy == 0 }; for check in checks.values { check.isEnabled = ready && busy == 0 }; prompt.isEditable = ready && busy == 0
+        for input in inputs.values { input.isEnabled = ready && busy == 0 }; for check in checks.values { check.isEnabled = ready && busy == 0 }; prompt.isEditable = ready && busy == 0; inputs["presetName"]?.isEnabled = ready && busy == 0 && presetID != "default"
     }
     func perform(_ title: String, _ task: @escaping (ToolAPI) async throws -> String) {
         guard let api = api else { return }; setBusy(1); showMessage(title)
@@ -176,7 +186,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     func refresh() async {
         guard let api = api, !refreshing, !editingProfileForm else { return }; refreshing = true; defer { refreshing = false }
-        do { snapshot = try await api.request("state"); if editingProfileForm { return }; profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; renderProfiles(); renderLogs(); renderVersion(); controls()
+        do { snapshot = try await api.request("state"); if editingProfileForm { return }; profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; syncPresets(); renderProfiles(); renderLogs(); renderVersion(); controls()
             let download = object(snapshot["updateDownload"])
             if ["downloading","verifying","ready"].contains(string(download["phase"])) { let text = string(download["message"]); showMessage(text); updateText.stringValue = text; updateWarning.stringValue = text }
         }
@@ -184,18 +194,52 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     func loadSettings(_ value: JSONObject) {
         let config = object(value["runConfig"])
-        for (key,input) in inputs { if key == "apiKey" { input.stringValue = "" } else if key == "keywords" || key.hasSuffix("Seconds") || key == "typingDelayMs" { input.stringValue = key == "restAverageSeconds" ? string(config[key] ?? ((config["minRestSeconds"] as? Double ?? 120) + (config["maxRestSeconds"] as? Double ?? 180)) / 2) : string(config[key]) } else { input.stringValue = string(value[key]) } }
+        for (key,input) in inputs { if ["keywords","presetName"].contains(key) { continue }; if key == "apiKey" { input.stringValue = "" } else if key.hasSuffix("Seconds") || key == "typingDelayMs" { input.stringValue = key == "restAverageSeconds" ? string(config[key] ?? ((config["minRestSeconds"] as? Double ?? 120) + (config["maxRestSeconds"] as? Double ?? 180)) / 2) : string(config[key]) } else { input.stringValue = string(value[key]) } }
         for (key,check) in checks { check.state = (config[key] as? Bool ?? (key == "idleEngagement")) ? .on : .off }
-        prompt.string = string(value["prompt"]); dirty = false; saved.stringValue = "Đã lưu · áp dụng cho tất cả profile"; saved.textColor = .secondaryLabelColor
+        dirty = false; saved.stringValue = "Đã lưu · áp dụng cho tất cả profile"; saved.textColor = .secondaryLabelColor
     }
     func settingsBody() throws -> JSONObject {
         var value = object(snapshot["settings"]), config = object(value["runConfig"])
         for (key,input) in inputs {
-            if ["restAverageSeconds","typingDelayMs","stepSeconds","searchDelaySeconds"].contains(key) { guard let n = Double(input.stringValue), n.isFinite, n >= 0 else { throw failure("\(key): nhập số không âm.") }; config[key] = n }
-            else if key == "keywords" { config[key] = input.stringValue } else { value[key] = input.stringValue.trimmingCharacters(in:.whitespacesAndNewlines) }
+            if ["keywords","presetName"].contains(key) { continue }; if ["restAverageSeconds","typingDelayMs","stepSeconds","searchDelaySeconds"].contains(key) { guard let n = Double(input.stringValue), n.isFinite, n >= 0 else { throw failure("\(key): nhập số không âm.") }; config[key] = n }
+            else { value[key] = input.stringValue.trimmingCharacters(in:.whitespacesAndNewlines) }
         }
         for (key,check) in checks { config[key] = check.state == .on }
-        value["prompt"] = prompt.string; value["runConfig"] = config; value["scope"] = "all"; return value
+        value["runConfig"] = config; value["scope"] = "all"; return value
+    }
+    @objc func presetEdited() { presetDirty = true; presetNote.stringValue = "Bộ có thay đổi chưa lưu"; presetNote.textColor = .systemOrange }
+    func syncPresets(force: Bool = false) {
+        let signature = settingPresets.map { string($0["id"]) + string($0["name"]) + string($0["prompt"]) + string($0["keywords"]) }.joined(separator:"|")
+        if !force && (presetDirty || signature == presetSignature) { return }; presetSignature = signature
+        presetIDs = settingPresets.map { string($0["id"]) }; presetPicker.removeAllItems(); presetPicker.addItems(withTitles:settingPresets.map { string($0["name"]) })
+        if !presetIDs.contains(presetID) { presetID = "default" }; if let index = presetIDs.firstIndex(of:presetID) { presetPicker.selectItem(at:index) }
+        loadPreset()
+    }
+    func loadPreset() {
+        guard let preset = settingPresets.first(where:{string($0["id"]) == presetID}) else { return }
+        inputs["presetName"]?.stringValue = string(preset["name"]); inputs["keywords"]?.stringValue = string(preset["keywords"]); prompt.string = string(preset["prompt"]); presetDirty = false
+        presetNote.stringValue = "Lưu bộ sẽ áp dụng cho các profile dùng bộ này từ bước tiếp theo."; presetNote.textColor = .secondaryLabelColor; controls()
+    }
+    @objc func presetChanged() {
+        if presetDirty { if let i = presetIDs.firstIndex(of:presetID) { presetPicker.selectItem(at:i) }; showMessage("Lưu bộ đang sửa trước khi chọn bộ khác.",error:true); return }
+        if presetIDs.indices.contains(presetPicker.indexOfSelectedItem) { presetID = presetIDs[presetPicker.indexOfSelectedItem]; loadPreset() }
+    }
+    func savePresetBody(_ body: JSONObject) {
+        perform("Đang lưu bộ prompt và chủ đề…") { [weak self] api in
+            let result = try await api.request("settings-preset-save",body); guard let self = self else { return "Đã lưu bộ" }
+            self.presetID = string(object(result["preset"])["id"]); self.presetDirty = false; self.snapshot = try await api.request("state"); self.syncPresets(force:true)
+            let failed = objects(result["results"]).filter { $0["ok"] as? Bool != true }; if !failed.isEmpty { throw failure("Đã lưu bộ; profile chưa áp dụng: " + failed.map { string($0["name"]) + ": " + string($0["error"]) }.joined(separator:" · ")) }
+            return "Đã lưu bộ · áp dụng từ bước tiếp theo cho các profile dùng bộ này."
+        }
+    }
+    @objc func savePreset() { savePresetBody(["id":presetID,"name":inputs["presetName"]?.stringValue ?? "","prompt":prompt.string,"keywords":inputs["keywords"]?.stringValue ?? ""]) }
+    @objc func newPreset() { showForm("Tạo bộ mới · sao chép prompt/chủ đề đang xem",values:[("Tên bộ","")]) { [weak self] values in guard let self = self else { return }; self.savePresetBody(["name":values[0],"prompt":self.prompt.string,"keywords":self.inputs["keywords"]?.stringValue ?? ""]) } }
+    @objc func deletePreset() {
+        guard presetID != "default" else { return }; let id = presetID, alert = NSAlert(); alert.messageText = "Xóa bộ cài đặt này?"; alert.addButton(withTitle:"Xóa"); alert.addButton(withTitle:"Hủy")
+        alert.beginSheetModal(for:view.window!) { [weak self] response in if response == .alertFirstButtonReturn { self?.perform("Đang xóa bộ…") { api in _ = try await api.request("settings-preset-delete",["id":id]); self?.presetDirty = false; self?.presetID = "default"; return "Đã xóa bộ cài đặt." } } }
+    }
+    @objc func assignPreset() {
+        let ids = Array(selected); guard !ids.isEmpty else { return }; showForm("Chọn bộ cho \(ids.count) profile",values:[],choosePreset:true) { [weak self] values in self?.perform("Đang đổi bộ cài đặt…") { api in let r = try await api.request("profiles-setting-preset",["ids":ids,"settingPresetId":values[0]]); return self?.results(r) ?? "Đã đổi bộ" } }
     }
     @objc func checkGpm() { let base = inputs["gpmApi"]?.stringValue.trimmingCharacters(in:.whitespacesAndNewlines) ?? ""; perform("Đang kiểm tra GPM Local API…") { [weak self] api in let r = try await api.request("gpm-check",["gpmApi":base]); if r["discovered"] as? Bool == true { self?.inputs["gpmApi"]?.stringValue = string(r["gpmApi"]); self?.settingsEdited() }; return string(r["message"]) } }
     @objc func saveSettings() {
@@ -215,7 +259,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     func renderProfiles() {
         selected.formIntersection(Set(profiles.map { string($0["id"]) })); let query = search.stringValue.lowercased(), choice = filter.titleOfSelectedItem ?? "Tất cả"
         visible = profiles.filter { p in (query.isEmpty || (string(p["name"]) + " " + string(p["id"])).lowercased().contains(query)) && (choice == "Tất cả" || category(p) == choice) }
-        let signature = visible.map { p in string(p["id"]) + "|" + string(p["name"]) + "|" + string(p["proxy"]) + "|" + profileStatus(p) + "|" + string(p["error"]) + "|" + string(object(object(object(p["view"])["state"])["activity"])["message"]) + "|" + string(object(object(p["view"])["counts"])["today"]) + "|" + string(object(object(p["view"])["counts"])["total"]) }.joined(separator:"\n")
+        let signature = visible.map { p in string(p["id"]) + "|" + string(p["name"]) + "|" + string(p["proxy"]) + "|" + string(p["settingPresetName"]) + "|" + profileStatus(p) + "|" + string(p["error"]) + "|" + string(object(object(object(p["view"])["state"])["activity"])["message"]) + "|" + string(object(object(p["view"])["counts"])["today"]) + "|" + string(object(object(p["view"])["counts"])["total"]) }.joined(separator:"\n")
         selecting = true; if signature != tableSignature { tableSignature = signature; table.reloadData() }; let indexes = IndexSet(visible.indices.filter { selected.contains(string(visible[$0]["id"])) }); if indexes != table.selectedRowIndexes { table.selectRowIndexes(indexes,byExtendingSelection:false) }; selecting = false; controls()
     }
     @objc func filterChanged() { renderProfiles() }
@@ -223,7 +267,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let p = visible[row],v = object(p["view"]),counts = object(v["counts"]),key = tableColumn?.identifier.rawValue ?? ""
         let text: String
-        switch key { case "name": text = string(p["name"]); case "proxy": text = string(p["proxy"]).isEmpty ? "Không proxy" : string(p["proxy"]); case "counts": text = "\(string(counts["today"])) / \(string(counts["total"]))"; default: text = profileStatus(p) }
+        switch key { case "name": text = string(p["name"]); case "settingPresetName": text = string(p["settingPresetName"]); case "proxy": text = string(p["proxy"]).isEmpty ? "Không proxy" : string(p["proxy"]); case "counts": text = "\(string(counts["today"])) / \(string(counts["total"]))"; default: text = profileStatus(p) }
         let cell = NSTableCellView(),label = NSTextField(labelWithString:text); label.lineBreakMode = .byTruncatingTail; label.font = key == "name" ? .systemFont(ofSize:13,weight:.semibold) : .systemFont(ofSize:12); cell.textField = label; pin(label,in:cell,inset:7); cell.toolTip = text; return cell
     }
     func tableViewSelectionDidChange(_ notification: Notification) { if selecting { return }; let shown = Set(visible.map { string($0["id"]) }); selected.subtract(shown); for index in table.selectedRowIndexes { selected.insert(string(visible[index]["id"])) }; controls(); renderLogs() }
@@ -235,7 +279,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     @objc func startSelected() { let ids = Array(selected); perform("Đang chạy profile…") { [weak self] api in self?.results(try await api.request("profiles-start",["ids":ids])) ?? "Đã xử lý" } }
     @objc func startExtensionSelected() { let ids = Array(selected); perform("Đang nạp extension và chạy profile…") { [weak self] api in self?.results(try await api.request("profiles-start-extension",["ids":ids])) ?? "Đã xử lý" } }
     @objc func stopSelected() { openEpoch += 1; let ids = Array(selected); perform("Đang gửi lệnh dừng tới GPM…") { [weak self] api in self?.results(try await api.request("profiles-close",["ids":ids])) ?? "Đã dừng" } }
-    func showForm(_ title: String, values: [(String,String)], done: @escaping ([String]) -> Void) {
+    func showForm(_ title: String, values: [(String,String)], choosePreset: Bool = false, done: @escaping ([String]) -> Void) {
         editingProfileForm = true
         let alert = NSAlert(); alert.messageText = title; alert.addButton(withTitle:"Lưu"); alert.addButton(withTitle:"Hủy")
         let content = column(); var fields:[NSTextField] = []
@@ -256,10 +300,11 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
                 content.addArrangedSubview(row([f,parse])); content.addArrangedSubview(note)
             } else { f.widthAnchor.constraint(equalToConstant:430).isActive = true; content.addArrangedSubview(f) }
         }
-        content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:450,height:CGFloat(values.count)*65+40); alert.accessoryView = content
-        alert.beginSheetModal(for:view.window!) { response in self.editingProfileForm = false; if response == .alertFirstButtonReturn { done(fields.map { $0.stringValue }) } }
+        let sets = settingPresets, choice = NSPopUpButton(); if choosePreset { choice.addItems(withTitles:sets.map { string($0["name"]) }); content.addArrangedSubview(label("Bộ prompt / chủ đề")); content.addArrangedSubview(choice) }
+        content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:450,height:CGFloat(values.count)*65+(choosePreset ? 105 : 40)); alert.accessoryView = content
+        alert.beginSheetModal(for:view.window!) { response in self.editingProfileForm = false; if response == .alertFirstButtonReturn { done(fields.map { $0.stringValue } + (choosePreset ? [sets.indices.contains(choice.indexOfSelectedItem) ? string(sets[choice.indexOfSelectedItem]["id"]) : "default"] : [])) } }
     }
-    @objc func createProfile() { showForm("Tạo profile GPM mới",values:[("Tên profile",""),("Proxy · IP:port:user:pass (trống = không dùng)",""),("Chrome · để trống tự chọn","")]) { [weak self] values in self?.perform("Đang tạo profile GPM…") { api in let r = try await api.request("profile-create",["name":values[0],"proxy":values[1],"browserVersion":values[2]]); self?.selected = [string(object(r["profile"])["id"])]; return "Đã tạo profile. Chọn Mở trình duyệt để kiểm tra đăng nhập." } } }
+    @objc func createProfile() { showForm("Tạo profile GPM mới",values:[("Tên profile",""),("Proxy · IP:port:user:pass (trống = không dùng)",""),("Chrome · để trống tự chọn","")],choosePreset:true) { [weak self] values in self?.perform("Đang tạo profile GPM…") { api in let r = try await api.request("profile-create",["name":values[0],"proxy":values[1],"browserVersion":values[2],"settingPresetId":values[3]]); self?.selected = [string(object(r["profile"])["id"])]; return "Đã tạo profile. Chọn Mở trình duyệt để kiểm tra đăng nhập." } } }
     @objc func editProfile() { guard let id = selected.first, let p = profiles.first(where:{string($0["id"]) == id}) else { return }; showForm("Sửa profile",values:[("Tên",string(p["name"])),("Proxy",string(p["proxy"]))]) { [weak self] values in self?.perform("Đang cập nhật GPM…") { api in _ = try await api.request("profile-edit",["id":id,"name":values[0],"proxy":values[1]]); return "Đã cập nhật tên và proxy." } } }
     @objc func deleteProfile() { guard let id = selected.first else { return }; let alert = NSAlert(); alert.messageText = "Chuyển profile vào thùng rác GPM?"; alert.informativeText = "Profile sẽ được xóa khỏi bảng tool. Lịch sử trên máy vẫn được giữ."; alert.addButton(withTitle:"Xóa"); alert.addButton(withTitle:"Hủy"); alert.beginSheetModal(for:view.window!) { [weak self] result in if result == .alertFirstButtonReturn { self?.perform("Đang xóa profile…") { api in _ = try await api.request("profile-delete",["id":id]); return "Đã chuyển profile vào thùng rác GPM." } } } }
     @objc func pickGpm() { picker = ProfilePicker(owner:self); picker?.show() }
@@ -280,9 +325,9 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         } }
     }
     @objc func chooseImages() { let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.beginSheetModal(for:view.window!) { [weak self] r in if r == .OK,let u = p.url { self?.inputs["imagesFolder"]?.stringValue = u.path; self?.settingsEdited() } } }
-    @objc func importPrompt() { let p = NSOpenPanel(); p.allowedContentTypes = [.plainText]; p.beginSheetModal(for:view.window!) { [weak self] r in if r == .OK,let u = p.url { do { let data = try Data(contentsOf:u); guard data.count <= 200000,let text = String(data:data,encoding:.utf8),text.count <= 50000 else { throw failure("Prompt cần UTF-8 và tối đa 50.000 ký tự.") }; self?.prompt.string = text; self?.settingsEdited() } catch { self?.showMessage(error.localizedDescription,error:true) } } } }
+    @objc func importPrompt() { let p = NSOpenPanel(); p.allowedContentTypes = [.plainText]; p.beginSheetModal(for:view.window!) { [weak self] r in if r == .OK,let u = p.url { do { let data = try Data(contentsOf:u); guard data.count <= 200000,let text = String(data:data,encoding:.utf8),text.count <= 50000 else { throw failure("Prompt cần UTF-8 và tối đa 50.000 ký tự.") }; self?.prompt.string = text; self?.presetEdited() } catch { self?.showMessage(error.localizedDescription,error:true) } } } }
     @objc func checkImages() { let folder = inputs["imagesFolder"]!.stringValue; perform("Đang kiểm tra folder ảnh…") { api in let r = try await api.request("assets",["folder":folder]); if !string(r["error"]).isEmpty { throw failure(string(r["error"])) }; return "Folder hợp lệ · \(string(r["count"])) ảnh. Lưu cài đặt để áp dụng." } }
-    @objc func loadModels() { perform("Đang lấy danh sách model…") { [weak self] api in let r = try await api.request("models",[:]), models = r["models"] as? [String] ?? []; guard let self = self,!models.isEmpty else { return "Không có model." }; let alert = NSAlert(); alert.messageText = "Chọn model AI"; alert.addButton(withTitle:"Chọn"); alert.addButton(withTitle:"Hủy"); let popup = NSPopUpButton(frame:NSRect(x:0,y:0,width:430,height:32)); popup.addItems(withTitles:models); popup.selectItem(withTitle:self.inputs["model"]!.stringValue); alert.accessoryView = popup; if await alert.beginSheetModal(for:self.view.window!) == .alertFirstButtonReturn { self.inputs["model"]!.stringValue = popup.titleOfSelectedItem ?? ""; self.settingsEdited() }; return "Chọn model rồi bấm Lưu cho tất cả profile." } }
+    @objc func loadModels() { perform("Đang lấy danh sách model…") { [weak self] api in let r = try await api.request("models",[:]), models = r["models"] as? [String] ?? []; guard let self = self,!models.isEmpty else { return "Không có model." }; let alert = NSAlert(); alert.messageText = "Chọn model AI"; alert.addButton(withTitle:"Chọn"); alert.addButton(withTitle:"Hủy"); let popup = NSPopUpButton(frame:NSRect(x:0,y:0,width:430,height:32)); popup.addItems(withTitles:models); popup.selectItem(withTitle:self.inputs["model"]!.stringValue); alert.accessoryView = popup; if await alert.beginSheetModal(for:self.view.window!) == .alertFirstButtonReturn { self.inputs["model"]!.stringValue = popup.titleOfSelectedItem ?? ""; self.settingsEdited() }; return "Chọn model rồi bấm Lưu cài đặt chung." } }
     func renderLogs() {
         var lines:[(String,String)] = [], recent:[(String,String)] = []
         for p in profiles {
@@ -329,12 +374,13 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         updateChecking = false; renderUpdate()
     }
     @objc func checkUpdate() { Task { @MainActor in await checkForUpdate() } }
-    @objc func installUpdate() { if dirty { showMessage("Lưu cài đặt đang sửa trước khi cập nhật.",error:true); return }; perform("Đang tải và xác minh bản cập nhật…") { api in _ = try await api.request("update-install",[:]); return "Đang cài và mở lại app…" } }
+    @objc func installUpdate() { if dirty || presetDirty { showMessage("Lưu cài đặt đang sửa trước khi cập nhật.",error:true); return }; perform("Đang tải và xác minh bản cập nhật…") { api in _ = try await api.request("update-install",[:]); return "Đang cài và mở lại app…" } }
 }
 
 final class ProfilePicker: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, NSSearchFieldDelegate {
     weak var owner: DesktopController?; var window: NSWindow!,rows:[JSONObject] = [],preview:JSONObject = [:],file:JSONObject?,chosen = Set<String>(),loading = false
     let table = ToggleTable(),query = NSSearchField(),groups = NSPopUpButton(),browserVersion = NSTextField(),note = NSTextField(wrappingLabelWithString:""),add = NSButton(),progress = NSProgressIndicator()
+    let presetChoice = NSPopUpButton(); var pickerPresets:[JSONObject] = []
     var groupIDs = [""]
     init(owner: DesktopController,file: JSONObject? = nil) { self.owner = owner; self.file = file }
     func show() {
@@ -342,19 +388,20 @@ final class ProfilePicker: NSObject, NSTableViewDataSource, NSTableViewDelegate,
         let stack = owner.column(); owner.pin(stack,in:window.contentView!,inset:18); query.delegate = self; browserVersion.delegate = self; query.placeholderString = "Tên, một phần tên hoặc ID"; query.target = self; query.action = #selector(load); groups.addItem(withTitle:"Tất cả nhóm"); groups.target = self; groups.action = #selector(load)
         let find = NSButton(title:"Tìm kiếm",target:self,action:#selector(load)); let controls = owner.row([query,groups,find]); query.widthAnchor.constraint(greaterThanOrEqualToConstant:350).isActive = true; if file == nil { owner.addWide(controls,to:stack) }
         else { browserVersion.placeholderString = "Chrome trên máy đích · tùy chọn, ví dụ 152.0.0.0"; owner.addWide(browserVersion,to:stack); owner.addWide(owner.row([find,owner.label("Xác nhận sẽ tạo/mở GPM nếu file kèm phiên Threads.")]),to:stack) }
+        pickerPresets = owner.settingPresets; presetChoice.addItems(withTitles:pickerPresets.map { string($0["name"]) }); owner.addWide(owner.row([owner.label("Bộ prompt / chủ đề cho profile được thêm"),presetChoice]),to:stack)
         table.delegate = self; table.dataSource = self; table.allowsMultipleSelection = true; table.rowHeight = 38; table.usesAlternatingRowBackgroundColors = true
         for (key,title,width) in [("name","Tên profile",230.0),("id","ID",230.0),("message","Kết quả đối chiếu",330.0)] { let c = NSTableColumn(identifier:NSUserInterfaceItemIdentifier(key)); c.title = title; c.width = width; table.addTableColumn(c) }; owner.addWide(owner.scroll(table),to:stack)
         owner.addWide(note,to:stack); add.title = "Thêm profile đã chọn"; add.target = self; add.action = #selector(commit); add.bezelStyle = .rounded; add.isEnabled = false; let all = NSButton(title:"Chọn tất cả hợp lệ",target:self,action:#selector(selectAll)),cancel = NSButton(title:"Hủy",target:self,action:#selector(cancel)); progress.style = .spinning; progress.isDisplayedWhenStopped = false; owner.addWide(owner.row([progress,cancel,all,add]),to:stack)
         owner.view.window!.beginSheet(window); load()
     }
     @objc func load() {
-        guard let api = owner?.api,!loading else { return }; loading = true; query.isEnabled = false; groups.isEnabled = false; browserVersion.isEnabled = false; chosen.removeAll(); add.isEnabled = false; progress.startAnimation(nil); note.stringValue = "Đang đối chiếu profile GPM…"
+        guard let api = owner?.api,!loading else { return }; loading = true; presetChoice.isEnabled = false; query.isEnabled = false; groups.isEnabled = false; browserVersion.isEnabled = false; chosen.removeAll(); add.isEnabled = false; progress.startAnimation(nil); note.stringValue = "Đang đối chiếu profile GPM…"
         Task { @MainActor in do {
             var body:JSONObject = file ?? ["fromGpm":true,"query":query.stringValue,"groupId":groupIDs[groups.indexOfSelectedItem]]; if file != nil { body["browserVersion"] = browserVersion.stringValue }
             preview = try await api.request("profiles-import-preview",body); rows = objects(preview["rows"]); let saved = file == nil ? groupIDs[groups.indexOfSelectedItem] : ""
             if file == nil { let values = objects(preview["groups"]); groups.removeAllItems(); groups.addItems(withTitles:["Tất cả nhóm"] + values.map { string($0["name"]) }); groupIDs = [""] + values.map { string($0["id"]) }; if let i = groupIDs.firstIndex(of:saved) { groups.selectItem(at:i) } }
             table.reloadData(); note.stringValue = "\(rows.count) dòng · bấm dòng để chọn. " + (preview["limited"] as? Bool == true ? "Giới hạn 500 kết quả, dùng tên/nhóm để thu hẹp." : "") + string(preview["groupsWarning"])
-        } catch { note.stringValue = error.localizedDescription }; loading = false; query.isEnabled = true; groups.isEnabled = true; browserVersion.isEnabled = true; progress.stopAnimation(nil); add.isEnabled = !chosen.isEmpty }
+        } catch { note.stringValue = error.localizedDescription }; loading = false; presetChoice.isEnabled = true; query.isEnabled = true; groups.isEnabled = true; browserVersion.isEnabled = true; progress.stopAnimation(nil); add.isEnabled = !chosen.isEmpty }
     }
     func controlTextDidChange(_ notification: Notification) { chosen.removeAll(); rows = []; preview = [:]; table.reloadData(); add.isEnabled = false; note.stringValue = "Đã đổi bộ lọc · bấm Tìm kiếm để đối chiếu lại." }
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
@@ -364,10 +411,10 @@ final class ProfilePicker: NSObject, NSTableViewDataSource, NSTableViewDelegate,
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? { let c = NSTableCellView(),l = NSTextField(labelWithString:string(rows[row][tableColumn?.identifier.rawValue ?? "name"])); l.textColor = string(rows[row]["status"]) == "ready" ? .labelColor : .secondaryLabelColor; l.lineBreakMode = .byTruncatingTail; c.textField = l; owner?.pin(l,in:c,inset:6); return c }
     func tableViewSelectionDidChange(_ notification: Notification) { chosen = Set(table.selectedRowIndexes.filter { rows.indices.contains($0) && string(rows[$0]["status"]) == "ready" }.map { string(rows[$0]["id"]) }); add.isEnabled = !chosen.isEmpty && !loading }
     @objc func selectAll() { table.selectRowIndexes(IndexSet(rows.indices.filter { string(rows[$0]["status"]) == "ready" }),byExtendingSelection:false) }
-    @objc func commit() { guard let api = owner?.api,!chosen.isEmpty,!loading else { return }; let ids = Array(chosen),token = string(preview["token"]); loading = true; query.isEnabled = false; groups.isEnabled = false; browserVersion.isEnabled = false; add.isEnabled = false; progress.startAnimation(nil)
-        Task { @MainActor in do { var results:[JSONObject] = []; for offset in stride(from:0,to:ids.count,by:500) { note.stringValue = "Đang nhập \(min(offset+500,ids.count)) / \(ids.count)…"; let r = try await api.request("profiles-import",["token":token,"ids":Array(ids[offset..<min(offset+500,ids.count)])]); results += objects(r["results"]) }
+    @objc func commit() { guard let api = owner?.api,!chosen.isEmpty,!loading else { return }; let ids = Array(chosen),token = string(preview["token"]); loading = true; presetChoice.isEnabled = false; query.isEnabled = false; groups.isEnabled = false; browserVersion.isEnabled = false; add.isEnabled = false; progress.startAnimation(nil)
+        Task { @MainActor in do { var results:[JSONObject] = []; for offset in stride(from:0,to:ids.count,by:500) { note.stringValue = "Đang nhập \(min(offset+500,ids.count)) / \(ids.count)…"; let r = try await api.request("profiles-import",["token":token,"settingPresetId":pickerPresets.indices.contains(presetChoice.indexOfSelectedItem) ? string(pickerPresets[presetChoice.indexOfSelectedItem]["id"]) : "default","ids":Array(ids[offset..<min(offset+500,ids.count)])]); results += objects(r["results"]) }
             let added = results.filter { string($0["status"]) == "imported" }; owner?.selected = Set(added.map { string($0["id"]) }); await owner?.refresh(); let errors = results.filter { string($0["status"]) != "imported" }
             note.stringValue = "Đã thêm \(added.count) profile. " + errors.map { string($0["message"]) }.joined(separator:" · "); owner?.showMessage(note.stringValue + " Kiểm tra đăng nhập trước khi chạy tự động."); if errors.isEmpty { owner?.view.window?.endSheet(window); window.close() }
-        } catch { note.stringValue = error.localizedDescription }; loading = false; query.isEnabled = true; groups.isEnabled = true; browserVersion.isEnabled = true; progress.stopAnimation(nil); add.isEnabled = !chosen.isEmpty }
+        } catch { note.stringValue = error.localizedDescription }; loading = false; presetChoice.isEnabled = true; query.isEnabled = true; groups.isEnabled = true; browserVersion.isEnabled = true; progress.stopAnimation(nil); add.isEnabled = !chosen.isEmpty }
     }
 }

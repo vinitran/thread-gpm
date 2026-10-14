@@ -15,6 +15,7 @@ import {validateSettings,publicSettings,redact,assertLiveSettings,applyRunnerSet
 import {dashboard} from './dashboard.mjs';
 import {ProfileManager} from './profile-manager.mjs';
 import {captureSession,restoreSession} from './profile-transfer.mjs';
+import {DEFAULT_PRESET_ID,getPreset} from './settings-presets.mjs';
 import {ProfileImporter} from './profile-import.mjs';
 import {Updater,VERSION,updateRepository,assertUpdateIdle} from './updates.mjs';
 import {ExtensionBridge} from './extension-bridge.mjs';
@@ -40,7 +41,7 @@ let extensionBridge;
 const updater=isWorker?null:new Updater({dir:dataDir,repo:await updateRepository()});
 const active=()=>['running','stopping'].includes(runner.state?.status);
 function idleOnly(){if(operation||active())throw Error('Stop và đợi thao tác hiện tại hoàn tất trước khi chỉnh cài đặt.');}
-function view(){const profiles=manager?.rows();const selected=profiles?.find(p=>p.id===store.value.settings.profileId);return {...(selected?.view||dashboard(store.value,!!browser.browser?.isConnected())),operation,version:VERSION,updateDownload:updater?.status().download,...(manager?{profiles,selectedProfileId:store.value.settings.profileId}:{})};}
+function view(){const profiles=manager?.rows();const selected=profiles?.find(p=>p.id===store.value.settings.profileId);return {...(selected?.view||dashboard(store.value,!!browser.browser?.isConnected())),operation,...(manager?{settingsPresets:store.value.settingsPresets||[]}:{}),version:VERSION,updateDownload:updater?.status().download,...(manager?{profiles,selectedProfileId:store.value.settings.profileId}:{})};}
 browser.onDisconnected=()=>broadcast();
 function broadcast(){if(isWorker&&process.connected)process.send({type:'view',view:view()});const message='data: '+JSON.stringify(view())+'\n\n';for(const response of clients){if(response.writableLength>1024*1024){response.destroy();clients.delete(response);}else response.write(message);}}
 store.subscribe(()=>{clearTimeout(publishing);publishing=setTimeout(broadcast,150);});
@@ -115,7 +116,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='POST'){
    if(req.headers['x-tool-token']!==token||req.headers.origin!==`http://${req.headers.host}`)return json(res,{error:'Invalid origin/token'},403);
    pendingPosts++;trackedPost=true;
-   const input=await body(req,['/api/profiles-import-preview','/api/profile-session-import'].includes(url.pathname)?6*1024*1024:100000);
+   const input=await body(req,['/api/settings','/api/settings-preset-save'].includes(url.pathname)?220000:['/api/profiles-import-preview','/api/profile-session-import'].includes(url.pathname)?6*1024*1024:100000);
    if(operation==='cài bản cập nhật'&&!['/api/stop','/api/profile-close','/api/profiles-stop','/api/profiles-close'].includes(url.pathname))throw Error('Đang cài cập nhật. Đợi tool mở lại trước khi thao tác.');
    if(url.pathname==='/api/proxy-parse')return json(res,parseProxy(input.proxy));
    if(updater&&url.pathname==='/api/update-check')return json(res,await updater.check());
@@ -141,11 +142,14 @@ const server=http.createServer(async(req,res)=>{
    if(manager&&url.pathname==='/api/profiles-start-extension')return json(res,await manager.batch('start-extension',input.ids));
    if(manager&&url.pathname==='/api/profiles-stop')return json(res,await manager.batch('close',input.ids));
    if(manager&&url.pathname==='/api/profiles-close')return json(res,await manager.batch('close',input.ids));
+   if(manager&&url.pathname==='/api/settings-preset-save')return json(res,await exclusive('lưu bộ prompt và chủ đề',()=>manager.savePreset(input)));
+   if(manager&&url.pathname==='/api/settings-preset-delete')return json(res,await exclusive('xóa bộ cài đặt',()=>manager.deletePreset(input.id)));
+   if(manager&&url.pathname==='/api/profiles-setting-preset')return json(res,await exclusive('đổi bộ cài đặt profile',()=>manager.assignPreset(input.ids,input.settingPresetId)));
    if(url.pathname==='/api/settings'){
     return json(res,await exclusive('lưu cài đặt',async()=>{
      if(manager&&input.scope==='all'){
       const old=store.value.sharedSettings||store.value.settings;
-      const settings=validateSettings({...input,profileId:'',proxy:'',cdp:old.cdp},old);settings.profileName='';
+      const settings=validateSettings({...input,prompt:old.prompt,runConfig:{...(input.runConfig||old.runConfig),keywords:old.runConfig.keywords},profileId:'',proxy:'',cdp:old.cdp},old);settings.profileName='';
       const summary=await assetSummary(settings.imagesFolder);
       const results=await manager.applySharedSettings(settings);
       return {ok:results.every(r=>r.ok),settings:publicSettings(settings),assets:summary,results};
@@ -165,9 +169,10 @@ const server=http.createServer(async(req,res)=>{
    if(manager&&url.pathname==='/api/profile-create'){
     return json(res,await exclusive('tạo profile mới',async()=>{
      const old=store.value.sharedSettings||store.value.settings;
+     const settingPresetId=input.settingPresetId||DEFAULT_PRESET_ID;getPreset(store.value.settingsPresets,settingPresetId);
      const gpmApi=input.gpmApi||old.gpmApi||'http://localhost:9495';
      const profile=await new GpmApi(gpmApi).create({name:input.name,rawProxy:input.proxy??'',browserVersion:input.browserVersion??'',sourceProfileId:store.value.settings.profileId||''});
-     const settings={...old,profileId:profile.id,profileName:profile.name,proxy:profile.proxy,gpmApi,cdp:'http://127.0.0.1:9222/'};
+     const settings=manager.effectiveSettings({...old,settingPresetId,profileId:profile.id,profileName:profile.name,proxy:profile.proxy,gpmApi,cdp:'http://127.0.0.1:9222/'});
      await store.set({settings});await manager.register(settings,'tạo profile');
      broadcast();return {ok:true,profile,settings:publicSettings(settings)};
     }));

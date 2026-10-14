@@ -29,6 +29,8 @@ export async function applyRunnerSettings(runner,settings){
  await runner.load();if(runner.state.config){runner.state.config=settings.runConfig;runner.event('Đã áp dụng cài đặt · model '+settings.model+' · dùng từ bước tiếp theo');await runner.save();}
 }
 
-export function sharedProfileSettings(shared,profile){
- return {...profile,gpmApi:shared.gpmApi||profile.gpmApi,model:shared.model,prompt:shared.prompt,apiKey:shared.apiKey,imagesFolder:shared.imagesFolder||'',runConfig:structuredClone(shared.runConfig)};
+export function sharedProfileSettings(shared,profile,presets){
+ const result={...profile,gpmApi:shared.gpmApi||profile.gpmApi,model:shared.model,prompt:shared.prompt,apiKey:shared.apiKey,imagesFolder:shared.imagesFolder||'',runConfig:structuredClone(shared.runConfig)};
+ if(presets){const preset=presets.find(p=>p.id===(profile.settingPresetId||'default'));if(!preset)throw Error('Bộ cài đặt đã chọn không tồn tại.');result.settingPresetId=preset.id;result.prompt=preset.prompt;result.runConfig={...result.runConfig,keywords:preset.keywords};}
+ return result;
 }

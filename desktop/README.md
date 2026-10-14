@@ -13,7 +13,7 @@ POST gửi Origin và token lấy từ `/api/state`; token hết hiệu lực đ
 
 Nhật ký/trạng thái được lấy mỗi 2 giây; backend đồng bộ metadata GPM mỗi 3 giây. Chỉ cập nhật bảng khi nội dung thay đổi, giữ chọn profile và bản nháp cài đặt khi polling.
 
-Cài đặt chung gửi `scope: all`. Bấm Lưu áp dụng cho các profile hiện có và cấu hình mặc định của profile mới; lượt AI/comment đang xử lý hoàn tất với cấu hình đã bắt đầu. Mở chỉ mở GPM. Dừng gọi API đóng GPM và hủy các lượt mở còn chờ.
+Cài đặt chung gửi `scope: all`, giữ nguyên bộ prompt/chủ đề của profile. Các bộ được lưu ở `settingsPresets` trong namespace global của SQLite; profile lưu `settingPresetId` và cấu hình đã tổng hợp. Profile cũ dùng `default`, lấy nội dung chung trước khi cập nhật. API `settings-preset-save`, `settings-preset-delete` quản lý bộ; `profiles-setting-preset` đổi bộ cho profile. Bấm Lưu áp dụng cho các profile hiện có và cấu hình mặc định của profile mới; lượt AI/comment đang xử lý hoàn tất với cấu hình đã bắt đầu. Mở chỉ mở GPM. Dừng gọi API đóng GPM và hủy các lượt mở còn chờ.
 
 Nhập danh sách/phiên có preview và xác nhận; đổi bộ lọc sẽ hủy preview cũ. Import lớn chia batch 500. Xuất danh sách chỉ giữ ID/tên; xuất chuyển máy có thông tin đăng nhập, dùng luồng backend hiện có.
 

@@ -1,3 +1,4 @@
+import {DEFAULT_PRESET_ID,getPreset,ensurePresetCatalog} from './settings-presets.mjs';
 import {randomBytes} from 'node:crypto';
 import {GpmApi} from './gpm-api.mjs';
 import {ProfileTransfer,TRANSFER_FORMAT} from './profile-transfer.mjs';
@@ -55,18 +56,19 @@ export class ProfileImporter{
   if(this.previews.size>=20)this.previews.delete(this.previews.keys().next().value);
   this.previews.set(token,{base,rows,expiresAt:this.now()+300000});return {token,rows,limited,groups,groupsWarning,expiresAt:this.now()+300000};
  }
- async commit({token,ids}={}){
+ async commit({token,ids,settingPresetId=DEFAULT_PRESET_ID}={}){
   const preview=this.previews.get(token);if(!preview||preview.expiresAt<this.now())throw Error('Bản xem trước hết hạn · xem trước lại.');
   if(preview.base!==((this.manager.store.value.sharedSettings||this.manager.store.value.settings).gpmApi||'http://localhost:9495'))throw Error('Địa chỉ GPM đã thay đổi · xem trước lại trước khi nhập.');
   if(this.committing)throw Error('Đang nhập danh sách khác.');
   const allowed=new Set(preview.rows.filter(r=>r.status==='ready').map(r=>r.id));if(!Array.isArray(ids)||!ids.length||ids.length>500||ids.some(id=>!allowed.has(id)))throw Error('Chọn profile hợp lệ từ bản xem trước.');
+  await ensurePresetCatalog(this.manager.store,this.manager.store.value.settings);getPreset(this.manager.store.value.settingsPresets,settingPresetId);
   this.committing=true;try{
-   if(preview.transfer)return await this.transfer.commit(preview,ids);
+   if(preview.transfer)return await this.transfer.commit(preview,ids,settingPresetId);
    const profiles=await this.apiFactory(preview.base).list({metadata:true}),results=[];
    for(const id of new Set(ids)){
     if(own(this.manager.store.value.profileRegistry,id)){results.push({id,status:'existing',message:'Đã có trong tool · giữ nguyên dữ liệu'});continue;}
     const p=profiles.find(p=>p.id===id);if(!p){results.push({id,status:'invalid',message:'Profile không còn trong GPM'});continue;}
-    try{const settings={...structuredClone(this.manager.store.value.sharedSettings||this.manager.store.value.settings),gpmApi:preview.base,profileId:id,profileName:p.name,proxy:p.proxy||'',cdp:'http://127.0.0.1:9222/'};await this.manager.register(settings,'nhập profile có sẵn từ GPM');const data=await this.manager.profileStore(id);this.manager.views.set(id,dashboard(data.value,false));this.manager.live.set(id,{metadata:p,fresh:true,checkedAt:new Date(this.now()).toISOString(),status:'present',error:null});results.push({id,name:p.name,status:'imported',message:'Đã thêm vào tool'});}catch{results.push({id,status:'error',message:'Không lưu được profile · xem trước lại trước khi thử lại'});}
+    try{const settings=this.manager.effectiveSettings({...structuredClone(this.manager.store.value.sharedSettings||this.manager.store.value.settings),settingPresetId,gpmApi:preview.base,profileId:id,profileName:p.name,proxy:p.proxy||'',cdp:'http://127.0.0.1:9222/'});await this.manager.register(settings,'nhập profile có sẵn từ GPM');const data=await this.manager.profileStore(id);this.manager.views.set(id,dashboard(data.value,false));this.manager.live.set(id,{metadata:p,fresh:true,checkedAt:new Date(this.now()).toISOString(),status:'present',error:null});results.push({id,name:p.name,status:'imported',message:'Đã thêm vào tool'});}catch{results.push({id,status:'error',message:'Không lưu được profile · xem trước lại trước khi thử lại'});}
    }
    this.manager.onChange();return {results};
   }finally{this.committing=false;}
