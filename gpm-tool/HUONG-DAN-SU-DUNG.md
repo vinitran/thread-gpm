@@ -112,7 +112,9 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 
 Backend Node được đóng gói trong app tự gọi Google OAuth và Gmail trực tiếp. **Không cần API local, cổng 8787, Python hoặc chạy script trong Terminal.** Dùng tài khoản Gmail đã cấp quyền `gmail.readonly`; app không đọc toàn bộ nội dung thư, chỉ lấy các header của tối đa 50 email Instagram phù hợp.
 
-Với máy đã có OAuth, đặt `token.json` và `credentials.json` riêng tư trong thư mục `gmail-oauth/` thuộc thư mục dữ liệu app. Bấm **Mở thư mục dữ liệu** trong Nhật ký & lịch sử để mở đúng vị trí. Tạo `gmail-oauth.json` bên cạnh thư mục này:
+**Bản có Gmail đóng gói:** mỗi lần khởi động backend mới, app hiện hộp nhập mật khẩu mở khóa trước khi cho dùng tool. Nhập mật khẩu do chủ bản build cung cấp; bấm Thoát để đóng app. Gmail OAuth đã được mã hóa AES-256-GCM và đi kèm cả bản Mac/Windows, nên chuyển máy chỉ cần cài app và nhập mật khẩu, không phải chép các file OAuth bên dưới. Mật khẩu không được lưu; token làm mới được lưu mã hóa trong `gmail-vault/` ở thư mục dữ liệu. Người có bản app và mật khẩu có thể sử dụng hộp thư được đóng gói. OAuth hết hạn/bị thu hồi vẫn cần chủ Gmail kết nối lại rồi đóng gói lại.
+
+Với bản không đóng gói Gmail, đặt `token.json` và `credentials.json` riêng tư trong thư mục `gmail-oauth/` thuộc thư mục dữ liệu app. Bấm **Mở thư mục dữ liệu** trong Nhật ký & lịch sử để mở đúng vị trí. Tạo `gmail-oauth.json` bên cạnh thư mục này:
 
 ```json
 {
@@ -132,7 +134,7 @@ Sau khi gửi đăng ký, app tìm thư từ đúng `no-reply@mail.instagram.com
 
 Sau khi gửi yêu cầu mã, app đợi đủ khoảng **10 giây** từ thời điểm yêu cầu để email về Gmail, rồi kiểm tra lại mỗi **3 giây**, tối đa **60 giây** kể từ khi bắt đầu lấy mã (tính cả lượt đợi đầu và thời gian gọi Google). Phản hồi rỗng, sai JSON, lỗi mạng hoặc Google tạm ngừng phản hồi sẽ được thử lại trong thời gian này. Nút **Dừng** ngắt được lúc chờ và khi đang gọi Google. App tự làm mới access token khi cần, lưu token mới an toàn và tránh nhiều profile cùng làm mới chồng nhau. Nếu refresh token hết hạn/bị thu hồi hoặc thiếu quyền Gmail, app báo cần kết nối lại và giữ profile để bạn nhập mã thủ công. App hiện dùng OAuth đã có; việc cấp lại sự đồng ý Google khi token bị thu hồi cần thực hiện lại và thay token trên máy.
 
-Các file cấu hình/token nằm ngoài thư mục cài app, được giữ qua cập nhật và không nằm trong dữ liệu xuất profile. Token, client secret và mã xác minh không được ghi vào log hoặc SQLite; SQLite chỉ lưu người nhận, username, thời điểm yêu cầu và trạng thái. Chuyển máy cần kết nối/cấu hình Gmail riêng trên máy đó, không đưa file OAuth lên Git.
+Các file cấu hình/token riêng và token mã hóa làm mới nằm ngoài thư mục cài app, được giữ qua cập nhật và không nằm trong dữ liệu xuất profile. Token, client secret và mã xác minh không được ghi vào log hoặc SQLite; SQLite chỉ lưu người nhận, username, thời điểm yêu cầu và trạng thái. Bản không đóng gói Gmail cần kết nối/cấu hình Gmail riêng khi chuyển máy; không đưa file OAuth dạng rõ lên Git.
 
 Tham khảo giao thức chính thức: [làm mới token OAuth của Google](https://developers.google.com/identity/protocols/oauth2/web-server#offline), [tìm thư Gmail](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list), [đọc metadata thư](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/get).
 

@@ -81,8 +81,26 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     func connect(_ address: String) {
         api = ToolAPI(address); message.stringValue = "Đã mở app · đang tải dữ liệu…"
-        Task { @MainActor in await refresh(); await loadUpdate(); if busy == 0 { spinner.stopAnimation(nil) } }
-        poll?.invalidate(); poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in Task { @MainActor in await self?.refresh(); if let self = self, Date().timeIntervalSince(self.lastUpdateCheck) >= 60 { await self.checkForUpdate() } } }
+        tabs.isHidden = true; poll?.invalidate()
+        Task { @MainActor in
+            do {
+                guard let api = self.api else { return }
+                let access = try await api.request("state")
+                if access["requiresPassword"] as? Bool == true {
+                    var unlocked = false, warning = "Nhập mật khẩu để mở app và Gmail đã đóng gói."
+                    while !unlocked {
+                        let alert = NSAlert(); alert.messageText = "Mở khóa Hoàn Xu GPM"; alert.informativeText = warning; alert.addButton(withTitle:"Mở khóa"); alert.addButton(withTitle:"Thoát")
+                        let password = NSSecureTextField(frame:NSRect(x:0,y:0,width:360,height:28)); password.placeholderString = "Mật khẩu mở app"; alert.accessoryView = password
+                        alert.window.initialFirstResponder = password
+                        guard await alert.beginSheetModal(for:self.view.window!) == .alertFirstButtonReturn else { NSApp.terminate(nil); return }
+                        var value = password.stringValue; password.stringValue = ""
+                        do { _ = try await api.request("unlock",["password":value]); unlocked = true } catch { warning = error.localizedDescription }; value = ""
+                    }
+                }
+                tabs.isHidden = false; await refresh(); await loadUpdate(); if busy == 0 { spinner.stopAnimation(nil) }
+                poll = Timer.scheduledTimer(withTimeInterval:2,repeats:true) { [weak self] _ in Task { @MainActor in await self?.refresh(); if let self = self,Date().timeIntervalSince(self.lastUpdateCheck) >= 60 { await self.checkForUpdate() } } }
+            } catch { showMessage(error.localizedDescription,error:true); spinner.stopAnimation(nil) }
+        }
     }
     func showMessage(_ text: String, error: Bool = false) { message.stringValue = text; message.textColor = error ? .systemRed : .secondaryLabelColor }
     func tab(_ title: String, _ content: NSView) { let item = NSTabViewItem(identifier: title); item.label = title; let host = NSView(); pin(content, in: host, inset: 16); item.view = host; tabs.addTabViewItem(item) }

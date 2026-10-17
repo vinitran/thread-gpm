@@ -22,3 +22,4 @@ bundled-keys.json
 # Private Gmail OAuth files stay outside release/source code
 gmail-oauth/
 gmail-oauth.json
+gmail-vault/

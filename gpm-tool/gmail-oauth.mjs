@@ -68,16 +68,17 @@ export function instagramCodeFromMessage(message,{recipient,after,now=Date.now()
  return {code:match[1],received};
 }
 export class GmailOAuthClient{
- constructor(config,{request=googleRequest,now=Date.now,wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){this.config=validateGmailOAuthConfig(config);this.request=request;this.now=now;this.wait=wait;}
+ constructor(config,{request=googleRequest,now=Date.now,wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)),tokenStorage}={}){this.config=validateGmailOAuthConfig(config);this.request=request;this.now=now;this.wait=wait;this.tokenStorage=tokenStorage;}
  async session({shouldContinue=()=>true,deadline=this.now()+60000}={}){
   if(!this.config)throw failure('Chưa kết nối Gmail trong app. Cấu hình gmail-oauth.json hoặc tự nhập mã.');
   const check=()=>{if(!shouldContinue())throw failure('Đã dừng lấy mã Gmail.');if(this.now()>=deadline)throw failure('Chưa nhận được mã Gmail sau 60 giây. Bạn nhập mã thủ công.');};
   const call=async(url,options={})=>{check();let result;try{result=await this.request(url,{...options,shouldContinue,timeoutMs:Math.min(10000,deadline-this.now())});}catch(error){if(error.gmailCodeError)throw error;throw failure('Không kết nối được Google/Gmail.',{transient:true});}check();return result;};
-  let token=await jsonFile(this.config.tokenFile,'Không đọc được token OAuth Gmail. Kết nối lại Gmail hoặc nhập mã thủ công.');
+  const readToken=()=>this.tokenStorage?this.tokenStorage.read():jsonFile(this.config.tokenFile,'Không đọc được token OAuth Gmail. Kết nối lại Gmail hoặc nhập mã thủ công.');
+  let token=await readToken();
   const refresh=async(force=false)=>{
    check();const previous=token.token||token.access_token,release=await refreshLock(this.config.tokenFile,{check,wait:this.wait,deadline,now:this.now});
    try{
-    token=await jsonFile(this.config.tokenFile,'Không đọc được token OAuth Gmail.');
+    token=await readToken();
     const expiry=Date.parse(token.expiry||'')||Number(token.expiry_date)||0;
     if((token.token||token.access_token)&&expiry>this.now()+30000&&(!force||(token.token||token.access_token)!==previous))return;
     let credentials=token;if((!token.client_id||!token.client_secret)&&this.config.credentialsFile){const file=await jsonFile(this.config.credentialsFile,'Không đọc được credentials OAuth Gmail.');credentials=file.installed||file.web||file;}
@@ -87,7 +88,7 @@ export class GmailOAuthClient{
     if(response.status===429||response.status>=500)throw failure('Google OAuth tạm thời chưa phản hồi. Đang chờ thử lại.',{transient:true});
     if(response.status!==200||typeof response.data?.access_token!=='string'||!Number.isFinite(Number(response.data.expires_in))||Number(response.data.expires_in)<=0||Number(response.data.expires_in)>86400)throw failure('Không làm mới được quyền Gmail. OAuth có thể hết hạn hoặc bị thu hồi; cần kết nối lại Gmail.');
     token={...token,token:response.data.access_token,expiry:new Date(this.now()+Number(response.data.expires_in)*1000).toISOString(),...(response.data.refresh_token?{refresh_token:response.data.refresh_token}:{})};delete token.access_token;delete token.expiry_date;
-    await saveToken(this.config.tokenFile,token);
+    if(this.tokenStorage)await this.tokenStorage.write(token);else await saveToken(this.config.tokenFile,token);
    }finally{await release();}
   };
   if(!(token.token||token.access_token)||(Date.parse(token.expiry||'')||Number(token.expiry_date)||0)<=this.now()+30000)await refresh();

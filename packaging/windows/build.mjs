@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import {spawn} from 'node:child_process';import {createHash} from 'node:crypto';import {fileURLToPath} from 'node:url';
 import {repository,APP_ID} from '../../gpm-tool/updates.mjs';
+import {bundleGmailVault} from '../gmail-vault.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..'),work=path.join(root,'.build','windows'),app=path.join(work,'payload'),out=path.join(root,'release');
 async function run(command,args,cwd=root){await new Promise((resolve,reject)=>{const child=spawn(command,args,{cwd,stdio:'inherit',env:{...process.env,PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:'1',NSISDIR:process.env.NSISDIR||(process.platform==='win32'&&process.env.MAKENSIS?path.dirname(process.env.MAKENSIS):path.join(work,'nsis'))}});child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error(command+' failed: '+code)));});}
 async function download(url,file){const r=await fetch(url,{signal:AbortSignal.timeout(180000)});if(!r.ok)throw Error('Download HTTP '+r.status+': '+url);const bytes=Buffer.from(await r.arrayBuffer());await fs.writeFile(file,bytes);return createHash('sha256').update(bytes).digest('hex');}
@@ -8,6 +9,7 @@ await fs.mkdir(work,{recursive:true});await fs.mkdir(out,{recursive:true});await
 const version=JSON.parse(await fs.readFile(path.join(root,'gpm-tool/package.json'),'utf8')).version;
 const updateRepo=repository(process.env.GPM_UPDATE_REPOSITORY||'vinitran/thread-gpm');
 await fs.writeFile(path.join(app,'release-config.json'),JSON.stringify({repository:updateRepo,updatesEnabled:process.env.GPM_UPDATES_ENABLED!=='0'}));
+await bundleGmailVault(app);
 for(const name of await fs.readdir(path.join(root,'gpm-tool'))){if(name.endsWith('.mjs')&&!/test|smoke/.test(name))await copy('gpm-tool/'+name);}
 for(const name of ['package.json','package-lock.json'])await copy('gpm-tool/'+name);
 let windowsGuide=await fs.readFile(path.join(root,'packaging/windows/HUONG-DAN-WINDOWS.md'),'utf8');

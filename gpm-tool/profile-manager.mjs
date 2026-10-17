@@ -10,13 +10,13 @@ import {registrationDraft,randomRegistrationBirthday,validateRegistration} from 
 const valid=id=>typeof id==='string'&&/^[-\w]{1,100}$/.test(id);
 const busy=view=>['running','stopping'].includes(view?.state?.status)||!!view?.operation;
 export class ProfileWorker{
- constructor(dir,onView){this.dir=dir;this.onView=onView;}
+ constructor(dir,onView,{vaultKey=()=>null}={}){this.dir=dir;this.onView=onView;this.vaultKey=vaultKey;}
  async boot(){
   if(this.ready)return this.ready;
   this.ready=new Promise((resolve,reject)=>{
    this.child=fork(new URL('./server.mjs',import.meta.url),[],{env:{...process.env,GPM_TOOL_WORKER:'1',GPM_PROFILE_ID:path.basename(this.dir),GPM_TOOL_DATA:this.dir,HOANXU_GMAIL_OAUTH_CONFIG:process.env.HOANXU_GMAIL_OAUTH_CONFIG||path.join(path.dirname(path.dirname(this.dir)),'gmail-oauth.json'),PORT:'0'},stdio:['ignore','ignore','ignore','ipc']});
    const timeout=setTimeout(()=>reject(Error('Bộ chạy profile chưa khởi động sau 30 giây.')),30000);
-   this.child.on('message',message=>{if(message.type==='ready'){clearTimeout(timeout);this.base='http://127.0.0.1:'+message.port;this.token=message.token;resolve(this);}if(message.type==='view')this.onView(message.view);});
+   this.child.on('message',message=>{if(message.type==='vault-key-request')this.child.send({type:'vault-key',key:this.vaultKey()});if(message.type==='ready'){clearTimeout(timeout);this.base='http://127.0.0.1:'+message.port;this.token=message.token;resolve(this);}if(message.type==='view')this.onView(message.view);});
    this.child.once('exit',()=>{clearTimeout(timeout);this.ready=null;this.base=null;this.onView({connected:false,operation:null,state:{status:'attention',activity:{message:'Bộ chạy profile đã thoát · bấm chạy lại để khôi phục.'}}});reject(Error('Bộ chạy profile đã thoát.'));});
   });return this.ready;
  }

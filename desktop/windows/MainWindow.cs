@@ -89,7 +89,8 @@ sealed class MainWindow : Window
             if (code == 42) { try { backend.LaunchUpdater(); closing = true; Close(); } catch (Exception e) { Message(e.Message, true); } }
             else if (!closing) Message("Backend đã thoát. Xem app.log trong thư mục dữ liệu.", true);
         }));
-        Loaded += async (_, _) => { try { await backend.Start(); api = backend.Api; await Refresh(); await LoadUpdate(!smoke); poll.Start(); if (smoke) await Smoke(); } catch (Exception e) { Message(e.Message, true); if (smoke) { Environment.ExitCode = 1; closing = true; Close(); } } };
+        tabs.Visibility = Visibility.Hidden;
+        Loaded += async (_, _) => { try { await backend.Start(); api = backend.Api; if (api != null && J.B((await api.Request("state"))["requiresPassword"]) && !await Unlock()) { Close(); return; } tabs.Visibility = Visibility.Visible; await Refresh(); await LoadUpdate(!smoke); poll.Start(); if (smoke) await Smoke(); } catch (Exception e) { Message(e.Message, true); if (smoke) { Environment.ExitCode = 1; closing = true; Close(); } } };
         Closing += async (_, e) =>
         {
             if (closed || (closing && backend.Process?.HasExited != false)) return;
@@ -99,6 +100,21 @@ sealed class MainWindow : Window
             try { await backend.Close(); closed = true; Close(); } catch (Exception error) { closing = false; Message("Chưa thoát được: " + error.Message, true); }
         };
         Controls(); progress.Visibility = Visibility.Visible;
+    }
+    async Task<bool> Unlock()
+    {
+        string warning = "Nhập mật khẩu để mở app và Gmail đã đóng gói.";
+        while (true)
+        {
+            var dialog = new Window { Owner = this, Title = "Mở khóa Hoàn Xu GPM", Width = 430, Height = 220, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+            var panel = new StackPanel { Margin = new(20) }; var password = new PasswordBox { Margin = new(0, 12, 0, 12), MinHeight = 30 };
+            panel.Children.Add(new TextBlock { Text = warning, TextWrapping = TextWrapping.Wrap }); panel.Children.Add(password);
+            var unlock = new Button { Content = "Mở khóa", IsDefault = true }; var cancel = new Button { Content = "Thoát", IsCancel = true }; unlock.Click += (_, _) => dialog.DialogResult = true;
+            panel.Children.Add(Row(unlock, cancel)); dialog.Content = panel; dialog.Loaded += (_, _) => password.Focus();
+            if (dialog.ShowDialog() != true) { password.Clear(); return false; }
+            string value = password.Password; password.Clear();
+            try { await api!.Request("unlock", new() { ["password"] = value }); return true; } catch (Exception error) { warning = error.Message; } finally { value = ""; }
+        }
     }
     public static TextBlock Note(string text) => new() { Text = text, Foreground = Brushes.DimGray, TextWrapping = TextWrapping.Wrap, Margin = new(0, 6, 0, 8) };
     public static StackPanel Row(params UIElement[] items) { var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, 0, 10) }; foreach (var item in items) p.Children.Add(item); return p; }

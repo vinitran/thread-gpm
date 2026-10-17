@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {repository,APP_ID} from '../../gpm-tool/updates.mjs';
+import {bundleGmailVault} from '../gmail-vault.mjs';
 
 if(process.platform!=='darwin')throw Error('Build DMG cần runner macOS.');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
@@ -21,6 +22,7 @@ for(const name of await fs.readdir(path.join(root,'gpm-tool')))if(name.endsWith(
 for(const name of ['package.json','package-lock.json','HUONG-DAN-SU-DUNG.md'])await copy('gpm-tool/'+name);
 await fs.writeFile(path.join(payload,'package.json'),JSON.stringify({private:true,type:'module'}));
 await fs.writeFile(path.join(payload,'release-config.json'),JSON.stringify({repository:repo,updatesEnabled:process.env.GPM_UPDATES_ENABLED!=='0'}));
+await bundleGmailVault(payload);
 await fs.cp(path.join(root,'gpm-tool/public'),path.join(payload,'gpm-tool/public'),{recursive:true});
 for(const name of ['pointer-input.js','ai.js','auto-runner.js','auto-dom.js','extract.js','feed-collector.js','post-reply.js','reply-dom.js','reply-assets.js','tab-actions.js','default-prompt.txt'])await copy('extension/'+name);
 await fs.cp(path.join(root,'extension/managed'),path.join(payload,'extension/managed'),{recursive:true});
