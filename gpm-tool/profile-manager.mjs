@@ -6,7 +6,7 @@ import {dashboard,profileLogs} from './dashboard.mjs';
 import {redact,sharedProfileSettings,validateSettings,assertLiveSettings} from './settings.mjs';
 import {DEFAULT_PRESET_ID,ensurePresetCatalog,getPreset,validatePreset} from './settings-presets.mjs';
 import {generateRegistrationIdentity} from './ai.mjs';
-import {registrationDraft,validateRegistration} from './instagram-registration.mjs';
+import {registrationDraft,randomRegistrationBirthday,validateRegistration} from './instagram-registration.mjs';
 const valid=id=>typeof id==='string'&&/^[-\w]{1,100}$/.test(id);
 const busy=view=>['running','stopping'].includes(view?.state?.status)||!!view?.operation;
 export class ProfileWorker{
@@ -136,10 +136,10 @@ export class ProfileManager{
  async instagramDraft(id){
   if(!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id))throw Error('Chọn một profile đã thêm.');
   if(busy(this.views.get(id))||this.stoppingProfiles.has(id))throw Error('Dừng bộ chạy của profile trước khi chuẩn bị đăng ký.');
-  const epoch=this.cancelled.get(id)||0,saved=(await this.profileStore(id)).value.settings,settings=await this.currentSettings(this.effectiveSettings(saved));
+  const birthday=randomRegistrationBirthday(),epoch=this.cancelled.get(id)||0,saved=(await this.profileStore(id)).value.settings,settings=await this.currentSettings(this.effectiveSettings(saved));
   const identity=await this.identityGenerator(settings);
   if(this.closing||(this.cancelled.get(id)||0)!==epoch)throw Error('Đã hủy tạo tên Instagram do Dừng.');
-  return {...registrationDraft({...settings,id,name:settings.profileName}),...identity,hasSavedPassword:!!this.store.value.instagramSignupPassword};
+  return {...registrationDraft({...settings,id,name:settings.profileName},{birthday}),...identity,hasSavedPassword:!!this.store.value.instagramSignupPassword};
  }
  async prepareInstagram(id,input){
   if(!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id))throw Error('Chọn một profile đã thêm.');

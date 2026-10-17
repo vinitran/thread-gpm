@@ -23,6 +23,6 @@ static class InstagramSignupDialog
         var open = new Button { Content = "Mở & điền form", IsDefault = true, Padding = new(18, 7, 18, 7) }; open.Click += (_, _) => dialog.DialogResult = true;
         var cancel = new Button { Content = "Hủy", IsCancel = true, Padding = new(18, 7, 18, 7), Margin = new(10, 0, 0, 0) }; page.Children.Add(MainWindow.Row(open, cancel));
         if (dialog.ShowDialog() != true) return null;
-        var result = new JsonObject { ["password"] = password.Password, ["rememberPassword"] = remember.IsChecked == true }; foreach (var (key, field) in inputs) result[key] = field.Text; return result;
+        var result = new JsonObject { ["birthday"] = J.S(draft["birthday"]), ["password"] = password.Password, ["rememberPassword"] = remember.IsChecked == true }; foreach (var (key, field) in inputs) result[key] = field.Text; return result;
     }
 }

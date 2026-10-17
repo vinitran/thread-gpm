@@ -326,7 +326,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:480,height:340); alert.accessoryView = content
         alert.beginSheetModal(for:view.window!) { [weak self] response in
             self?.editingProfileForm = false; guard response == .alertFirstButtonReturn else { return }
-            var body:JSONObject = ["id":id,"password":password.stringValue,"rememberPassword":remember.state == .on]
+            var body:JSONObject = ["id":id,"birthday":string(draft["birthday"]),"password":password.stringValue,"rememberPassword":remember.state == .on]
             for (key,field) in fields { body[key] = field.stringValue }
             self?.perform("Đang mở profile và chuẩn bị form Instagram…") { api in let result = try await api.request("instagram-prepare",body); return string(result["message"]) }
         }

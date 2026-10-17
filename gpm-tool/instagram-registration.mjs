@@ -6,10 +6,10 @@ export function randomRegistrationBirthday(){
  const start=Date.UTC(2004,0,1),days=(Date.UTC(2008,0,1)-start)/86400000;
  return new Date(start+randomInt(days)*86400000).toISOString().slice(0,10);
 }
-export function registrationDraft(profile){
+export function registrationDraft(profile,{birthday=randomRegistrationBirthday()}={}){
  const names=String(profile.name||profile.profileName||'').trim(),emails=names.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:gmail|googlemail)\.com\b/gi)||[];
  const email=emails.length===1?emails[0]:'';
- return {profileId:profile.id||profile.profileId,email,fullName:'',username:'',gender:'female'};
+ return {profileId:profile.id||profile.profileId,email,fullName:'',username:'',birthday,gender:'female'};
 }
 export function validateRegistration(input){
  const email=String(input.email||'').trim(),fullName=String(input.fullName||'').trim(),username=String(input.username||'').trim();
