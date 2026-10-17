@@ -236,3 +236,51 @@ test('a visible OTP input can finish loading before Gmail is requested and confi
   assert.equal(result.status,'completed');assert.equal(calls,1);assert.equal(result.emailCodeSubmitted,true);assert.equal(await page.locator('input[name=email_confirmation_code]').inputValue(),'012345');assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),1);assert.equal(await page.evaluate(()=>window.enters),0);for(const secret of ['012345',input.password])assert.ok(!JSON.stringify(result).includes(secret));
  }finally{await browser.close();}
 });
+
+const postCodeFixture=(action,timeline='')=>markup.replace('window.codeSubmissions++','window.codeSubmissions++;'+action)+`<script>window.postCodeElapsed=0;window.advancePostCode=()=>{${timeline}};</script>`;
+const advancePostCode=async(context,ms)=>{const page=context.pages()[0];if(!page)return 0;return page.evaluate(ms=>{if(window.codeSubmissions===1){window.postCodeElapsed+=ms;window.advancePostCode();}return window.postCodeElapsed;},ms);};
+test('after confirming OTP, a stable SPA success at the same URL still gets a deliberate page-loading wait',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const body=postCodeFixture("document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<a href=/direct/inbox/>Inbox</a>')"),progress=[];
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body}));let calls=0;
+  const result=await prepareInstagramRegistration(context,input,{...fast,postCodeTimeoutMs:10000,onProgress:message=>progress.push(message),getEmailCode:async()=>{calls++;return {code:'012345'};},wait:ms=>advancePostCode(context,ms)}),page=context.pages()[0];
+  assert.equal(result.status,'completed');assert.equal(result.emailCodeSubmitted,true);assert.equal(result.url,INSTAGRAM_SIGNUP_URL);assert.ok(await page.evaluate(()=>window.postCodeElapsed>=3000));assert.equal(calls,1);assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),1);assert.equal(await page.evaluate(()=>window.enters),0);assert.ok(progress.some(message=>/đang (?:chờ|đợi)|đang tải/i.test(message)));for(const secret of ['012345',input.password])assert.ok(!JSON.stringify([result,progress]).includes(secret));
+ }finally{await browser.close();}
+});
+
+test('after OTP, busy indicators, document readiness and redirects must settle before the final account state is accepted',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const action="document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<div id=account-state><a href=/direct/inbox/>Inbox</a></div><div id=loading aria-busy=true>Loading Instagram</div>');window.fixtureReadyState='loading';Object.defineProperty(document,'readyState',{configurable:true,get:()=>window.fixtureReadyState})";
+ const timeline=`
+ if(window.postCodeElapsed>=1500)window.fixtureReadyState='complete';
+ if(window.postCodeElapsed>=2000&&!window.onboardingShown){window.onboardingShown=true;document.getElementById('loading').setAttribute('aria-busy','false');document.getElementById('account-state').textContent='Save your login information';}
+ if(window.postCodeElapsed>=3500&&!window.homeShown){window.homeShown=true;document.getElementById('account-state').innerHTML='<a href=/direct/inbox/>Inbox</a>';history.pushState({},'', '/?step=home');}
+ if(window.postCodeElapsed>=4500&&!window.lastRedirect){window.lastRedirect=true;history.pushState({},'', '/?step=settled&confirmation_code=012345');}
+ `;
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:postCodeFixture(action,timeline)}));
+  const result=await prepareInstagramRegistration(context,input,{...fast,postCodeTimeoutMs:12000,getEmailCode:async()=>({code:'012345'}),wait:ms=>advancePostCode(context,ms)}),page=context.pages()[0];
+  assert.equal(result.status,'completed');assert.equal(result.url,'https://www.instagram.com/');assert.equal(await page.evaluate(()=>window.lastRedirect),true);assert.ok(await page.evaluate(()=>window.postCodeElapsed>=6500));assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),1);assert.ok(!JSON.stringify(result).includes('012345'));
+  await context.close();
+  const progressContext=await browser.newContext(),progressBody=postCodeFixture("document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<a href=/direct/inbox/>Inbox</a><div id=loading role=progressbar>Loading Instagram</div>')","if(window.postCodeElapsed>=3500)document.getElementById('loading')?.remove();");await progressContext.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:progressBody}));
+  const progressResult=await prepareInstagramRegistration(progressContext,input,{...fast,postCodeTimeoutMs:10000,getEmailCode:async()=>({code:'012345'}),wait:ms=>advancePostCode(progressContext,ms)}),progressPage=progressContext.pages()[0];
+  assert.equal(progressResult.status,'completed');assert.ok(await progressPage.evaluate(()=>window.postCodeElapsed>=5500));assert.equal(await progressPage.evaluate(()=>window.codeSubmissions),1);
+ }finally{await browser.close();}
+});
+
+test('post-OTP timeout keeps the profile available without retrying Gmail or confirming again',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const cases=[['OTP stays visible',''],['account is still busy',"document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<a href=/direct/inbox/>Inbox</a><div aria-busy=true>Loading Instagram</div>')"],['document is still loading',"document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<a href=/direct/inbox/>Inbox</a>');Object.defineProperty(document,'readyState',{configurable:true,get:()=> 'loading'})"]];
+ try{for(const [name,action] of cases){const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:postCodeFixture(action)}));let calls=0;
+   const result=await prepareInstagramRegistration(context,input,{...fast,postCodeTimeoutMs:5000,getEmailCode:async()=>{calls++;return {code:'012345'};},wait:ms=>advancePostCode(context,ms)}),page=context.pages()[0];
+   assert.equal(result.status,'code_submitted_unverified',name);assert.equal(result.emailCodeSubmitted,true,name);assert.ok(await page.evaluate(()=>window.postCodeElapsed>=5000),name);assert.equal(calls,1,name);assert.equal(await page.evaluate(()=>window.submissions),1,name);assert.equal(await page.evaluate(()=>window.codeSubmissions),1,name);assert.equal(page.isClosed(),false,name);assert.ok(!JSON.stringify(result).includes('012345'));await context.close();
+  }
+ }finally{await browser.close();}
+});
+
+test('Stop while Instagram loads after OTP ends the wait promptly and never clicks confirmation twice',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:postCodeFixture('')}));let active=true,calls=0;
+  const result=await prepareInstagramRegistration(context,input,{...fast,postCodeTimeoutMs:60000,shouldContinue:()=>active,getEmailCode:async()=>{calls++;return {code:'012345'};},wait:async ms=>{if(await advancePostCode(context,ms)>=700)active=false;}}),page=context.pages()[0];
+  assert.equal(result.status,'code_submission_unknown');assert.equal(result.emailCodeSubmitted,true);assert.ok(await page.evaluate(()=>window.postCodeElapsed<1500));assert.equal(calls,1);assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),1);assert.equal(page.isClosed(),false);assert.ok(!JSON.stringify(result).includes('012345'));
+ }finally{await browser.close();}
+});
