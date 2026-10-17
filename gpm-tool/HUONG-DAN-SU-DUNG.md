@@ -99,6 +99,15 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 - **Lưu cài đặt chung** áp dụng model, API key, nhịp chạy, ảnh, follow/tag/thả tim cho tất cả profile, giữ nguyên bộ prompt/chủ đề của từng profile.
 - Muốn xóa một bộ, đổi các profile đang dùng bộ đó sang bộ khác trước, rồi bấm **Xóa bộ**. Danh sách bộ và lựa chọn của profile được lưu trong SQLite trên máy.
 
+### Chuẩn bị đăng ký Instagram theo profile
+
+1. Chọn **một profile** và dừng bộ chạy nếu đang chạy.
+2. Bấm **Đăng ký Instagram…**. App đọc tên profile từ GPM để lấy Gmail; tên hiển thị và username được gợi ý từ phần trước `@`, có thể sửa trước khi mở form.
+3. Điền mật khẩu cố định, tích **Nhớ mật khẩu trên máy cho lần sau** nếu muốn dùng lại. Trống sẽ dùng mật khẩu đã lưu hoặc để bạn tự nhập trên Instagram. Mật khẩu không nằm trong repo, log hay file xuất profile; lưu cục bộ trong SQLite khi bạn chọn Nhớ.
+4. Điền **ngày sinh thật** dạng `YYYY-MM-DD`, hoặc để trống để tự chọn trên Instagram. App không tự tạo ngày sinh ngẫu nhiên cho đăng ký thật. Giới tính chọn nữ nếu form có trường này.
+5. Bấm **Mở & điền form**. App chỉ mở đúng profile, điền form và giữ trang để bạn kiểm tra. Profile đã đăng nhập, popup xác minh hoặc giao diện chưa nhận diện sẽ được báo để bạn xử lý thủ công.
+6. Bạn tự bấm **Submit**, chấp nhận điều khoản và hoàn tất xác minh theo yêu cầu của Instagram. Tool không tự gửi đăng ký hoặc xử lý CAPTCHA/OTP.
+
 ## 6. Chạy tool
 
 Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở profile nếu cần, bắt đầu tìm bài, gọi AI và đăng bình luận bằng cài đặt chung đã lưu. Nên chạy một profile trước để quan sát kết quả.

@@ -5,6 +5,7 @@ import {Store} from './store.mjs';
 import {dashboard,profileLogs} from './dashboard.mjs';
 import {redact,sharedProfileSettings,validateSettings,assertLiveSettings} from './settings.mjs';
 import {DEFAULT_PRESET_ID,ensurePresetCatalog,getPreset,validatePreset} from './settings-presets.mjs';
+import {registrationDraft,validateRegistration} from './instagram-registration.mjs';
 const valid=id=>typeof id==='string'&&/^[-\w]{1,100}$/.test(id);
 const busy=view=>['running','stopping'].includes(view?.state?.status)||!!view?.operation;
 export class ProfileWorker{
@@ -131,6 +132,27 @@ export class ProfileManager{
   if((this.cancelled.get(id)||0)!==epoch){await this.gpmStop(id);return {ok:true,cancelled:true};}
   await this.register({...settings,profileName:result.profileName},'mở profile');return result;
  });}
+ async instagramDraft(id){
+  if(!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id))throw Error('Chọn một profile đã thêm.');
+  const saved=(await this.profileStore(id)).value.settings,settings=await this.currentSettings(saved);
+  return {...registrationDraft({...settings,id,name:settings.profileName}),hasSavedPassword:!!this.store.value.instagramSignupPassword};
+ }
+ async prepareInstagram(id,input){
+  if(!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id))throw Error('Chọn một profile đã thêm.');
+  if(busy(this.views.get(id))||this.stoppingProfiles.has(id))throw Error('Dừng bộ chạy của profile trước khi chuẩn bị đăng ký.');
+  const epoch=this.cancelled.get(id)||0,check=()=>{if(this.closing||this.stoppingProfiles.has(id)||(this.cancelled.get(id)||0)!==epoch)throw Error('Đã hủy chuẩn bị đăng ký do Dừng.');};
+  const data=validateRegistration({...input,password:input.password||this.store.value.instagramSignupPassword||''});
+  return this.locked(id,async()=>{
+   check();const settings=await this.currentSettings((await this.profileStore(id)).value.settings);check();await this.configure(settings);check();
+   const worker=this.worker(id),current=await worker.call('state');if(busy(current))throw Error('Dừng bộ chạy của profile trước khi chuẩn bị đăng ký.');check();
+   if(input.rememberPassword===true&&data.password)await this.store.set({instagramSignupPassword:data.password});
+   try{
+    await worker.call('profile-open',{useCurrentProxy:true},90000);check();
+    const result=await worker.call('instagram-prepare',data,120000);check();
+    await this.register((await this.profileStore(id)).value.settings,'chuẩn bị form Instagram · chờ người dùng xác nhận');return result;
+   }catch(e){check();throw e;}
+  });
+ }
  async dryRun(id){
   if(!valid(id)||!this.store.value.profileRegistry?.[id])throw Error('Chọn profile đã thêm vào tool.');
   if(busy(this.views.get(id)))throw Error('Dừng bộ chạy trước khi chạy thử.');

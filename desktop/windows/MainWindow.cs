@@ -121,7 +121,7 @@ sealed class MainWindow : Window
         foreach (var (id, b) in buttons) b.IsEnabled = ready && busy == 0;
         foreach (var id in new[] { "open-selected", "start-selected", "start-extension" }) buttons[id].IsEnabled &= Selected.Any();
         buttons["stop-selected"].IsEnabled = ready && Selected.Any();
-        foreach (var id in new[] { "edit-profile", "delete-profile", "dry-run-selected" }) buttons[id].IsEnabled &= Selected.Count() == 1;
+        foreach (var id in new[] { "edit-profile", "delete-profile", "dry-run-selected", "instagram-signup" }) buttons[id].IsEnabled &= Selected.Count() == 1;
         foreach (var id in new[] { "install-update", "install-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.B(update["available"]) && J.B(update["installSupported"]);
         foreach (var id in new[] { "check-update", "check-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.S(update["repository"]).Length > 0;
         selection.Text = Selected.Any() ? $"Đã chọn {Selected.Count()} profile" : "Chưa chọn profile";
@@ -141,6 +141,7 @@ sealed class MainWindow : Window
         var bottom = new StackPanel { Margin = new(0, 12, 0, 0) }; selection.Width = 170; selection.VerticalAlignment = VerticalAlignment.Center;
         bottom.Children.Add(Row(selection, Action("Mở trình duyệt", "open-selected", OpenSelected), Action("Chạy thử · không đăng", "dry-run-selected", DryRunSelected), Action("Dừng & đóng", "stop-selected", () => { openEpoch++; Batch("close"); })));
         bottom.Children.Add(Row(Action("Chạy tự động", "start-selected", () => Batch("start")), Action("Chạy bằng extension", "start-extension", () => Batch("start-extension")), Note("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")));
+        bottom.Children.Add(Row(Action("Đăng ký Instagram…", "instagram-signup", InstagramSignup), Note("Chuẩn bị form cho một profile · bạn kiểm tra và tự Submit trong Instagram")));
         bottom.Children.Add(Row(Action("Đổi bộ cài đặt…", "assign-preset", AssignPreset), Action("Sửa tên / proxy…", "edit-profile", EditProfile), Action("Xóa khỏi GPM…", "delete-profile", DeleteProfile), Note("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")));
         DockPanel.SetDock(bottom, Dock.Bottom); page.Children.Add(bottom);
         profiles.Name = "ProfilesTable"; profiles.ItemsSource = rows; profiles.IsReadOnly = false; profiles.CanUserAddRows = false; profiles.CanUserDeleteRows = false; profiles.AutoGenerateColumns = false; profiles.HeadersVisibility = DataGridHeadersVisibility.Column; profiles.RowHeight = 46; profiles.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal; profiles.AlternatingRowBackground = Brushes.White; profiles.Background = Brushes.WhiteSmoke;
@@ -282,6 +283,16 @@ sealed class MainWindow : Window
     }
     public bool EditingProfileForm { get; set; }
     public Task<JsonObject> ParseProxy(string value) => api!.Request("proxy-parse", new() { ["proxy"] = value });
+    void InstagramSignup()
+    {
+        var id = Ids.Single();
+        Perform("Đang lấy email từ tên profile GPM…", async api => {
+            var draft = await api.Request("instagram-draft", new() { ["id"] = id }); EditingProfileForm = true; JsonObject? body;
+            try { body = InstagramSignupDialog.Ask(this, draft); } finally { EditingProfileForm = false; }
+            if (body == null) return "Đã hủy chuẩn bị đăng ký."; body["id"] = id;
+            Message("Đang mở profile và chuẩn bị form Instagram…"); var result = await api.Request("instagram-prepare", body); return J.S(result["message"]);
+        });
+    }
     void CreateProfile()
     {
         var values = FormDialog.AskWithPreset(this, "Tạo profile GPM", SettingPresets, ("Tên profile", ""), ("Proxy · IP:port:user:pass (trống = không dùng)", ""), ("Chrome · để trống tự chọn", "")); if (values == null) return;
