@@ -5,6 +5,7 @@ import {Store} from './store.mjs';
 import {dashboard,profileLogs} from './dashboard.mjs';
 import {redact,sharedProfileSettings,validateSettings,assertLiveSettings} from './settings.mjs';
 import {DEFAULT_PRESET_ID,ensurePresetCatalog,getPreset,validatePreset} from './settings-presets.mjs';
+import {generateRegistrationIdentity} from './ai.mjs';
 import {registrationDraft,validateRegistration} from './instagram-registration.mjs';
 const valid=id=>typeof id==='string'&&/^[-\w]{1,100}$/.test(id);
 const busy=view=>['running','stopping'].includes(view?.state?.status)||!!view?.operation;
@@ -34,7 +35,7 @@ export class ProfileWorker{
  }
 }
 export class ProfileManager{
- constructor(store,{workerFactory=(dir,onView)=>new ProfileWorker(dir,onView),onChange=()=>{},gpmFactory=base=>new GpmApi(base)}={}){this.gpmFactory=gpmFactory;this.store=store;this.workerFactory=workerFactory;this.onChange=onChange;this.workers=new Map();this.views=new Map();this.locks=new Map();this.cancelled=new Map();this.closing=false;this.live=new Map();this.syncing=null;this.endpoints=new Map();this.stoppingProfiles=new Map();}
+ constructor(store,{workerFactory=(dir,onView)=>new ProfileWorker(dir,onView),onChange=()=>{},gpmFactory=base=>new GpmApi(base),identityGenerator=generateRegistrationIdentity}={}){this.identityGenerator=identityGenerator;this.gpmFactory=gpmFactory;this.store=store;this.workerFactory=workerFactory;this.onChange=onChange;this.workers=new Map();this.views=new Map();this.locks=new Map();this.cancelled=new Map();this.closing=false;this.live=new Map();this.syncing=null;this.endpoints=new Map();this.stoppingProfiles=new Map();}
  rows(){return Object.values(this.store.value.profileRegistry||{}).map(({view:discarded,...row})=>({...row,...(this.live.get(row.id)?.metadata||{}),gpm:this.live.get(row.id)?{...this.live.get(row.id),metadata:undefined}:{status:'unknown',fresh:false},view:this.views.get(row.id)||{state:{status:'idle',events:[]},counts:{today:0,total:0,session:0,unverified:0,sessions:0},recent:[],connected:false}})).map(row=>({...row,settingPresetName:this.store.value.settingsPresets?.find(p=>p.id===(row.settingPresetId||DEFAULT_PRESET_ID))?.name||'Mặc định',view:{...row.view,logs:profileLogs(row,row.view)}})).sort((a,b)=>(b.lastUsedAt||'').localeCompare(a.lastUsedAt||''));}
  startSync(intervalMs=3000){if(this.syncTimer)return;const tick=()=>this.syncLive().catch(()=>{});tick();this.syncTimer=setInterval(tick,intervalMs);this.syncTimer.unref();}
  async syncLive(){
@@ -134,8 +135,11 @@ export class ProfileManager{
  });}
  async instagramDraft(id){
   if(!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id))throw Error('Chọn một profile đã thêm.');
-  const saved=(await this.profileStore(id)).value.settings,settings=await this.currentSettings(saved);
-  return {...registrationDraft({...settings,id,name:settings.profileName}),hasSavedPassword:!!this.store.value.instagramSignupPassword};
+  if(busy(this.views.get(id))||this.stoppingProfiles.has(id))throw Error('Dừng bộ chạy của profile trước khi chuẩn bị đăng ký.');
+  const epoch=this.cancelled.get(id)||0,saved=(await this.profileStore(id)).value.settings,settings=await this.currentSettings(this.effectiveSettings(saved));
+  const identity=await this.identityGenerator(settings);
+  if(this.closing||(this.cancelled.get(id)||0)!==epoch)throw Error('Đã hủy tạo tên Instagram do Dừng.');
+  return {...registrationDraft({...settings,id,name:settings.profileName}),...identity,hasSavedPassword:!!this.store.value.instagramSignupPassword};
  }
  async prepareInstagram(id,input){
   if(!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id))throw Error('Chọn một profile đã thêm.');

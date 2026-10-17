@@ -102,7 +102,7 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 ### Chuẩn bị đăng ký Instagram theo profile
 
 1. Chọn **một profile** và dừng bộ chạy nếu đang chạy.
-2. Bấm **Đăng ký Instagram…**. App đọc tên profile từ GPM để lấy Gmail; tên hiển thị và username được gợi ý từ phần trước `@`, có thể sửa trước khi mở form.
+2. Bấm **Đăng ký Instagram…**. App đọc tên profile từ GPM để lấy Gmail và gọi AI bằng **model/API key đã lưu trong Cài đặt** để tạo tên nữ Việt Nam hư cấu cùng username tương ứng. Bạn có thể sửa cả hai trước khi mở form. Tên thật, Gmail, proxy và mật khẩu không được gửi trong prompt tạo tên. Nếu AI lỗi, app báo lỗi để bạn thử lại, không lấy tên Gmail làm tên hiển thị. Username vẫn có thể bị trùng trên Instagram; sửa ở form nếu cần.
 3. Điền mật khẩu cố định, tích **Nhớ mật khẩu trên máy cho lần sau** nếu muốn dùng lại. Trống sẽ dùng mật khẩu đã lưu hoặc để bạn tự nhập trên Instagram. Mật khẩu không nằm trong repo, log hay file xuất profile; lưu cục bộ trong SQLite khi bạn chọn Nhớ.
 4. App ẩn ô ngày sinh trong form chuẩn bị và tự chọn một ngày hợp lệ từ **01/01/2004 đến 31/12/2007** cho mỗi lần chuẩn bị. Ngày này được điền trên Instagram để bạn kiểm tra trước khi Submit. Giới tính chọn nữ nếu form có trường này.
 5. Bấm **Mở & điền form**. App chỉ mở đúng profile, điền form và giữ trang để bạn kiểm tra. Profile đã đăng nhập, popup xác minh hoặc giao diện chưa nhận diện sẽ được báo để bạn xử lý thủ công.

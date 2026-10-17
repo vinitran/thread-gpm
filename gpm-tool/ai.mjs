@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import sharp from 'sharp';
 import {API_BASE,imageSources,allowedImage,collageLayout,requestBody,selectPosts as selectRatedPosts} from '../extension/ai.js';
 export const AI_TIMEOUT_MS=90000;
@@ -32,4 +33,21 @@ export async function generate(post,settings,withImages,tagHoanxu=false){
  if(!text.trim())throw Error('AI chưa trả nội dung bình luận hợp lệ');
  if(tag)text=[...text].slice(0,475).join('').trimEnd()+' @hoanxu.app';
  return {text,model:configured.model,created_at:new Date().toISOString()};
+}
+
+export async function generateRegistrationIdentity(settings,{fetchImpl=globalThis.fetch}={}){
+ if(!settings.apiKey?.trim())throw Error('Lưu API key trong Cài đặt trước khi tạo tên Instagram bằng AI.');
+ if(!settings.model?.trim())throw Error('Chọn và lưu model AI trước khi tạo tên Instagram.');
+ const body={model:settings.model,max_tokens:500,messages:[
+  {role:'system',content:'Tạo một biệt danh nữ Việt Nam hư cấu để bảo vệ tên thật. Không mô phỏng một cá nhân cụ thể, người nổi tiếng hoặc thương hiệu. fullName là tên nữ Việt Nam tự nhiên gồm 2–5 từ, dùng tiếng Việt có dấu. username tương ứng với tên, viết thường không dấu, chỉ a-z, 0-9, dấu chấm và gạch dưới, dài 5–30 ký tự, không có hai dấu chấm liền nhau và không bắt đầu/kết thúc bằng dấu chấm. Thêm 4–6 chữ số ngẫu nhiên để giảm trùng. Mỗi yêu cầu tạo tên mới, đa dạng họ và tên. Chỉ trả một object JSON với đúng hai chuỗi fullName và username. Không Markdown, giải thích hay trường khác.'},
+  {role:'user',content:JSON.stringify({requestId:randomUUID(),task:'Tạo một tên nữ Việt Nam và username hư cấu mới.'})}
+ ]};
+ let response;
+ try{response=await fetchImpl(API_BASE+'/chat/completions',{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+settings.apiKey,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(AI_TIMEOUT_MS)});}catch(e){throw Error(e.name==='TimeoutError'?'AI tạo tên quá thời gian 90 giây. Bấm Đăng ký Instagram để thử lại.':'Không kết nối được AI để tạo tên. Kiểm tra kết nối rồi thử lại.');}
+ if(!response.ok)throw Error('AI tạo tên · HTTP '+response.status+'. Kiểm tra model và API key đã lưu rồi thử lại.');
+ let identity;
+ try{const result=await response.json(),content=result.choices?.[0]?.message?.content;if(typeof content!=='string')throw Error();identity=JSON.parse(content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{throw Error('AI tạo tên chưa trả JSON hợp lệ. Bấm Đăng ký Instagram để thử lại.');}
+ const fullName=typeof identity?.fullName==='string'?identity.fullName.normalize('NFC').trim().replace(/\s+/g,' '):'',username=typeof identity?.username==='string'?identity.username.trim().toLowerCase():'';
+ if(!/^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+){1,4}$/u.test(fullName)||fullName.length>100||!/[a-z]/.test(username)||!/^[a-z0-9._]{5,30}$/.test(username)||username.startsWith('.')||username.endsWith('.')||username.includes('..'))throw Error('AI tạo tên hoặc username không hợp lệ. Bấm Đăng ký Instagram để thử lại.');
+ return {fullName,username};
 }

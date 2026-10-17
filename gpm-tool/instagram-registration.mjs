@@ -6,8 +6,8 @@ export function randomRegistrationBirthday(){
 }
 export function registrationDraft(profile){
  const names=String(profile.name||profile.profileName||'').trim(),emails=names.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:gmail|googlemail)\.com\b/gi)||[];
- const email=emails.length===1?emails[0]:'',local=email.split('@')[0];
- return {profileId:profile.id||profile.profileId,email,fullName:local?.replace(/[._+]+/g,' ').trim()||'',username:local?.toLowerCase().replace(/[^a-z0-9._]/g,'').replace(/^\.+|\.+$/g,'').slice(0,30)||'',gender:'female'};
+ const email=emails.length===1?emails[0]:'';
+ return {profileId:profile.id||profile.profileId,email,fullName:'',username:'',gender:'female'};
 }
 export function validateRegistration(input){
  const email=String(input.email||'').trim(),fullName=String(input.fullName||'').trim(),username=String(input.username||'').trim();
