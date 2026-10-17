@@ -84,3 +84,21 @@ test('Stop before confirmation cancels the click; Stop after it never retries si
   }
  }finally{await browser.close();}
 });
+
+test('direct Gmail OAuth code is entered slowly and confirmed once; only safe metadata is saved or returned',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const code='012345',email='fixture+1244@gmail.com',snapshots=[],progress=[];let calls=0;
+ const success=markup.replace('window.codeSubmissions++',"window.codeSubmissions++;document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<a href=/direct/inbox/>Inbox</a>');history.pushState({},'', '/?confirmation_code=012345')");
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:success}));const start=Math.floor(Date.now()/1000);
+  const result=await prepareInstagramRegistration(context,{...input,email},{...fast,onState:async patch=>snapshots.push(patch),onProgress:message=>progress.push(message),getEmailCode:async request=>{calls++;assert.equal(request.recipient,email);assert.ok(request.after>=start&&request.after<=Math.floor(Date.now()/1000));assert.equal(request.shouldContinue(),true);assert.equal(snapshots[0].requestedAt,request.after);return {code};}});
+  assert.equal(calls,1);assert.equal(result.status,'completed');assert.equal(result.emailCodeSubmitted,true);const page=context.pages()[0];assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),1);assert.equal(await page.locator('input[name="email_confirmation_code"]').inputValue(),code);
+  assert.ok(snapshots.some(patch=>patch.status==='awaiting_email_code'));assert.ok(snapshots.some(patch=>patch.status==='confirming_email_code'));for(const value of [result,snapshots,progress]){assert.ok(!JSON.stringify(value).includes(code));assert.ok(!JSON.stringify(value).includes(input.password));}
+ }finally{await browser.close();}
+});
+test('Gmail OAuth failures hand off safely; rejected codes are never retried or resent',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ try{for(const failedApi of [true,false]){const body=markup.replace('window.codeSubmissions++',"window.codeSubmissions++;document.body.insertAdjacentHTML('beforeend','<div role=alert>Invalid code</div>')"),context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body}));let calls=0;
+   const result=await prepareInstagramRegistration(context,input,{...fast,getEmailCode:async()=>{calls++;if(failedApi)throw Error('private-api-key 012345');return {code:'012345'};}});assert.equal(calls,1);assert.equal(result.status,failedApi?'awaiting_email_code':'code_rejected');assert.ok(!JSON.stringify(result).includes('012345'));assert.ok(!JSON.stringify(result).includes('private-api-key'));const page=context.pages()[0];assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),failedApi?0:1);await context.close();
+  }
+ }finally{await browser.close();}
+});

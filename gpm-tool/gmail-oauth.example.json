@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "account": "yourname@gmail.com",
+  "tokenFile": "gmail-oauth/token.json",
+  "credentialsFile": "gmail-oauth/credentials.json"
+}

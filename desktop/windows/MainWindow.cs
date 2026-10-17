@@ -141,7 +141,7 @@ sealed class MainWindow : Window
         var bottom = new StackPanel { Margin = new(0, 12, 0, 0) }; selection.Width = 170; selection.VerticalAlignment = VerticalAlignment.Center;
         bottom.Children.Add(Row(selection, Action("Mở trình duyệt", "open-selected", OpenSelected), Action("Chạy thử · không đăng", "dry-run-selected", DryRunSelected), Action("Dừng & đóng", "stop-selected", () => { openEpoch++; Batch("close"); })));
         bottom.Children.Add(Row(Action("Chạy tự động", "start-selected", () => Batch("start")), Action("Chạy bằng extension", "start-extension", () => Batch("start-extension")), Note("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")));
-        bottom.Children.Add(Row(Action("Đăng ký Instagram…", "instagram-signup", InstagramSignup), Note("Điền form và tự đăng ký · bạn nhập mã Gmail trong trình duyệt")));
+        bottom.Children.Add(Row(Action("Đăng ký Instagram…", "instagram-signup", InstagramSignup), Note("Tự đăng ký và xác minh bằng Gmail OAuth trong app · có thể nhập mã thủ công")));
         bottom.Children.Add(Row(Action("Đổi bộ cài đặt…", "assign-preset", AssignPreset), Action("Sửa tên / proxy…", "edit-profile", EditProfile), Action("Xóa khỏi GPM…", "delete-profile", DeleteProfile), Note("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")));
         DockPanel.SetDock(bottom, Dock.Bottom); page.Children.Add(bottom);
         profiles.Name = "ProfilesTable"; profiles.ItemsSource = rows; profiles.IsReadOnly = false; profiles.CanUserAddRows = false; profiles.CanUserDeleteRows = false; profiles.AutoGenerateColumns = false; profiles.HeadersVisibility = DataGridHeadersVisibility.Column; profiles.RowHeight = 46; profiles.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal; profiles.AlternatingRowBackground = Brushes.White; profiles.Background = Brushes.WhiteSmoke;
@@ -290,7 +290,7 @@ sealed class MainWindow : Window
             var draft = await api.Request("instagram-draft", new() { ["id"] = id }); EditingProfileForm = true; JsonObject? body;
             try { body = InstagramSignupDialog.Ask(this, draft); } finally { EditingProfileForm = false; }
             if (body == null) return "Đã hủy chuẩn bị đăng ký."; body["id"] = id;
-            Message("Đang điền form, gửi đăng ký và chờ bước nhập mã Gmail…"); var result = await api.Request("instagram-prepare", body); return J.S(result["message"]);
+            Message("Đang đăng ký và lấy mã xác minh từ Gmail OAuth trong app…"); var result = await api.Request("instagram-prepare", body); return J.S(result["message"]);
         });
     }
     void CreateProfile()

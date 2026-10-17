@@ -5,6 +5,7 @@ import {randomBytes} from 'node:crypto';
 import {Store} from './store.mjs';
 import {GpmBrowser} from './browser.mjs';
 import {createRunner,root} from './runner.mjs';
+import {loadGmailOAuthConfig,GmailOAuthClient} from './gmail-oauth.mjs';
 import {prepareInstagramRegistration} from './instagram-registration.mjs';
 import {dryRunProfile} from './dry-run.mjs';
 import {GpmApi,checkGpmConnection,parseProxy} from './gpm-api.mjs';
@@ -139,7 +140,19 @@ const server=http.createServer(async(req,res)=>{
    if(manager&&url.pathname==='/api/profile-close')return json(res,await manager.closeProfile(input.id));
    if(manager&&url.pathname==='/api/instagram-draft')return json(res,await manager.instagramDraft(input.id));
    if(manager&&url.pathname==='/api/instagram-prepare')return json(res,await manager.prepareInstagram(input.id,input));
-   if(isWorker&&url.pathname==='/api/instagram-prepare'){idleOnly();const epoch=startEpoch;return json(res,await exclusive('chuẩn bị form Instagram',async()=>{await connect();return prepareInstagramRegistration(browser.context,input,{shouldContinue:()=>!shuttingDown&&epoch===startEpoch,stepDelayMs:(store.value.settings.runConfig?.stepSeconds??2)*1000,typingDelayMs:store.value.settings.runConfig?.typingDelayMs??60});}));}
+   if(isWorker&&url.pathname==='/api/instagram-prepare'){
+    idleOnly();const epoch=startEpoch;
+    return json(res,await exclusive('đăng ký Instagram và xác minh Gmail',async()=>{
+     await connect();
+     const onState=patch=>store.set({instagramRegistration:{...store.value.instagramRegistration,...patch,updatedAt:new Date().toISOString()}});
+     const result=await prepareInstagramRegistration(browser.context,input,{
+      shouldContinue:()=>!shuttingDown&&epoch===startEpoch,stepDelayMs:(store.value.settings.runConfig?.stepSeconds??2)*1000,typingDelayMs:store.value.settings.runConfig?.typingDelayMs??60,
+      onState,onProgress:message=>runner.progress(message).catch(()=>{}),
+      getEmailCode:async request=>new GmailOAuthClient(await loadGmailOAuthConfig(process.env.HOANXU_GMAIL_OAUTH_CONFIG||path.join(dataDir,'gmail-oauth.json'))).pollCode(request)
+     });
+     await onState({status:result.status||'manual',requestedAt:result.requestedAt||null,recipient:result.email||input.email,username:result.username||input.username,url:result.url});return result;
+    }));
+   }
    if(manager&&url.pathname==='/api/profile-dry-run')return json(res,await manager.dryRun(input.id));
    if(isWorker&&url.pathname==='/api/dry-run'){idleOnly();return json(res,await exclusive('chạy thử không đăng',async()=>{await connect();const result=await dryRunProfile(browser,store.value.settings);await store.set({lastDryRun:result});return result;}));}
    if(manager&&url.pathname==='/api/profiles-start')return json(res,await manager.batch('start',input.ids));

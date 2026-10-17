@@ -18,3 +18,7 @@ bundled-keys.json
 
 # Public configuration template; never commit filled .env files
 !.env.example
+
+# Private Gmail OAuth files stay outside release/source code
+gmail-oauth/
+gmail-oauth.json

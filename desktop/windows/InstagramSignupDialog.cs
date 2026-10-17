@@ -10,7 +10,7 @@ static class InstagramSignupDialog
     {
         var dialog = new Window { Owner = owner, Title = "Chuẩn bị đăng ký Instagram", Width = 560, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var page = new StackPanel { Margin = new(22) }; dialog.Content = page;
-        page.Children.Add(MainWindow.Note("Kiểm tra thông tin tại đây. Khi bấm Đăng ký, app mở profile GPM, điền form và tự gửi đăng ký Instagram. Bạn tự nhập mã xác minh từ Gmail."));
+        page.Children.Add(MainWindow.Note("Kiểm tra thông tin tại đây. App điền form, gửi đăng ký và lấy mã qua Gmail OAuth trong app để xác nhận. Nếu Gmail chưa kết nối, bạn nhập mã trong profile GPM."));
         var inputs = new Dictionary<string, TextBox>();
         foreach (var (key, title) in new[] { ("email", "Gmail · lấy từ tên profile"), ("fullName", "Tên nữ Việt Nam · AI gợi ý, có thể sửa"), ("username", "Username · AI gợi ý, có thể sửa") })
         {
@@ -20,7 +20,7 @@ static class InstagramSignupDialog
         var password = new PasswordBox { MinHeight = 30, Padding = new(6) }; page.Children.Add(password);
         var remember = new CheckBox { Content = "Nhớ mật khẩu trên máy cho lần sau", Margin = new(0, 12, 0, 12) }; page.Children.Add(remember);
         page.Children.Add(MainWindow.Note("Ngày sinh được chọn ngẫu nhiên trong năm 2004–2007. Giới tính: nữ nếu form có mục này. Mật khẩu chỉ lưu local khi tích Nhớ."));
-        var open = new Button { Content = "Đăng ký & chờ mã Gmail", IsDefault = true, Padding = new(18, 7, 18, 7) }; open.Click += (_, _) => dialog.DialogResult = true;
+        var open = new Button { Content = "Đăng ký & xác minh Gmail", IsDefault = true, Padding = new(18, 7, 18, 7) }; open.Click += (_, _) => dialog.DialogResult = true;
         var cancel = new Button { Content = "Hủy", IsCancel = true, Padding = new(18, 7, 18, 7), Margin = new(10, 0, 0, 0) }; page.Children.Add(MainWindow.Row(open, cancel));
         if (dialog.ShowDialog() != true) return null;
         var result = new JsonObject { ["birthday"] = J.S(draft["birthday"]), ["password"] = password.Password, ["rememberPassword"] = remember.IsChecked == true }; foreach (var (key, field) in inputs) result[key] = field.Text; return result;

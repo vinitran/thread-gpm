@@ -125,7 +125,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         addWide(scroll(table),to:page)
         addWide(row([selection,button("Mở trình duyệt","open-selected",#selector(openSelected)),button("Chạy thử · không đăng","dry-run-selected",#selector(dryRunSelected)),button("Dừng & đóng","stop-selected",#selector(stopSelected))]),to:page)
         addWide(row([button("Chạy tự động","start-selected",#selector(startSelected)),button("Chạy bằng extension","start-extension",#selector(startExtensionSelected)),label("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")]),to:page)
-        addWide(row([button("Đăng ký Instagram…","instagram-signup",#selector(instagramSignup)),label("Điền form và tự đăng ký · bạn nhập mã Gmail trong trình duyệt")]),to:page)
+        addWide(row([button("Đăng ký Instagram…","instagram-signup",#selector(instagramSignup)),label("Tự đăng ký và xác minh bằng Gmail OAuth trong app · có thể nhập mã thủ công")]),to:page)
         addWide(row([button("Đổi bộ cài đặt…","assign-preset",#selector(assignPreset)),button("Sửa tên / proxy…","edit-profile",#selector(editProfile)),button("Xóa khỏi GPM…","delete-profile",#selector(deleteProfile)),label("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")]),to:page)
         table.setContentHuggingPriority(.defaultLow,for:.vertical)
     }
@@ -313,8 +313,8 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     func showInstagramForm(_ id: String, _ draft: JSONObject) {
         editingProfileForm = true
-        let alert = NSAlert(); alert.messageText = "Chuẩn bị đăng ký Instagram"; alert.informativeText = "Kiểm tra thông tin tại đây. Khi bấm Đăng ký, app mở profile GPM, điền form và tự gửi đăng ký Instagram. Bạn tự nhập mã xác minh từ Gmail."
-        alert.addButton(withTitle:"Đăng ký & chờ mã Gmail"); alert.addButton(withTitle:"Hủy")
+        let alert = NSAlert(); alert.messageText = "Chuẩn bị đăng ký Instagram"; alert.informativeText = "Kiểm tra thông tin tại đây. App điền form, gửi đăng ký và lấy mã qua Gmail OAuth trong app để xác nhận. Nếu Gmail chưa kết nối, bạn nhập mã trong profile GPM."
+        alert.addButton(withTitle:"Đăng ký & xác minh Gmail"); alert.addButton(withTitle:"Hủy")
         let content = column(); var fields:[String:NSTextField] = [:]
         for (key,title) in [("email","Gmail · lấy từ tên profile"),("fullName","Tên nữ Việt Nam · AI gợi ý, có thể sửa"),("username","Username · AI gợi ý, có thể sửa")] {
             content.addArrangedSubview(label(title)); let field = NSTextField(string:string(draft[key])); field.widthAnchor.constraint(equalToConstant:460).isActive = true; fields[key] = field; content.addArrangedSubview(field)
@@ -328,7 +328,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
             self?.editingProfileForm = false; guard response == .alertFirstButtonReturn else { return }
             var body:JSONObject = ["id":id,"birthday":string(draft["birthday"]),"password":password.stringValue,"rememberPassword":remember.state == .on]
             for (key,field) in fields { body[key] = field.stringValue }
-            self?.perform("Đang điền form, gửi đăng ký và chờ bước nhập mã Gmail…") { api in let result = try await api.request("instagram-prepare",body); return string(result["message"]) }
+            self?.perform("Đang đăng ký và lấy mã xác minh từ Gmail OAuth trong app…") { api in let result = try await api.request("instagram-prepare",body); return string(result["message"]) }
         }
     }
     @objc func createProfile() { showForm("Tạo profile GPM mới",values:[("Tên profile",""),("Proxy · IP:port:user:pass (trống = không dùng)",""),("Chrome · để trống tự chọn","")],choosePreset:true) { [weak self] values in self?.perform("Đang tạo profile GPM…") { api in let r = try await api.request("profile-create",["name":values[0],"proxy":values[1],"browserVersion":values[2],"settingPresetId":values[3]]); self?.selected = [string(object(r["profile"])["id"])]; return "Đã tạo profile. Chọn Mở trình duyệt để kiểm tra đăng nhập." } } }
