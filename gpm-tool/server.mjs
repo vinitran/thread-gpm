@@ -139,7 +139,7 @@ const server=http.createServer(async(req,res)=>{
    if(manager&&url.pathname==='/api/profile-close')return json(res,await manager.closeProfile(input.id));
    if(manager&&url.pathname==='/api/instagram-draft')return json(res,await manager.instagramDraft(input.id));
    if(manager&&url.pathname==='/api/instagram-prepare')return json(res,await manager.prepareInstagram(input.id,input));
-   if(isWorker&&url.pathname==='/api/instagram-prepare'){idleOnly();const epoch=startEpoch;return json(res,await exclusive('chuẩn bị form Instagram',async()=>{await connect();return prepareInstagramRegistration(browser.context,input,{shouldContinue:()=>!shuttingDown&&epoch===startEpoch});}));}
+   if(isWorker&&url.pathname==='/api/instagram-prepare'){idleOnly();const epoch=startEpoch;return json(res,await exclusive('chuẩn bị form Instagram',async()=>{await connect();return prepareInstagramRegistration(browser.context,input,{shouldContinue:()=>!shuttingDown&&epoch===startEpoch,stepDelayMs:(store.value.settings.runConfig?.stepSeconds??2)*1000,typingDelayMs:store.value.settings.runConfig?.typingDelayMs??60});}));}
    if(manager&&url.pathname==='/api/profile-dry-run')return json(res,await manager.dryRun(input.id));
    if(isWorker&&url.pathname==='/api/dry-run'){idleOnly();return json(res,await exclusive('chạy thử không đăng',async()=>{await connect();const result=await dryRunProfile(browser,store.value.settings);await store.set({lastDryRun:result});return result;}));}
    if(manager&&url.pathname==='/api/profiles-start')return json(res,await manager.batch('start',input.ids));
