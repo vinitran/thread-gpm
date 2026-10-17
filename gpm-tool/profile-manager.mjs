@@ -153,7 +153,7 @@ export class ProfileManager{
    try{
     await worker.call('profile-open',{useCurrentProxy:true},90000);check();
     const result=await worker.call('instagram-prepare',data,330000);check();
-    await this.register((await this.profileStore(id)).value.settings,'chuẩn bị form Instagram · chờ người dùng xác nhận');return result;
+    await this.register((await this.profileStore(id)).value.settings,'Instagram · '+result.message);return result;
    }catch(e){check();throw e;}
   });
  }

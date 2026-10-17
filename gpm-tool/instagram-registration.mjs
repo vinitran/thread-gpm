@@ -21,14 +21,29 @@ export function validateRegistration(input){
  const password=input.password||'';if(typeof password!=='string'||password.length>512||password&&password.length<6)throw Error('Mật khẩu cần ít nhất 6 ký tự, tối đa 512.');
  return {email,fullName,username,birthday,gender:'female',password};
 }
-export async function prepareInstagramRegistration(context,input,{shouldContinue=()=>true,stepDelayMs=2000,typingDelayMs=60,random=Math.random,wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+async function signupState(page){
+ return page.evaluate(()=>{
+  const visible=e=>!!e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+  const text=document.body?.innerText||'',inputs=[...document.querySelectorAll('input')].filter(visible);
+  const code=inputs.some(e=>e.autocomplete==='one-time-code'||/^(email_confirmation_code|confirmation_?code|verification_?code|security_?code|code)$/i.test(e.name)||/confirmation code|security code|verification code|mã xác nhận|mã xác minh|mã bảo mật/i.test([e.placeholder,e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText)].join(' ')));
+  if(code)return {status:'awaiting_email_code',message:'Đang chờ mã xác minh gửi về Gmail. Bạn mở Gmail và tự điền mã trong trình duyệt GPM; tool dừng thao tác tại đây.'};
+  if([...document.querySelectorAll('iframe[src*="captcha"],iframe[title*="challenge" i],[data-sitekey]')].some(visible)||/confirm you(?: are|’re|'re) human|xác minh bạn là con người|captcha/i.test(text))return {status:'challenge',message:'Instagram yêu cầu CAPTCHA hoặc xác minh bổ sung. Bạn xử lý trực tiếp trong profile; tool đã dừng thao tác.'};
+  if(/username.*(?:not available|isn.t available|already taken|already in use)|tên người dùng.*(?:không khả dụng|đã được sử dụng|đã tồn tại)/i.test(text))return {status:'validation_error',message:'Instagram báo username đã được dùng hoặc không khả dụng. Bạn sửa trực tiếp trên form.'};
+  if(/email.*(?:already in use|already associated|another account)|email.*(?:đã được sử dụng|đã tồn tại)/i.test(text))return {status:'validation_error',message:'Instagram báo email đã được dùng. Kiểm tra tài khoản hoặc email trên form.'};
+  if(inputs.some(e=>e.getAttribute('aria-invalid')==='true'||e.willValidate&&!e.validity.valid)||[...document.querySelectorAll('[role="alert"]')].some(e=>visible(e)&&e.textContent.trim()))return {status:'validation_error',message:'Instagram báo thông tin chưa hợp lệ. Kiểm tra thông báo bên cạnh các ô trên form.'};
+  if(/try again later|please wait a few minutes|something went wrong|we restrict|couldn.t create|unable to create|thử lại sau|đã xảy ra lỗi|không thể tạo tài khoản/i.test(text))return {status:'validation_error',message:'Instagram chưa chấp nhận đăng ký. Kiểm tra thông báo trên trang; tool không tự gửi lại.'};
+  return null;
+ });
+}
+export async function prepareInstagramRegistration(context,input,{shouldContinue=()=>true,stepDelayMs=2000,typingDelayMs=60,confirmationTimeoutMs=30000,random=Math.random,wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
  const data=validateRegistration(input),warnings=[];
- if(!Number.isFinite(stepDelayMs)||stepDelayMs<0||stepDelayMs>10000||!Number.isFinite(typingDelayMs)||typingDelayMs<0||typingDelayMs>500)throw Error('Nhịp điền form Instagram không hợp lệ.');
+ if(!Number.isFinite(stepDelayMs)||stepDelayMs<0||stepDelayMs>10000||!Number.isFinite(typingDelayMs)||typingDelayMs<0||typingDelayMs>500||!Number.isFinite(confirmationTimeoutMs)||confirmationTimeoutMs<0||confirmationTimeoutMs>60000)throw Error('Nhịp điền form Instagram không hợp lệ.');
  const stepDelay=Math.max(500,stepDelayMs),typingDelay=Math.max(40,typingDelayMs);
  const check=()=>{if(!shouldContinue())throw Error('Đã hủy chuẩn bị đăng ký do Dừng.');};
  const pause=async ms=>{for(let left=ms;left>0;){check();const part=Math.min(100,left);await wait(part);left-=part;}check();};
  const step=()=>pause(Math.round(stepDelay*(.8+random()*.4)));
- check();const page=await context.newPage();let session;
+ check();const page=await context.newPage();let session,submissionAttempted=false,submitted=false;
+ const result=(status,message)=>({ok:true,ready:status==='awaiting_email_code',status,submitted,submissionAttempted,url:page.url(),email:data.email,username:data.username,warnings,message});
  try{
   await page.goto(INSTAGRAM_SIGNUP_URL,{waitUntil:'domcontentloaded',timeout:30000});await page.bringToFront();check();
   const current=new URL(page.url());
@@ -39,8 +54,8 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
   session=await context.newCDPSession(page);
   const pointer=installNativePointer({scripting:{executeScript:async({func,args})=>[{frameId:0,result:await page.evaluate(func,args[0])}]},debugger:{attach:async()=>{},detach:async()=>{},sendCommand:async(target,method,params)=>session.send(method,params)}},{shouldContinue,random,wait:pause});
   const click=async locator=>{
-   check();const token='hx'+randomUUID().replace(/-/g,'');await locator.evaluate((e,token)=>e.setAttribute('data-hoanxu-pointer',token),token);
-   try{await pointer.pointer.click({tabId:1},{token});check();}finally{await locator.evaluate((e,token)=>{if(e.getAttribute('data-hoanxu-pointer')===token)e.removeAttribute('data-hoanxu-pointer');},token).catch(()=>{});}
+   check();const token='hx'+randomUUID().replace(/-/g,''),element=await locator.elementHandle();if(!element)throw Error('Mục tiêu không còn trên form.');await element.evaluate((e,token)=>e.setAttribute('data-hoanxu-pointer',token),token);
+   try{await pointer.pointer.click({tabId:1},{token});check();}finally{await element.evaluate((e,token)=>{if(e.getAttribute('data-hoanxu-pointer')===token)e.removeAttribute('data-hoanxu-pointer');},token).catch(()=>{});await element.dispose().catch(()=>{});}
   };
   const focused=async locator=>{check();if(!await locator.evaluate(e=>document.activeElement===e))throw Error('Ô nhập đã mất focus.');};
   const type=async(locator,value)=>{
@@ -80,7 +95,23 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
   check();const gender=page.getByRole('combobox',{name:/^gender$|^giới tính$/i});
   if(await gender.count()===1){const tag=await gender.evaluate(e=>e.tagName);if(tag==='SELECT'){const options=await selectOptions(gender);const female=options.find(o=>!o.disabled&&/^(female|nữ)$/i.test(o.text));if(female)await select(gender,female);}}
   check();
-  // Handoff only: never submit, press Enter, solve a challenge, or send confirmation codes.
-  return {ok:true,ready:true,url:page.url(),email:data.email,username:data.username,warnings,message:'Đã điền form. Kiểm tra thông tin và tự bấm Submit trong Instagram. '+warnings.join(' ')};
- }catch(e){throw Error('Chưa chuẩn bị xong form Instagram. '+(/Đã hủy|Đã dừng/i.test(e.message)?'Đã hủy do Dừng.':'Kiểm tra trang đăng ký đang mở và điền thủ công nếu giao diện đã thay đổi.'));}finally{await session?.detach().catch(()=>{});}
+  if(warnings.length)return result('form_incomplete','Đã điền các ô nhận diện được; chưa gửi đăng ký. '+warnings.join(' '));
+  let state=await signupState(page);check();if(state)return result(state.status,state.message);
+  const submit=page.getByRole('button',{name:/^(Sign up|Submit|Đăng ký|Tạo tài khoản|Create account|Create new account)$/i});
+  if(await submit.count()!==1)return result('submit_unavailable','Chưa xác định duy nhất nút đăng ký. Bạn kiểm tra form và tự bấm xác nhận trong Instagram.');
+  for(let i=0;i<20&&!await submit.isEnabled();i++){await pause(500);state=await signupState(page);if(state)return result(state.status,state.message);}
+  if(!await submit.isEnabled())return result('submit_unavailable','Nút đăng ký chưa khả dụng. Kiểm tra các ô hoặc thông báo trên form.');
+  await step();check();
+  const currentURL=new URL(page.url());if(currentURL.origin!=='https://www.instagram.com'||!currentURL.pathname.startsWith('/accounts/emailsignup'))return result('submit_unavailable','Trang đăng ký đã thay đổi. Bạn tiếp tục trực tiếp trong trình duyệt.');
+  for(const [value,pattern] of [[data.email,/email|mobile number|số điện thoại/i],[data.fullName,/full.?name|họ.*tên|tên đầy đủ|^name\b/i],[data.username,/username|user.?name|tên người dùng/i]])if(await target(null,pattern).inputValue()!==value)return result('form_incomplete','Thông tin trên form đã thay đổi. Bạn kiểm tra trước khi gửi đăng ký.');
+  if(await target('password').inputValue()!==data.password)return result('form_incomplete','Mật khẩu trên form đã thay đổi. Bạn kiểm tra trước khi gửi đăng ký.');
+  check();state=await signupState(page);check();if(state)return result(state.status,state.message);
+  // One submission attempt only. Do not retry when navigation or acknowledgement is uncertain.
+  submissionAttempted=true;await click(submit);submitted=true;
+  for(let elapsed=0;elapsed<=confirmationTimeoutMs;elapsed+=500){
+   check();try{state=await signupState(page);}catch{state=null;}check();if(state)return result(state.status,state.message);
+   if(elapsed<confirmationTimeoutMs)await pause(Math.min(500,confirmationTimeoutMs-elapsed));
+  }
+  return result('submitted_unverified','Đã bấm đăng ký nhưng chưa nhận diện được bước nhập mã. Kiểm tra profile GPM; tool không tự bấm lại hoặc tự nhập mã.');
+ }catch(e){if(submissionAttempted)return result('submission_unknown',/Đã hủy|Đã dừng/i.test(e.message)?'Đã dừng sau khi bắt đầu bấm đăng ký. Kiểm tra profile trước khi thử lại.':'Đã bắt đầu bấm đăng ký nhưng chưa xác minh được kết quả. Kiểm tra profile trước khi thử lại; tool không tự gửi lại.');throw Error('Chưa chuẩn bị xong form Instagram. '+(/Đã hủy|Đã dừng/i.test(e.message)?'Đã hủy do Dừng.':'Kiểm tra trang đăng ký đang mở và điền thủ công nếu giao diện đã thay đổi.'));}finally{await session?.detach().catch(()=>{});}
 }
