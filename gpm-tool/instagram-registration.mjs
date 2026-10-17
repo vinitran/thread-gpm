@@ -94,7 +94,7 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
   const select=async(locator,option)=>{
    await click(locator);await pause(250+random()*250);check();await page.keyboard.press('Escape');await focused(locator);
    // Native select menus are OS surfaces; choose the value without Enter, which could submit a form.
-   await locator.selectOption(option.value);check();if(await locator.inputValue()!==option.value)throw Error('Chưa chọn đúng giá trị trên form.');await step();
+   await locator.selectOption(option.value);check();if(await locator.inputValue()!==option.value)throw Error('Chưa chọn đúng giá trị trên form.');await page.keyboard.press('Tab');await step();
   };
   const receiveAndConfirmCode=async()=>{
    await onState({status:'awaiting_email_code',recipient:data.email,username:data.username,requestedAt,url:publicURL()});
@@ -133,20 +133,30 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
   if(data.password){await type(target('password'),data.password);}else warnings.push('Bạn tự nhập mật khẩu trong trình duyệt.');
   if(data.birthday){
    const [year,month,day]=data.birthday.split('-').map(Number),dateField=page.locator('input[type="date"]');
-   if(await dateField.count()===1){await click(dateField);await step();check();await dateField.fill(data.birthday);await step();}
+   const birthdayChecks=[];
+   if(await dateField.count()===1){await click(dateField);await step();check();await dateField.fill(data.birthday);await page.keyboard.press('Tab');await step();birthdayChecks.push(async()=>await dateField.inputValue()===data.birthday);}
    else{
     const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
-    for(const [field,value] of [[/select month|tháng/i,months[month-1]],[/select day|ngày/i,String(day)],[/select year|năm/i,String(year)]]){
+    // Year/month can rebuild or clamp the day options. Select the day last, then read all three back.
+    for(const [field,value,numeric] of [[/select year|năm/i,String(year),year],[/select month|tháng/i,months[month-1],month],[/select day|ngày/i,String(day),day]]){
      check();const selector=page.getByRole('combobox',{name:field});
      if(await selector.count()!==1){warnings.push('Bạn chọn ngày sinh chính xác trên form.');break;}
      const tag=await selector.evaluate(e=>e.tagName);
      if(tag==='SELECT'){
       const options=await selectOptions(selector);
-      const numeric=field.source.includes('month')?month:Number(value),available=options.filter(o=>!o.disabled),option=available.find(o=>o.text===value)||available.find(o=>o.text===String(numeric))||available.find(o=>o.value===String(numeric));
+      const available=options.filter(o=>!o.disabled),option=available.find(o=>o.text===value)||available.find(o=>o.text===String(numeric))||available.find(o=>o.value===String(numeric));
       if(!option){warnings.push('Bạn chọn ngày sinh chính xác trên form.');break;}await select(selector,option);
-     }else{await click(selector);await step();const option=page.getByRole('option',{name:value,exact:true});if(await option.count()!==1){await page.keyboard.press('Escape');warnings.push('Bạn chọn ngày sinh chính xác trên form.');break;}await click(option);await step();}
+      birthdayChecks.push(async()=>await selector.count()===1&&await selector.inputValue()===option.value);
+     }else{await click(selector);await step();const option=page.getByRole('option',{name:value,exact:true});if(await option.count()!==1){await page.keyboard.press('Escape');warnings.push('Bạn chọn ngày sinh chính xác trên form.');break;}await click(option);await page.keyboard.press('Tab');await step();
+      birthdayChecks.push(async()=>await selector.count()===1&&await selector.evaluate((e,value)=>{
+       const text=e.tagName==='INPUT'?e.value:e.getAttribute('aria-valuetext')||e.innerText||'';
+       return /^\d+$/.test(value)?(text.match(/\d+/g)||[]).includes(value):text.toLowerCase().includes(value.toLowerCase());
+      },value));
+     }
     }
    }
+   for(const verify of birthdayChecks){check();if(!await verify()){warnings.push('Ngày sinh trên form đã thay đổi sau khi chọn. Bạn kiểm tra lại ngày, tháng và năm; chưa gửi đăng ký.');break;}}
+   if(!warnings.length)await onProgress('Đã chọn đủ ngày sinh · đang kiểm tra dữ liệu form.');
   }
   check();const gender=page.getByRole('combobox',{name:/^gender$|^giới tính$/i});
   if(await gender.count()===1){const tag=await gender.evaluate(e=>e.tagName);if(tag==='SELECT'){const options=await selectOptions(gender);const female=options.find(o=>!o.disabled&&/^(female|nữ)$/i.test(o.text));if(female)await select(gender,female);}}

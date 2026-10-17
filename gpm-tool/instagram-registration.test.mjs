@@ -13,7 +13,7 @@ test('signup draft extracts exactly one Gmail from a profile and keeps personal 
 });
 test('real browser moves, scrolls, types incrementally with pauses, selects birthday, submits once, and hands off at the empty email code field',async()=>{
  const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
- try{const context=await browser.newContext({viewport:{width:520,height:480}});await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:markup}));
+ try{const context=await browser.newContext({viewport:{width:520,height:480}});await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:markup.replace('margin:28px 0','margin:60px 0')}));
   const waits=[];const result=await prepareInstagramRegistration(context,input,{...fast,wait:async ms=>{waits.push(ms);}});assert.equal(result.ready,true);assert.equal(result.status,'awaiting_email_code');assert.equal(result.submitted,true);assert.equal(result.url,INSTAGRAM_SIGNUP_URL);assert.ok(!JSON.stringify(result).includes(input.password));
   const page=context.pages()[0];assert.equal(await page.locator('input[name="email"]').inputValue(),input.email);assert.equal(await page.locator('input[name="full_name"]').inputValue(),input.fullName);assert.equal(await page.locator('input[name="username"]').inputValue(),input.username);assert.equal(await page.locator('input[type="password"]').inputValue(),input.password);assert.deepEqual(await page.locator('select').evaluateAll(nodes=>nodes.map(e=>e.value)),['2','29','2004','female']);assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.enters),0);assert.equal(await page.evaluate(()=>window.codeSubmissions),0);assert.equal(await page.locator('input[name="email_confirmation_code"]').inputValue(),'');const events=await page.evaluate(()=>({entries:window.entryEvents,moves:window.mouseMoves,wheels:window.wheelEvents}));assert.deepEqual(events.entries.filter(e=>e.name==='email'&&e.length).map(e=>e.length),Array.from({length:input.email.length},(_,i)=>i+1));assert.ok(events.entries.filter(e=>e.name).every(e=>e.trusted));assert.ok(events.moves>=40);assert.ok(events.wheels>0);assert.ok(waits.reduce((sum,ms)=>sum+ms,0)>15000);assert.ok(waits.every(ms=>ms<=100));
   const manual=await prepareInstagramRegistration(context,{...input,birthday:'',password:''},fast);assert.equal(manual.warnings.length,1);assert.equal(manual.status,'form_incomplete');assert.equal(manual.submitted,false);const manualPage=context.pages()[1];assert.equal(await manualPage.locator('input[type="password"]').inputValue(),'');const [month,day,year]=await manualPage.locator('select').evaluateAll(nodes=>nodes.map(e=>e.value));assertBirthday(`${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`);assert.equal(await manualPage.evaluate(()=>window.submissions),0);
@@ -111,8 +111,53 @@ test('signup ignores informational alerts and unrelated invalid inputs, tolerate
  const cases=[
   [markup.replace('<main>','<div role="alert">Use a strong password to protect your account.</div><input name="telemetry" type="email" required aria-hidden="true" style="position:absolute;left:-10000px"><main>'),'awaiting_email_code',1],
   [markup.replace('name="username"','name="username" aria-invalid="true"'),'awaiting_email_code',1],
+  [markup.replace('<main>','<div role="alert">Input Username is valid.</div><main>'),'awaiting_email_code',1],
   [markup.replace('name="username"','name="username" pattern="[a-z]+"'),'validation_error',0]
  ];
  try{for(const [body,status,submissions] of cases){const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body}));const result=await prepareInstagramRegistration(context,input,fast);assert.equal(result.status,status);assert.equal(await context.pages()[0].evaluate(()=>window.submissions),submissions);if(status==='validation_error'){assert.match(result.message,/Username/);assert.match(result.message,/định dạng/);assert.ok(!result.message.includes(input.password));assert.ok(!result.message.includes(input.email));}await context.close();}}
+ finally{await browser.close();}
+});
+
+test('birthday handles dependent day options and blur validation, and blocks submission if the selected date resets',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ // The current/default year is not a leap year. Month/year changes rebuild the days,
+ // and the form clears its temporary year validation only after leaving that control.
+ const dynamic=`<script>
+ const [monthSelect,daySelect,yearSelect]=document.querySelectorAll('select');
+ window.birthdayChanges=[];
+ function updateDays(){
+  const previous=daySelect.value,days=new Date(Number(yearSelect.value)||2026,Number(monthSelect.value)||1,0).getDate();
+  daySelect.innerHTML='<option value="">Day</option>'+Array.from({length:days},(_,i)=>'<option value="'+(i+1)+'">'+(i+1)+'</option>').join('');
+  daySelect.value=Number(previous)<=days?previous:'';
+ }
+ for(const [name,field] of [['month',monthSelect],['day',daySelect],['year',yearSelect]])field.addEventListener('change',()=>window.birthdayChanges.push(name));
+ monthSelect.addEventListener('change',updateDays);
+ yearSelect.addEventListener('change',()=>{updateDays();yearSelect.setCustomValidity('Birthday is invalid');});
+ yearSelect.addEventListener('blur',()=>yearSelect.setCustomValidity(''));
+ </script>`;
+ try{
+  for(const birthday of ['2004-02-29','2007-04-13']){
+   const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:markup+dynamic}));
+   const result=await prepareInstagramRegistration(context,{...input,birthday},fast),page=context.pages()[0];assert.equal(result.status,'awaiting_email_code');assert.equal(result.submissionAttempted,true);
+   const [year,month,day]=birthday.split('-').map(Number);assert.deepEqual(await page.locator('select').evaluateAll(nodes=>nodes.slice(0,3).map(e=>e.value)),[String(month),String(day),String(year)]);assert.deepEqual(await page.evaluate(()=>window.birthdayChanges),['year','month','day']);assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.enters),0);await context.close();
+  }
+  const context=await browser.newContext();const reset=dynamic.replace('</script>',"daySelect.addEventListener('change',()=>yearSelect.value='');</script>");await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:markup+reset}));
+  const result=await prepareInstagramRegistration(context,input,fast);assert.equal(result.status,'form_incomplete');assert.match(result.message,/Ngày sinh.*đã thay đổi/);assert.equal(result.submissionAttempted,false);assert.equal(await context.pages()[0].evaluate(()=>window.submissions),0);await context.close();
+ }finally{await browser.close();}
+});
+
+test('birthday also verifies custom comboboxes whose captions and selected values share a line',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const custom=`<script>
+ for(const select of [...document.querySelectorAll('select')].slice(0,3)){
+  const caption=select.options[0].text,button=document.createElement('button');button.type='button';button.role='combobox';button.setAttribute('aria-label','Select '+caption);button.textContent=caption;
+  select.replaceWith(button);
+  button.onclick=()=>{const list=document.createElement('div');list.role='listbox';for(const option of [...select.options].slice(1)){
+   const choice=document.createElement('button');choice.type='button';choice.role='option';choice.textContent=option.text;
+   choice.onclick=()=>{button.textContent=caption+option.text;list.remove();button.focus();};list.append(choice);
+  }button.after(list);};
+ }
+ </script>`;
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:markup+custom}));const result=await prepareInstagramRegistration(context,input,fast);assert.equal(result.status,'awaiting_email_code');assert.equal(result.submitted,true);assert.equal(await context.pages()[0].evaluate(()=>window.submissions),1);await context.close();}
  finally{await browser.close();}
 });
