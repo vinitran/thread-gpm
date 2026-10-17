@@ -161,3 +161,78 @@ test('birthday also verifies custom comboboxes whose captions and selected value
  try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:markup+custom}));const result=await prepareInstagramRegistration(context,input,fast);assert.equal(result.status,'awaiting_email_code');assert.equal(result.submitted,true);assert.equal(await context.pages()[0].evaluate(()=>window.submissions),1);await context.close();}
  finally{await browser.close();}
 });
+
+test('signup resolves the current fields after email blur inserts an unrelated input',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const dynamic=`<script>document.querySelector('input[name=email]').addEventListener('blur',()=>{if(document.querySelector('input[name=referral]'))return;document.querySelector('input[name=full_name]').closest('label').insertAdjacentHTML('beforebegin','<label>Optional referral code<input name=referral></label>');});</script>`;
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:markup+dynamic}));
+  const result=await prepareInstagramRegistration(context,input,fast),page=context.pages()[0];assert.equal(result.status,'awaiting_email_code');assert.equal(await page.locator('input[name=referral]').inputValue(),'');
+  for(const [selector,value] of [['input[name=email]',input.email],['input[name=full_name]',input.fullName],['input[name=username]',input.username],['input[type=password]',input.password]])assert.equal(await page.locator(selector).inputValue(),value);
+  assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.enters),0);
+ }finally{await browser.close();}
+});
+
+test('signup follows the displayed form groups while keeping birthday dependencies intact',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ try{for(const [layout,expected] of [['dom',['email','password','birthday','full_name','username']],['css',['email','full_name','birthday','username','password']]]){
+   const arranged=`<script>
+   const main=document.querySelector('main'),submit=document.getElementById('submit'),labels=[...main.children].filter(e=>e.tagName==='LABEL');
+   const key=label=>label.querySelector('input')?.name||(label.querySelector('input[type=password]')?'password':label.textContent.startsWith('Select ')?'birthday':'gender');
+   const order=${JSON.stringify(expected)};
+   if(${JSON.stringify(layout)}==='dom'){for(const name of [...order,'gender'])for(const label of labels.filter(e=>key(e)===name))submit.before(label);}
+   else{main.style.display='flex';main.style.flexDirection='column';main.querySelector('h1').style.order='-1';for(const label of labels)label.style.order=String(order.indexOf(key(label))<0?order.length:order.indexOf(key(label)));submit.style.order='10';document.getElementById('verification').style.order='11';}
+   window.formGroups=[];window.birthdayChanges=[];
+   const record=group=>{if(order.includes(group)&&!window.formGroups.includes(group))window.formGroups.push(group);};
+   document.addEventListener('input',event=>{if(event.target.tagName==='INPUT'&&event.target.value)record(event.target.type==='password'?'password':event.target.name);});
+   for(const select of document.querySelectorAll('select'))if(select.closest('label').textContent.startsWith('Select '))select.addEventListener('change',()=>{record('birthday');window.birthdayChanges.push(select.closest('label').textContent.match(/^Select (Month|Day|Year)/)[1].toLowerCase());});
+   </script>`;
+   const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:markup+arranged}));
+   const result=await prepareInstagramRegistration(context,input,fast),page=context.pages()[0];assert.equal(result.status,'awaiting_email_code');assert.deepEqual(await page.evaluate(()=>window.formGroups),expected);assert.deepEqual(await page.evaluate(()=>window.birthdayChanges),['year','month','day']);assert.equal(await page.evaluate(()=>window.submissions),1);await context.close();
+  }
+ }finally{await browser.close();}
+});
+
+test('OTP confirmation waits for blur and delayed readiness, and Stop cancels that wait without clicking',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const delayed=markup.replace('<button id="code-confirm"','<button disabled id="code-confirm"').replace('window.codeSubmissions++',"window.codeSubmissions++;document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<a href=/direct/inbox/>Inbox</a>')")+`<script>
+ window.virtualNow=0;window.codeReadyAt=null;window.codeEnabledAt=null;
+ document.querySelector('input[name=email_confirmation_code]').addEventListener('blur',event=>{if(/^\\d{6}$/.test(event.target.value))window.codeReadyAt=window.virtualNow+2500;});
+ </script>`;
+ try{for(const stopDuringWait of [false,true]){
+   const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:delayed}));let active=true,calls=0;
+   const result=await prepareInstagramRegistration(context,input,{...fast,shouldContinue:()=>active,getEmailCode:async()=>{calls++;return {code:'012345'};},wait:async ms=>{
+    const page=context.pages()[0];if(!page)return;const state=await page.evaluate(ms=>{window.virtualNow+=ms;if(window.codeReadyAt!==null&&window.virtualNow>=window.codeReadyAt){document.getElementById('code-confirm').disabled=false;window.codeEnabledAt=window.virtualNow;}return {readyAt:window.codeReadyAt,now:window.virtualNow};},ms);
+    if(stopDuringWait&&state.readyAt!==null&&state.now>=state.readyAt-1900)active=false;
+   }}),page=context.pages()[0];
+   assert.equal(calls,1);assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),stopDuringWait?0:1);assert.equal(result.emailCodeSubmitted,!stopDuringWait);
+   if(stopDuringWait){assert.equal(result.emailCodeAttempted,false);assert.equal(await page.evaluate(()=>window.codeEnabledAt),null);}else{assert.equal(result.status,'completed');assert.ok(await page.evaluate(()=>window.codeEnabledAt>=window.codeReadyAt));}
+   assert.equal(await page.evaluate(()=>window.enters),0);await context.close();
+  }
+ }finally{await browser.close();}
+});
+
+test('a challenge overlay takes precedence over an OTP field and never requests or enters a code',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const challenged=markup.replace("document.getElementById('verification').hidden=false","document.getElementById('verification').hidden=false;document.body.insertAdjacentHTML('beforeend','<div data-sitekey=fixture style=position:fixed;inset:0;background:white;z-index:999>Confirm you are human</div>')");
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body:challenged}));let calls=0;
+  const result=await prepareInstagramRegistration(context,input,{...fast,getEmailCode:async()=>{calls++;return {code:'012345'};}}),page=context.pages()[0];assert.equal(result.status,'challenge');assert.equal(calls,0);assert.equal(await page.locator('input[name=email_confirmation_code]').inputValue(),'');assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),0);assert.equal(result.emailCodeAttempted,false);
+ }finally{await browser.close();}
+});
+
+test('hidden and inert OTP duplicates do not block the active verification field',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const duplicates=`<div aria-hidden="true"><label>Security code<input name="hidden_code" autocomplete="one-time-code"></label></div><div inert><label>Verification code<input name="inert_code" autocomplete="one-time-code"></label></div><label>Security code<input name="transparent_code" autocomplete="one-time-code" style="opacity:0"></label>`;
+ const body=markup.replace('window.codeSubmissions++',"window.codeSubmissions++;document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<a href=/direct/inbox/>Inbox</a>')")+duplicates;
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body}));let calls=0;
+  const result=await prepareInstagramRegistration(context,input,{...fast,getEmailCode:async()=>{calls++;return {code:'012345'};}}),page=context.pages()[0];assert.equal(result.status,'completed');assert.equal(calls,1);assert.equal(await page.locator('input[name=email_confirmation_code]').inputValue(),'012345');for(const name of ['hidden_code','inert_code','transparent_code'])assert.equal(await page.locator('input[name='+name+']').inputValue(),'');assert.equal(await page.evaluate(()=>window.codeSubmissions),1);
+ }finally{await browser.close();}
+});
+
+test('a visible OTP input can finish loading before Gmail is requested and confirmation proceeds once',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const body=markup.replace('name="email_confirmation_code"','disabled name="email_confirmation_code"').replace("document.getElementById('verification').hidden=false","document.getElementById('verification').hidden=false;window.codeEditableAt=window.virtualNow+1500").replace('window.codeSubmissions++',"window.codeSubmissions++;document.getElementById('verification').hidden=true;document.body.insertAdjacentHTML('beforeend','<a href=/direct/inbox/>Inbox</a>')")+'<script>window.virtualNow=0;window.codeEditableAt=null;</script>';
+ try{const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body}));let calls=0;
+  const result=await prepareInstagramRegistration(context,input,{...fast,getEmailCode:async()=>{calls++;const page=context.pages()[0];assert.equal(await page.locator('input[name=email_confirmation_code]').isEditable(),true);assert.ok(await page.evaluate(()=>window.virtualNow>=window.codeEditableAt));return {code:'012345'};},wait:async ms=>{const page=context.pages()[0];if(page)await page.evaluate(ms=>{window.virtualNow+=ms;if(window.codeEditableAt!==null&&window.virtualNow>=window.codeEditableAt)document.querySelector('input[name=email_confirmation_code]').disabled=false;},ms);}}),page=context.pages()[0];
+  assert.equal(result.status,'completed');assert.equal(calls,1);assert.equal(result.emailCodeSubmitted,true);assert.equal(await page.locator('input[name=email_confirmation_code]').inputValue(),'012345');assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),1);assert.equal(await page.evaluate(()=>window.enters),0);for(const secret of ['012345',input.password])assert.ok(!JSON.stringify(result).includes(secret));
+ }finally{await browser.close();}
+});
