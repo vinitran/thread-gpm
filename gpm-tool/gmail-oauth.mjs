@@ -22,11 +22,18 @@ export async function googleRequest(url,{method='GET',headers={},body,shouldCont
  if(!shouldContinue())throw failure('Đã dừng lấy mã Gmail.');
  return new Promise((resolve,reject)=>{
   let done=false,timer,cancel,req;const finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);clearInterval(cancel);error?reject(error):resolve(value);};
-  try{req=https.request(parsed,{method,headers,agent:false},res=>{
+  try{req=https.request(parsed,{method,headers:{Accept:'application/json',...headers},agent:false},res=>{
    let bytes=0;const chunks=[];
    res.on('data',chunk=>{bytes+=chunk.length;if(bytes>2*1024*1024){finish(failure('Phản hồi Gmail vượt giới hạn.'));req.destroy();}else chunks.push(chunk);});
    res.on('error',()=>finish(failure('Mất kết nối Gmail.',{transient:true})));
-   res.on('end',()=>{if(done)return;let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{return finish(failure('Gmail trả dữ liệu không hợp lệ.'));}finish(null,{status:res.statusCode,data});});
+   res.on('end',()=>{
+    if(done)return;const status=res.statusCode;let data=null;
+    try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{}
+    // Preserve HTTP failures (including HTML/empty bodies) so OAuth and Gmail can
+    // distinguish rejected credentials from a temporary outage. Malformed 2xx is retryable.
+    if(status>=200&&status<300&&(!data||typeof data!=='object'||Array.isArray(data)))return finish(failure('Google/Gmail tạm trả dữ liệu không hợp lệ. Đang chờ thử lại.',{transient:true}));
+    finish(null,{status,data});
+   });
   });}catch{return finish(failure('Không kết nối được Google/Gmail.',{transient:true}));}
   req.on('error',()=>finish(failure(!shouldContinue()?'Đã dừng lấy mã Gmail.':'Không kết nối được Google/Gmail.',{transient:shouldContinue()})));
   timer=setTimeout(()=>{finish(failure('Google/Gmail quá thời gian phản hồi.',{transient:true}));req.destroy();},Math.max(1,timeoutMs));
@@ -77,6 +84,7 @@ export class GmailOAuthClient{
     if(!token.refresh_token||!credentials.client_id||!credentials.client_secret)throw failure('Thiếu refresh token hoặc thông tin OAuth Gmail. Cần kết nối lại Gmail.');
     const body=new URLSearchParams({client_id:credentials.client_id,client_secret:credentials.client_secret,refresh_token:token.refresh_token,grant_type:'refresh_token'}).toString();
     const response=await call(TOKEN,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+    if(response.status===429||response.status>=500)throw failure('Google OAuth tạm thời chưa phản hồi. Đang chờ thử lại.',{transient:true});
     if(response.status!==200||typeof response.data?.access_token!=='string'||!Number.isFinite(Number(response.data.expires_in))||Number(response.data.expires_in)<=0||Number(response.data.expires_in)>86400)throw failure('Không làm mới được quyền Gmail. OAuth có thể hết hạn hoặc bị thu hồi; cần kết nối lại Gmail.');
     token={...token,token:response.data.access_token,expiry:new Date(this.now()+Number(response.data.expires_in)*1000).toISOString(),...(response.data.refresh_token?{refresh_token:response.data.refresh_token}:{})};delete token.access_token;delete token.expiry_date;
     await saveToken(this.config.tokenFile,token);
@@ -92,7 +100,7 @@ export class GmailOAuthClient{
    if(response.status!==200)throw failure('Gmail không chấp nhận yêu cầu. Bạn kiểm tra kết nối Gmail trong app.');
    return response.data;
   };
-  const profile=await get(GMAIL+'/profile?fields=emailAddress');if(mailbox(profile?.emailAddress)!==this.config.account)throw failure('Token OAuth không thuộc Gmail đã cấu hình. Kiểm tra lại kết nối Gmail.');
+  const profile=await get(GMAIL+'/profile?fields=emailAddress');if(typeof profile?.emailAddress!=='string')throw failure('Gmail tạm chưa trả thông tin hộp thư. Đang chờ thử lại.',{transient:true});if(mailbox(profile.emailAddress)!==this.config.account)throw failure('Token OAuth không thuộc Gmail đã cấu hình. Kiểm tra lại kết nối Gmail.');
   return {get,check};
  }
  async checkConnection(){await this.session();return {ok:true,account:this.config.account};}
@@ -101,6 +109,11 @@ export class GmailOAuthClient{
   if(typeof recipient!=='string'||!/^[-a-z0-9._%+]+@(?:gmail|googlemail)\.com$/i.test(recipient)||mailbox(recipient).replace(/\+[^@]*@/,'@')!==this.config.account||!Number.isSafeInteger(after)||after<0)throw failure('Gmail nhận mã phải là hộp thư OAuth đã kết nối hoặc địa chỉ cộng của hộp thư đó.');
   const deadline=this.now()+60000,guard=()=>shouldContinue()&&this.now()<deadline;let session,nextProgress=0;const cache=new Map();
   try{
+   const initialWait=Math.min(10000,Math.max(0,after*1000+10000-this.now()));
+   if(initialWait>0){
+    await onProgress('Đang chờ email về Gmail · kiểm tra mã sau khoảng '+Math.ceil(initialWait/1000)+' giây.');
+    for(let left=initialWait;left>0;){if(!shouldContinue())throw failure('Đã dừng lấy mã Gmail.');const part=Math.min(100,left);await this.wait(part);left-=part;}
+   }
    while(this.now()<deadline){
     if(!shouldContinue())throw failure('Đã dừng lấy mã Gmail.');const started=this.now();
     try{
