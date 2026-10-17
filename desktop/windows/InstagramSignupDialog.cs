@@ -12,14 +12,14 @@ static class InstagramSignupDialog
         var page = new StackPanel { Margin = new(22) }; dialog.Content = page;
         page.Children.Add(MainWindow.Note("Mở đúng profile GPM và điền form. Bạn kiểm tra, tự Submit và hoàn tất xác minh trên Instagram."));
         var inputs = new Dictionary<string, TextBox>();
-        foreach (var (key, title) in new[] { ("email", "Gmail · lấy từ tên profile"), ("fullName", "Tên hiển thị"), ("username", "Username · có thể sửa"), ("birthday", "Ngày sinh thật · YYYY-MM-DD (trống = tự điền)") })
+        foreach (var (key, title) in new[] { ("email", "Gmail · lấy từ tên profile"), ("fullName", "Tên hiển thị"), ("username", "Username · có thể sửa") })
         {
             page.Children.Add(MainWindow.Note(title)); var field = new TextBox { Text = J.S(draft[key]), MinHeight = 30, Padding = new(6), Margin = new(0, 0, 0, 8) }; inputs[key] = field; page.Children.Add(field);
         }
         page.Children.Add(MainWindow.Note(J.B(draft["hasSavedPassword"]) ? "Mật khẩu cố định · đã lưu trên máy, để trống để dùng lại" : "Mật khẩu cố định · để trống để tự nhập trên Instagram"));
         var password = new PasswordBox { MinHeight = 30, Padding = new(6) }; page.Children.Add(password);
         var remember = new CheckBox { Content = "Nhớ mật khẩu trên máy cho lần sau", Margin = new(0, 12, 0, 12) }; page.Children.Add(remember);
-        page.Children.Add(MainWindow.Note("Giới tính: nữ nếu form có mục này. Mật khẩu chỉ lưu local khi bạn tích Nhớ; không xuất vào file profile."));
+        page.Children.Add(MainWindow.Note("Ngày sinh được chọn ngẫu nhiên trong năm 2004–2007. Giới tính: nữ nếu form có mục này. Mật khẩu chỉ lưu local khi tích Nhớ."));
         var open = new Button { Content = "Mở & điền form", IsDefault = true, Padding = new(18, 7, 18, 7) }; open.Click += (_, _) => dialog.DialogResult = true;
         var cancel = new Button { Content = "Hủy", IsCancel = true, Padding = new(18, 7, 18, 7), Margin = new(10, 0, 0, 0) }; page.Children.Add(MainWindow.Row(open, cancel));
         if (dialog.ShowDialog() != true) return null;

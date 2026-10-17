@@ -316,14 +316,14 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         let alert = NSAlert(); alert.messageText = "Chuẩn bị đăng ký Instagram"; alert.informativeText = "Mở đúng profile GPM và điền form. Bạn kiểm tra, tự Submit và hoàn tất xác minh trên Instagram."
         alert.addButton(withTitle:"Mở & điền form"); alert.addButton(withTitle:"Hủy")
         let content = column(); var fields:[String:NSTextField] = [:]
-        for (key,title) in [("email","Gmail · lấy từ tên profile"),("fullName","Tên hiển thị"),("username","Username · có thể sửa"),("birthday","Ngày sinh thật · YYYY-MM-DD (trống = tự điền)")] {
+        for (key,title) in [("email","Gmail · lấy từ tên profile"),("fullName","Tên hiển thị"),("username","Username · có thể sửa")] {
             content.addArrangedSubview(label(title)); let field = NSTextField(string:string(draft[key])); field.widthAnchor.constraint(equalToConstant:460).isActive = true; fields[key] = field; content.addArrangedSubview(field)
         }
         content.addArrangedSubview(label("Mật khẩu cố định · trống = dùng bản đã lưu hoặc tự điền"))
         let password = NSSecureTextField(); password.placeholderString = draft["hasSavedPassword"] as? Bool == true ? "Đã có mật khẩu lưu trên máy" : "Nhập mật khẩu hoặc tự điền trong Instagram"; password.widthAnchor.constraint(equalToConstant:460).isActive = true; content.addArrangedSubview(password)
         let remember = NSButton(checkboxWithTitle:"Nhớ mật khẩu trên máy cho lần sau",target:nil,action:nil); content.addArrangedSubview(remember)
-        content.addArrangedSubview(label("Giới tính: nữ nếu form có mục này. Mật khẩu chỉ lưu trong dữ liệu local khi bạn tích Nhớ; không xuất vào file profile."))
-        content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:480,height:400); alert.accessoryView = content
+        content.addArrangedSubview(label("Ngày sinh được chọn ngẫu nhiên trong năm 2004–2007. Giới tính: nữ nếu form có mục này. Mật khẩu chỉ lưu local khi tích Nhớ."))
+        content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:480,height:340); alert.accessoryView = content
         alert.beginSheetModal(for:view.window!) { [weak self] response in
             self?.editingProfileForm = false; guard response == .alertFirstButtonReturn else { return }
             var body:JSONObject = ["id":id,"password":password.stringValue,"rememberPassword":remember.state == .on]

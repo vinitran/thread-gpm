@@ -1,16 +1,21 @@
+import {randomInt} from 'node:crypto';
 export const INSTAGRAM_SIGNUP_URL='https://www.instagram.com/accounts/emailsignup/';
+export function randomRegistrationBirthday(){
+ const start=Date.UTC(2004,0,1),days=(Date.UTC(2008,0,1)-start)/86400000;
+ return new Date(start+randomInt(days)*86400000).toISOString().slice(0,10);
+}
 export function registrationDraft(profile){
  const names=String(profile.name||profile.profileName||'').trim(),emails=names.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:gmail|googlemail)\.com\b/gi)||[];
  const email=emails.length===1?emails[0]:'',local=email.split('@')[0];
- return {profileId:profile.id||profile.profileId,email,fullName:local?.replace(/[._+]+/g,' ').trim()||'',username:local?.toLowerCase().replace(/[^a-z0-9._]/g,'').replace(/^\.+|\.+$/g,'').slice(0,30)||'',birthday:'',gender:'female'};
+ return {profileId:profile.id||profile.profileId,email,fullName:local?.replace(/[._+]+/g,' ').trim()||'',username:local?.toLowerCase().replace(/[^a-z0-9._]/g,'').replace(/^\.+|\.+$/g,'').slice(0,30)||'',gender:'female'};
 }
 export function validateRegistration(input){
  const email=String(input.email||'').trim(),fullName=String(input.fullName||'').trim(),username=String(input.username||'').trim();
  if(!/^[^\s@]+@(?:gmail|googlemail)\.com$/i.test(email)||email.length>254)throw Error('Nhập địa chỉ Gmail của profile.');
  if(!fullName||fullName.length>100||/[\x00-\x1f]/.test(fullName))throw Error('Tên hiển thị cần 1–100 ký tự.');
  if(!/^[a-z0-9._]{1,30}$/i.test(username)||username.startsWith('.')||username.endsWith('.')||username.includes('..'))throw Error('Username cần 1–30 chữ, số, dấu chấm hoặc gạch dưới.');
- const birthday=String(input.birthday||'').trim();
- if(birthday){const date=new Date(birthday+'T00:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(birthday)||!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==birthday||birthday<'1900-01-01'||birthday>new Date().toISOString().slice(0,10))throw Error('Ngày sinh cần đúng YYYY-MM-DD và là thông tin thật.');}
+ const birthday=String(input.birthday||'').trim()||randomRegistrationBirthday();
+ if(birthday){const date=new Date(birthday+'T00:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(birthday)||!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==birthday||birthday<'1900-01-01'||birthday>new Date().toISOString().slice(0,10))throw Error('Ngày sinh cần đúng YYYY-MM-DD và là ngày hợp lệ.');}
  const password=input.password||'';if(typeof password!=='string'||password.length>512||password&&password.length<6)throw Error('Mật khẩu cần ít nhất 6 ký tự, tối đa 512.');
  return {email,fullName,username,birthday,gender:'female',password};
 }
@@ -46,7 +51,7 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
      }else{await selector.click();const option=page.getByRole('option',{name:value,exact:true});if(await option.count()!==1){await page.keyboard.press('Escape');warnings.push('Bạn chọn ngày sinh chính xác trên form.');break;}await option.click();}
     }
    }
-  }else warnings.push('Bạn nhập ngày sinh thật trong trình duyệt.');
+  }
   check();const gender=page.getByRole('combobox',{name:/^gender$|^giới tính$/i});
   if(await gender.count()===1){const tag=await gender.evaluate(e=>e.tagName);if(tag==='SELECT'){const options=await gender.locator('option').evaluateAll(nodes=>nodes.map(e=>({value:e.value,text:e.textContent.trim()})));const female=options.find(o=>/^(female|nữ)$/i.test(o.text));if(female)await gender.selectOption(female.value);}}
   // Handoff only: never submit, press Enter, solve a challenge, or send confirmation codes.
