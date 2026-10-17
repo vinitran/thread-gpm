@@ -286,7 +286,7 @@ sealed class MainWindow : Window
     void InstagramSignup()
     {
         var id = Ids.Single();
-        Perform("Đang gọi AI tạo tên nữ Việt Nam và username…", async api => {
+        Perform("Đang gọi AI tạo tên nữ Việt Nam…", async api => {
             var draft = await api.Request("instagram-draft", new() { ["id"] = id }); EditingProfileForm = true; JsonObject? body;
             try { body = InstagramSignupDialog.Ask(this, draft); } finally { EditingProfileForm = false; }
             if (body == null) return "Đã hủy chuẩn bị đăng ký."; body["id"] = id;

@@ -307,8 +307,8 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     @objc func instagramSignup() {
         guard let id = selected.first, selected.count == 1 else { return }
-        perform("Đang gọi AI tạo tên nữ Việt Nam và username…") { [weak self] api in
-            let draft = try await api.request("instagram-draft",["id":id]); self?.showInstagramForm(id,draft); return "AI đã gợi ý tên và username. Bạn có thể sửa trước khi mở form."
+        perform("Đang gọi AI tạo tên nữ Việt Nam…") { [weak self] api in
+            let draft = try await api.request("instagram-draft",["id":id]); self?.showInstagramForm(id,draft); return "AI đã gợi ý tên. Username dùng hai từ cuối và 4 số ngẫu nhiên; bạn vẫn có thể sửa."
         }
     }
     func showInstagramForm(_ id: String, _ draft: JSONObject) {
@@ -316,7 +316,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         let alert = NSAlert(); alert.messageText = "Chuẩn bị đăng ký Instagram"; alert.informativeText = "Kiểm tra thông tin tại đây. App điền form, gửi đăng ký và lấy mã qua Gmail OAuth trong app để xác nhận. Nếu Gmail chưa kết nối, bạn nhập mã trong profile GPM."
         alert.addButton(withTitle:"Đăng ký & xác minh Gmail"); alert.addButton(withTitle:"Hủy")
         let content = column(); var fields:[String:NSTextField] = [:]
-        for (key,title) in [("email","Gmail · lấy từ tên profile"),("fullName","Tên nữ Việt Nam · AI gợi ý, có thể sửa"),("username","Username · AI gợi ý, có thể sửa")] {
+        for (key,title) in [("email","Gmail · lấy từ tên profile"),("fullName","Tên nữ Việt Nam · AI gợi ý, có thể sửa"),("username","Username · hai từ cuối + 4 số, có thể sửa")] {
             content.addArrangedSubview(label(title)); let field = NSTextField(string:string(draft[key])); field.widthAnchor.constraint(equalToConstant:460).isActive = true; fields[key] = field; content.addArrangedSubview(field)
         }
         content.addArrangedSubview(label("Mật khẩu cố định · trống = dùng bản đã lưu hoặc tự điền"))

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';import {chromium} from 'playwright';
-import {registrationDraft,randomRegistrationBirthday,validateRegistration,prepareInstagramRegistration,INSTAGRAM_SIGNUP_URL} from './instagram-registration.mjs';import {Store} from './store.mjs';import {ProfileManager} from './profile-manager.mjs';import {AUTO_DEFAULTS} from '../extension/auto-runner.js';import {publicSettings} from './settings.mjs';
+import {registrationDraft,registrationUsername,randomRegistrationBirthday,validateRegistration,prepareInstagramRegistration,INSTAGRAM_SIGNUP_URL} from './instagram-registration.mjs';import {Store} from './store.mjs';import {ProfileManager} from './profile-manager.mjs';import {AUTO_DEFAULTS} from '../extension/auto-runner.js';import {publicSettings} from './settings.mjs';
 import {generateRegistrationIdentity} from './ai.mjs';import {API_BASE} from '../extension/ai.js';
 const input={email:'fixture+1@gmail.com',fullName:'Trần Ngọc Linh',username:'fixture_1',birthday:'2004-02-29',password:'fixture-password'};
 const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -43,10 +43,10 @@ test('profile manager opens only the selected idle profile, remembers a password
 
 test('AI generates a Vietnamese alias with the saved model, sends no profile data, and reports invalid responses safely',async()=>{
  const settings={model:'fixture-model',apiKey:'fixture-secret',profileName:'personal@gmail.com',proxy:'private-proxy',password:'private-password',prompt:'Do not use this unrelated comment prompt.'},identity={fullName:'Trần Ngọc Linh',username:'ngoclinh_63829'},requests=[];
- const fetchImpl=async(url,options)=>{assert.equal(url,API_BASE+'/chat/completions');assert.equal(options.headers.Authorization,'Bearer '+settings.apiKey);assert.equal(options.redirect,'error');assert.ok(options.signal instanceof AbortSignal);const body=JSON.parse(options.body);requests.push(body);assert.equal(body.model,settings.model);for(const secret of [settings.apiKey,settings.profileName,settings.proxy,settings.password,settings.prompt])assert.ok(!options.body.includes(secret));return {ok:true,json:async()=>({choices:[{message:{content:'```json\n'+JSON.stringify(identity)+'\n```'}}]})};};
- assert.deepEqual(await generateRegistrationIdentity(settings,{fetchImpl}),identity);await generateRegistrationIdentity(settings,{fetchImpl});assert.notEqual(requests[0].messages[1].content,requests[1].messages[1].content);
+ const fetchImpl=async(url,options)=>{assert.equal(url,API_BASE+'/chat/completions');assert.equal(options.headers.Authorization,'Bearer '+settings.apiKey);assert.equal(options.redirect,'error');assert.ok(options.signal instanceof AbortSignal);const body=JSON.parse(options.body);requests.push(body);assert.equal(body.model,settings.model);for(const secret of [settings.apiKey,settings.profileName,settings.proxy,settings.password,settings.prompt])assert.ok(!options.body.includes(secret));return {ok:true,json:async()=>({choices:[{message:{content:'```json\n'+JSON.stringify({fullName:identity.fullName})+'\n```'}}]})};};
+ const generated=await generateRegistrationIdentity(settings,{fetchImpl});assert.equal(generated.fullName,identity.fullName);assert.match(generated.username,/^ngoc\.linh\.[1-9]\d{3}$/);await generateRegistrationIdentity(settings,{fetchImpl});assert.notEqual(requests[0].messages[1].content,requests[1].messages[1].content);
  let called=false;await assert.rejects(()=>generateRegistrationIdentity({...settings,apiKey:''},{fetchImpl:async()=>{called=true;}}),/Lưu API key/);assert.equal(called,false);await assert.rejects(()=>generateRegistrationIdentity({...settings,model:''},{fetchImpl}),/lưu model/);
- for(const content of ['not JSON','null',JSON.stringify({fullName:'Name',username:'valid_1234'}),JSON.stringify({...identity,username:'bad..username'}),JSON.stringify({...identity,username:'123456'})])await assert.rejects(()=>generateRegistrationIdentity(settings,{fetchImpl:async()=>({ok:true,json:async()=>({choices:[{message:{content}}]})})}),/AI tạo tên/);
+ for(const content of ['not JSON','null',JSON.stringify({fullName:'Name',username:'valid_1234'}),JSON.stringify({fullName:123}),JSON.stringify({fullName:'Trần 123'})])await assert.rejects(()=>generateRegistrationIdentity(settings,{fetchImpl:async()=>({ok:true,json:async()=>({choices:[{message:{content}}]})})}),/AI tạo tên/);
  await assert.rejects(()=>generateRegistrationIdentity(settings,{fetchImpl:async()=>({ok:false,status:401,json:async()=>({error:settings.apiKey})})}),e=>e.message.includes('HTTP 401')&&!e.message.includes(settings.apiKey));
  await assert.rejects(()=>generateRegistrationIdentity(settings,{fetchImpl:async()=>{throw Object.assign(Error(settings.apiKey),{name:'TimeoutError'});}}),e=>e.message.includes('90 giây')&&!e.message.includes(settings.apiKey));
 });
@@ -101,4 +101,18 @@ test('Gmail OAuth failures hand off safely; rejected codes are never retried or 
    const result=await prepareInstagramRegistration(context,input,{...fast,getEmailCode:async()=>{calls++;if(failedApi)throw Error('private-api-key 012345');return {code:'012345'};}});assert.equal(calls,1);assert.equal(result.status,failedApi?'awaiting_email_code':'code_rejected');assert.ok(!JSON.stringify(result).includes('012345'));assert.ok(!JSON.stringify(result).includes('private-api-key'));const page=context.pages()[0];assert.equal(await page.evaluate(()=>window.submissions),1);assert.equal(await page.evaluate(()=>window.codeSubmissions),failedApi?0:1);await context.close();
   }
  }finally{await browser.close();}
+});
+
+test('username uses exactly the last two name words without accents and four random digits',()=>{
+ assert.equal(registrationUsername('Nguyen Minh An',7356),'minh.an.7356');assert.equal(registrationUsername('  NGUYỄN   Minh An  ',7356),'minh.an.7356');assert.equal(registrationUsername('Đặng Thị Ngọc Ánh',1000),'ngoc.anh.1000');assert.equal(registrationUsername('Đỗ Đan',9999),'do.dan.9999');for(let i=0;i<50;i++)assert.match(registrationUsername('Nguyễn Minh An'),/^minh\.an\.[1-9]\d{3}$/);assert.ok(registrationUsername('Nguyễn '+('a'.repeat(40))+' '+('b'.repeat(40))).length<=30);assert.throws(()=>registrationUsername('An'));
+});
+test('signup ignores informational alerts and unrelated invalid inputs, tolerates stale aria flags, and names genuine invalid fields',async()=>{
+ const browser=await chromium.launch({executablePath:process.env.TEST_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const cases=[
+  [markup.replace('<main>','<div role="alert">Use a strong password to protect your account.</div><input name="telemetry" type="email" required aria-hidden="true" style="position:absolute;left:-10000px"><main>'),'awaiting_email_code',1],
+  [markup.replace('name="username"','name="username" aria-invalid="true"'),'awaiting_email_code',1],
+  [markup.replace('name="username"','name="username" pattern="[a-z]+"'),'validation_error',0]
+ ];
+ try{for(const [body,status,submissions] of cases){const context=await browser.newContext();await context.route('https://www.instagram.com/**',r=>r.fulfill({contentType:'text/html',body}));const result=await prepareInstagramRegistration(context,input,fast);assert.equal(result.status,status);assert.equal(await context.pages()[0].evaluate(()=>window.submissions),submissions);if(status==='validation_error'){assert.match(result.message,/Username/);assert.match(result.message,/định dạng/);assert.ok(!result.message.includes(input.password));assert.ok(!result.message.includes(input.email));}await context.close();}}
+ finally{await browser.close();}
 });

@@ -12,7 +12,7 @@ static class InstagramSignupDialog
         var page = new StackPanel { Margin = new(22) }; dialog.Content = page;
         page.Children.Add(MainWindow.Note("Kiểm tra thông tin tại đây. App điền form, gửi đăng ký và lấy mã qua Gmail OAuth trong app để xác nhận. Nếu Gmail chưa kết nối, bạn nhập mã trong profile GPM."));
         var inputs = new Dictionary<string, TextBox>();
-        foreach (var (key, title) in new[] { ("email", "Gmail · lấy từ tên profile"), ("fullName", "Tên nữ Việt Nam · AI gợi ý, có thể sửa"), ("username", "Username · AI gợi ý, có thể sửa") })
+        foreach (var (key, title) in new[] { ("email", "Gmail · lấy từ tên profile"), ("fullName", "Tên nữ Việt Nam · AI gợi ý, có thể sửa"), ("username", "Username · hai từ cuối + 4 số, có thể sửa") })
         {
             page.Children.Add(MainWindow.Note(title)); var field = new TextBox { Text = J.S(draft[key]), MinHeight = 30, Padding = new(6), Margin = new(0, 0, 0, 8) }; inputs[key] = field; page.Children.Add(field);
         }
