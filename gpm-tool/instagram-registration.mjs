@@ -1,6 +1,6 @@
 import {randomInt,randomUUID} from 'node:crypto';
 import {installNativePointer} from '../extension/pointer-input.js';
-import {typeReplyText} from '../extension/post-reply.js';
+import {typeFormText,formPointer} from './form-input.mjs';
 export const INSTAGRAM_SIGNUP_URL='https://www.instagram.com/accounts/emailsignup/';
 export const INSTAGRAM_HOME_URL='https://www.instagram.com/';
 const birthdayFields={year:/\b(?:select\s+)?year\b|năm/i,month:/\b(?:select\s+)?month\b|tháng/i,day:/\b(?:select\s+)?day\b|ngày/i};
@@ -81,7 +81,7 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
  const check=()=>{if(!shouldContinue())throw Error('Đã hủy chuẩn bị đăng ký do Dừng.');};
  const pause=async ms=>{for(let left=ms;left>0;){check();const part=Math.min(100,left);await wait(part);left-=part;}check();};
  const step=()=>pause(Math.round(stepDelay*(.8+random()*.4)));
- check();const page=await context.newPage();let session,submissionAttempted=false,submitted=false,requestedAt=null,emailCodeAttempted=false,emailCodeSubmitted=false;
+ check();const page=await context.newPage(),pointerKey='__hxFormPointer'+randomUUID().replace(/-/g,'');let session,submissionAttempted=false,submitted=false,requestedAt=null,emailCodeAttempted=false,emailCodeSubmitted=false;
  const publicURL=()=>{const url=new URL(page.url());return url.origin+url.pathname.replace(/(?<!\d)\d{6}(?!\d)/g,'[redacted]');};
  const result=(status,message)=>({ok:true,ready:['awaiting_email_code','awaiting_manual_confirmation','completed','onboarding'].includes(status),status,submitted,submissionAttempted,requestedAt,emailCodeAttempted,emailCodeSubmitted,url:publicURL(),email:data.email,username:data.username,warnings,message});
  try{
@@ -91,7 +91,7 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
   const pointer=installNativePointer({scripting:{executeScript:async({func,args})=>[{frameId:0,result:await page.evaluate(func,args[0])}]},debugger:{attach:async()=>{},detach:async()=>{},sendCommand:async(target,method,params)=>session.send(method,params)}},{shouldContinue,random,wait:pause});
   const click=async locator=>{
    check();const token='hx'+randomUUID().replace(/-/g,''),element=await locator.elementHandle();if(!element)throw Error('Mục tiêu không còn trên form.');await element.evaluate((e,token)=>e.setAttribute('data-hoanxu-pointer',token),token);
-   try{await pointer.pointer.click({tabId:1},{token});check();}finally{await element.evaluate((e,token)=>{if(e.getAttribute('data-hoanxu-pointer')===token)e.removeAttribute('data-hoanxu-pointer');},token).catch(()=>{});await element.dispose().catch(()=>{});}
+   try{await page.evaluate(formPointer,{key:pointerKey,action:'show'});await pointer.pointer.click({tabId:1},{token});check();}finally{await element.evaluate((e,token)=>{if(e.getAttribute('data-hoanxu-pointer')===token)e.removeAttribute('data-hoanxu-pointer');},token).catch(()=>{});await element.dispose().catch(()=>{});}
   };
   await step();
   const entryState=async()=>{
@@ -128,7 +128,7 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
   const type=async(locator,value)=>{
    if(!await locator.isEditable())throw Error('Ô nhập chưa sẵn sàng.');await click(locator);await pause(250+random()*250);await focused(locator);
    if(await locator.inputValue()){await page.keyboard.press('ControlOrMeta+A');check();await page.keyboard.press('Backspace');}
-   await typeReplyText(value,async char=>{await focused(locator);await page.keyboard.insertText(char);},{delayMs:typingDelay,shouldContinue,random,wait:pause});
+   await typeFormText(value,async char=>{await focused(locator);await page.keyboard.insertText(char);},{delayMs:typingDelay,shouldContinue,random,wait:pause});
    check();if(await locator.inputValue()!==value)throw Error('Nội dung ô nhập chưa đầy đủ.');await step();
   };
   const select=async(locator,option)=>{
@@ -265,5 +265,5 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
  }catch(e){
   if(emailCodeSubmitted&&/Đã hủy|Đã dừng/i.test(e.message))return result('code_submission_unknown','Đã dừng khi đang đợi Instagram tải trang sau xác minh. Profile được giữ mở; tool không gửi lại mã.');
   if(submissionAttempted)return result(emailCodeAttempted?'code_submission_unknown':'submission_unknown',emailCodeAttempted?'Đã bắt đầu xác nhận mã Gmail nhưng chưa rõ kết quả. Kiểm tra profile; tool không tự nhập hoặc gửi mã lại.':/Đã hủy|Đã dừng/i.test(e.message)?'Đã dừng sau khi bắt đầu đăng ký hoặc trong lúc chờ mã Gmail. Kiểm tra profile trước khi thử lại.':'Đã bắt đầu bấm đăng ký nhưng chưa xác minh được kết quả. Kiểm tra profile trước khi thử lại; tool không tự gửi lại.');throw Error('Chưa chuẩn bị xong form Instagram. '+(/Đã hủy|Đã dừng/i.test(e.message)?'Đã hủy do Dừng.':'Kiểm tra trang đăng ký đang mở và điền thủ công nếu giao diện đã thay đổi.'));
- }finally{await session?.detach().catch(()=>{});}
+ }finally{await page.evaluate(formPointer,{key:pointerKey,action:'dispose'}).catch(()=>{});await session?.detach().catch(()=>{});}
 }
