@@ -110,6 +110,8 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 
 Sau khi bấm xác nhận mã, app giữ tab và đợi Instagram xử lý/tải trang mới tối đa **60 giây**, có log đang chờ. App chờ ít nhất **3 giây** và chỉ ghi nhận kết quả khi trang tải xong, không còn chỉ báo đang tải, giao diện và URL ổn định ít nhất **2 giây**; Instagram cập nhật giao diện trong cùng URL cũng được nhận diện. Trong lúc chờ không bấm thêm hay gửi lại mã. Hết thời gian mà chưa rõ kết quả thì giữ profile mở, ghi trạng thái chưa xác minh; bấm **Dừng** sẽ ngắt thời gian chờ.
 
+Ở bước ngày sinh, log ghi rõ đang chọn năm, tháng hay ngày. App hỗ trợ nhãn `Year/Month/Day`, `Select Year/Month/Day` và tiếng Việt; tháng được đối chiếu theo chữ hiển thị, tránh lệch khi giá trị nội bộ bắt đầu từ 0. Danh sách lựa chọn được chờ tải tối đa 5 giây; với dropdown tùy chỉnh, app chỉ chọn trong danh sách của ô đang mở. Nếu chưa tìm được một lựa chọn duy nhất, app báo rõ ô cần kiểm tra và không gửi đăng ký.
+
 ### Tự lấy mã Gmail trong app bằng OAuth
 
 Backend Node được đóng gói trong app tự gọi Google OAuth và Gmail trực tiếp. **Không cần API local, cổng 8787, Python hoặc chạy script trong Terminal.** Dùng tài khoản Gmail đã cấp quyền `gmail.readonly`; app không đọc toàn bộ nội dung thư, chỉ lấy các header của tối đa 50 email Instagram phù hợp.
