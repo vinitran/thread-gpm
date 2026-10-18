@@ -376,7 +376,7 @@ test('variable typing preserves Unicode and pauses at punctuation without delayi
 test('text-only comment skips image upload and submits with zero expected attachments',async()=>{
  const old=globalThis.chrome,store={replyReceipts:{}},actions=[];let clicks=0;
  globalThis.chrome={storage:{local:{async get(){return structuredClone(store);},async set(v){Object.assign(store,structuredClone(v));}}},tabs:{async query(){return [];},async create(){return {id:42};},async remove(){}},debugger:{async attach(){},async detach(){},async sendCommand(t,m){if(m==='Input.dispatchMouseEvent')clicks++;}},scripting:{async executeScript({args:[action,args]}){actions.push(action);let result=true;if(action==='composer'||action==='draft'){assert.equal(args.attachment_count,0);result={ready:true};}if(action==='focus')result={before:[],original_media:[]};if(action==='submit')result={x:1,y:2};return [{result}];}}};
- try{const receipt=await postReply('https://www.threads.com/@demo/post/textonly','Nội dung @hoanxu.app',{files:[],names:[]},()=>{},{followAuthor:true,followRandom:()=>0.6,skipVerification:true,stepDelayMs:0,typingDelayMs:0});assert.equal(store.replyFollowDecisions,undefined);assert.equal(actions.some(a=>a.includes('follow')),false);assert.equal(receipt.state,'sent_unverified');assert.deepEqual(receipt.images,[]);assert.equal(actions.includes('upload'),false);assert.equal(clicks,2);}finally{globalThis.chrome=old;}
+ try{const receipt=await postReply('https://www.threads.com/@demo/post/textonly','Nội dung @hoanxu.app',{files:[],names:[]},()=>{},{followBeforeComment:true,followAuthor:true,followRandom:()=>0,skipVerification:true,stepDelayMs:0,typingDelayMs:0});assert.equal(store.replyFollowDecisions,undefined);assert.equal(actions.some(a=>a.includes('follow')),false);assert.equal(receipt.state,'sent_unverified');assert.deepEqual(receipt.images,[]);assert.equal(actions.includes('upload'),false);assert.equal(clicks,2);}finally{globalThis.chrome=old;}
 });
 
 test('text composer targets its SVG Send button instead of the outer Reply action',()=>{
@@ -404,75 +404,6 @@ test('failed blank-tab creation keeps the final profile tab open',async()=>{
  const previous=globalThis.chrome;let closed=false;
  globalThis.chrome={tabs:{async query(){return [{id:7,windowId:4}];},async create(){throw Error('create failed');},async remove(){closed=true;}}};
  try{await assert.rejects(()=>closeTabPreservingWindow(7),/create failed/);assert.equal(closed,false);}finally{globalThis.chrome=previous;}
-});
-
-// Follow is exercised against fixtures only; these tests never contact Threads/GPM.
-
-
-
-
-test('follow DOM recognizes states, refuses ambiguous controls and never unfollows',()=>{
- const saved={document:globalThis.document,location:globalThis.location,getComputedStyle:globalThis.getComputedStyle};let clicks=0,name='Follow',count=1;
- const button={getClientRects:()=>[1],getAttribute:()=>null,querySelector:()=>null,get innerText(){return name;},closest:()=>null,click(){clicks++;}};
- const scope={querySelectorAll:()=>Array(count).fill(button)};
- globalThis.location={href:'https://www.threads.com/@demo'};globalThis.getComputedStyle=()=>({visibility:'visible'});
- globalThis.document={body:scope,querySelector:()=>scope,querySelectorAll:()=>[]};
- try{const args={url:'https://www.threads.com/@demo/post/follow'};assert.equal(replyAction('follow-state',args).state,'not-following');assert.equal(clicks,0);replyAction('follow-author',args);assert.equal(clicks,1);for(name of ['Following','Đang theo dõi','Requested','Đã gửi yêu cầu']){replyAction('follow-author',args);assert.equal(clicks,1);}name='Follow';count=2;assert.equal(replyAction('follow-author',args).state,'loading');assert.equal(clicks,1);count=1;globalThis.location.href='https://www.threads.com/@other';assert.equal(replyAction('follow-author',args).state,'loading');assert.equal(clicks,1);}finally{Object.assign(globalThis,saved);}
-});
-
-
-
-
-test('avatar follow confirms popup once, waits four minutes and never navigates away',async()=>{
- const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;let clicks=0,seconds=0,reads=0;
- globalThis.chrome={tabs:{async update(){throw Error('Inline follow must not navigate');}},scripting:{async executeScript({args:[action,args]}){
- if(action==='inline-follow-author'){clicks++;assert.equal(!!args.inlineClicked,clicks===2);return [{result:{state:'clicked',available:true}}];}
- assert.equal(action,'inline-follow-state');reads++;return [{result:{state:clicks===0?'not-following':clicks===1?'confirm':'following',available:true}}];
- }}};
- try{await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',()=>{},{stepDelayMs:0,random:()=>0.5,wait:async ms=>{if(ms===1000){assert.equal(clicks,2);seconds++;}}});assert.equal(seconds,240);assert.equal(clicks,2);assert.equal(reads,3);}finally{globalThis.chrome=old;}
-});
-test('inline follow ambiguity after click fails closed without profile fallback or comment',async()=>{
- const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;let clicked=false;
- globalThis.chrome={tabs:{async update(){throw Error('Must not navigate after uncertain follow');}},scripting:{async executeScript({args:[action]}){if(action==='inline-follow-author'){clicked=true;return [{result:{state:'clicked',available:true}}];}return [{result:clicked?{state:'blocked'}:{state:'not-following',available:true}}];}}};
- try{await assert.rejects(()=>followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/follow',()=>{},{wait:async()=>{},stepDelayMs:0}),/Popup follow/);}finally{globalThis.chrome=old;}
-});
-test('avatar DOM scopes plus to target author, handles confirmed disappearance and refuses unrelated popup',()=>{
- const saved={document:globalThis.document,location:globalThis.location,getComputedStyle:globalThis.getComputedStyle};
- let clicked=0,plusVisible=true,dialogVisible=false,authorInDialog=true;
- const el=(name,rect)=>({innerText:name,getClientRects:()=>[1],getAttribute:()=>null,querySelector:()=>null,getBoundingClientRect:()=>rect,click(){clicked++;},querySelectorAll:()=>[]});
- const avatar=el('',{left:10,top:10,right:50,bottom:50,width:40,height:40});
- const plus=el('Follow',{left:38,top:38,right:58,bottom:58,width:20,height:20});
- const reply=el('Reply',{left:100,top:200,right:120,bottom:220,width:20,height:20});
- const unrelated=el('Follow',{left:200,top:10,right:220,bottom:30,width:20,height:20});
- const author={...el('',{}),href:'https://www.threads.com/@demo',querySelectorAll:s=>s==='img'?[avatar]:[]};
- const post={...el('',{}),href:'https://www.threads.com/@demo/post/follow',querySelector:s=>s==='time'?{}:null};
- const target={querySelectorAll:s=>s==='a[href]'?[author]:s==='button,[role="button"]'?[reply,unrelated,...(plusVisible?[plus]:[])]:[]};post.parentElement=target;
- const dialog={...el('',{}),get innerText(){return authorInDialog?'Follow @demo':'Follow @other';},querySelectorAll:s=>s==='button,[role="button"]'?[el('Follow',{})]:[]};
- globalThis.document={body:{},querySelectorAll:s=>s==='a[href*="/post/"]'?[post]:s==='[role="dialog"]'&&dialogVisible?[dialog]:[]};globalThis.location={href:'https://www.threads.com/'};globalThis.getComputedStyle=()=>({visibility:'visible'});
- try{const args={url:post.href};assert.equal(replyAction('inline-follow-state',args).state,'not-following');assert.equal(replyAction('inline-follow-author',args).state,'clicked');assert.equal(clicked,1);plusVisible=false;assert.equal(replyAction('inline-follow-state',args).state,'unsupported');assert.equal(replyAction('inline-follow-state',{...args,inlineClicked:true}).state,'following');dialogVisible=true;assert.equal(replyAction('inline-follow-state',{...args,inlineClicked:true}).state,'confirm');authorInDialog=false;assert.equal(replyAction('inline-follow-author',{...args,inlineClicked:true}).state,'blocked');assert.equal(clicked,1);}finally{Object.assign(globalThis,saved);}
-});
-test('follow probability is exactly 60% and a saved per-post decision survives retries',async()=>{
- const {selectFollowForReply}=await import('./extension/post-reply.js');const old=globalThis.chrome,store={};
- globalThis.chrome={storage:{local:{async get(){return structuredClone(store);},async set(s){Object.assign(store,structuredClone(s));}}}};
- try{assert.equal(await selectFollowForReply('a',()=>0.599999),true);assert.equal(await selectFollowForReply('b',()=>0.6),false);assert.equal(await selectFollowForReply('a',()=>{throw Error('Do not reroll');}),true);assert.equal(await selectFollowForReply('b',()=>{throw Error('Do not reroll');}),false);let yes=0;for(let i=0;i<100;i++)if(await selectFollowForReply('sample-'+i,()=>i/100))yes++;assert.equal(yes,60);}finally{globalThis.chrome=old;}
-});
-test('unavailable inline follow never navigates to a profile and does not wait four minutes',async()=>{
- const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome,logs=[];
- globalThis.chrome={tabs:{async update(){throw Error('Never visit profile');}},scripting:{async executeScript({args:[action]}){assert.equal(action,'inline-follow-state');return [{result:{state:'unsupported'}}];}}};
- try{const result=await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/a',m=>logs.push(m),{wait:async ms=>assert.notEqual(ms,1000)});assert.equal(result.skipped,true);assert.ok(logs.some(m=>m.includes('bỏ qua follow')));}finally{globalThis.chrome=old;}
-});
-test('already followed author stays on the post without clicking or waiting',async()=>{
- const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;
- globalThis.chrome={tabs:{async update(){throw Error('Never navigate');}},scripting:{async executeScript({args:[action]}){assert.equal(action,'inline-follow-state');return [{result:{state:'following',available:true}}];}}};
- try{await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/a',()=>{},{wait:async ms=>assert.notEqual(ms,1000)});}finally{globalThis.chrome=old;}
-});
-test('inline follow waits 210–270 seconds and Stop prevents comment after follow',async()=>{
- const {followAuthorBeforeReply}=await import('./extension/post-reply.js');const old=globalThis.chrome;
- try{for(const [random,expected] of [[0,210],[0.5,240],[0.999999,270]]){let clicked=false,seconds=0;
- globalThis.chrome={scripting:{async executeScript({args:[action]}){if(action==='inline-follow-author'){clicked=true;return [{result:{state:'clicked'}}];}return [{result:{state:clicked?'following':'not-following',available:true}}];}}};
- await followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/a',()=>{},{random:()=>random,wait:async ms=>{if(ms===1000)seconds++;}});assert.equal(seconds,expected);}
- let clicked=false,active=true;globalThis.chrome={scripting:{async executeScript({args:[action]}){if(action==='inline-follow-author'){clicked=true;return [{result:{state:'clicked'}}];}return [{result:{state:clicked?'following':'not-following',available:true}}];}}};await assert.rejects(()=>followAuthorBeforeReply(7,'https://www.threads.com/@demo/post/a',()=>{},{shouldContinue:()=>active,wait:async ms=>{if(ms===1000)active=false;}}),/Đã dừng/);
- }finally{globalThis.chrome=old;}
 });
 
 test('after Post waits random 25–35s, verifies once, persists comment URL and does not wait again before Home',async()=>{
@@ -518,10 +449,4 @@ test('verification browser errors are recorded without turning a clicked Post in
  const old=globalThis.chrome,receipt={state:'sent_unverified',post_url:'https://www.threads.com/@demo/post/error',tab_id:4,text:'response',clicked_at:'2020-01-01T00:00:00Z'},store={replyReceipts:{}};let submits=0;
  globalThis.chrome={storage:{local:{async get(){return structuredClone(store);},async set(p){Object.assign(store,structuredClone(p));}}},tabs:{async get(){throw Error('Tab closed during verification');}},scripting:{async executeScript({args:[action]}){if(action==='submit')submits++;throw Error('DOM unavailable');}}};
  try{await verifyAfterPost(receipt);assert.equal(submits,0);assert.equal(receipt.state,'sent_unverified');assert.match(receipt.verification_error,/Tab closed/);assert.ok(store.replyReceipts[receipt.post_url].checked_at);}finally{globalThis.chrome=old;}
-});
-
-test('explicit follow option follows inline before commenting and waits only after a new follow',async()=>{
- const old=globalThis.chrome,store={replyReceipts:{}},actions=[];let clicks=0,followed=false,seconds=0;
- globalThis.chrome={storage:{local:{async get(){return structuredClone(store);},async set(v){Object.assign(store,structuredClone(v));}}},tabs:{async query(){return [];},async create(){return {id:42};},async remove(){}},debugger:{async attach(){},async detach(){},async sendCommand(t,m){if(m==='Input.dispatchMouseEvent')clicks++;}},scripting:{async executeScript({args:[action,args]}){actions.push(action);let result=true;if(action==='inline-follow-state')result={available:true,state:followed?'following':'not-following'};if(action==='inline-follow-author'){followed=true;result={state:'clicked'};}if(action==='composer'||action==='draft'){assert.equal(args.attachment_count,0);result={ready:true};}if(action==='focus')result={before:[],original_media:[]};if(action==='submit')result={x:1,y:2};return [{result}];}}};
- try{const receipt=await postReply('https://www.threads.com/@demo/post/textonly','Nội dung @hoanxu.app',{files:[],names:[]},()=>{},{followBeforeComment:true,followRandom:()=>0,random:()=>0,wait:async ms=>{if(ms===1000)seconds++;},skipVerification:true,stepDelayMs:0,typingDelayMs:0});assert.equal(followed,true);assert.equal(seconds,210);assert.ok(actions.indexOf('inline-follow-author')<actions.indexOf('prepare'));assert.equal(receipt.state,'sent_unverified');assert.deepEqual(receipt.images,[]);assert.equal(actions.includes('upload'),false);assert.equal(clicks,2);}finally{globalThis.chrome=old;}
 });

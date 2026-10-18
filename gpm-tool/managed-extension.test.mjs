@@ -59,7 +59,7 @@ test('real MV3 extension loads automatically and performs native tab, DOM, Like 
   const url='https://www.threads.com/@demo/post/a',events=[],waits=[];let verificationClock=Date.now(),waitingAfterPost=false;
   const image={files:['a.png','app_store.png','b.png'].map(name=>({name,type:'image/png',data_url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6aV8AAAAASUVORK5CYII='})),names:['a.png','app_store.png','b.png']};
   // Even legacy follow options must not trigger follow or its pre-comment delay.
-  const options={tabId:tab.id,followAuthor:true,followRandom:()=>0,random:()=>0,now:()=>verificationClock,wait:async ms=>{waits.push(ms);if(waitingAfterPost)verificationClock+=ms;},stepDelayMs:0,typingDelayMs:0,skipVerification:true,verifyAfterPost:true,shouldContinue:()=>true};
+  const options={tabId:tab.id,followBeforeComment:true,followAuthor:true,followRandom:()=>0,random:()=>0,now:()=>verificationClock,wait:async ms=>{waits.push(ms);if(waitingAfterPost)verificationClock+=ms;},stepDelayMs:0,typingDelayMs:0,skipVerification:true,verifyAfterPost:true,shouldContinue:()=>true};
   const receipt=await postReply(url,'Fixture',image,m=>{events.push(m);if(m.startsWith('Đã bấm Post · đã lưu')){waitingAfterPost=true;verificationClock=Date.now();}},options);
   assert.equal(receipt.state,'posted');assert.equal(values.replyReceipts[url].state,'posted');assert.equal(receipt.comment_url,'https://www.threads.com/@me/post/fixture-reply');assert.ok(events.some(m=>m.includes('Đã xác minh bình luận: '+receipt.comment_url)));assert.equal(values.replyFollowDecisions,undefined);
   assert.deepEqual(await page.evaluate(()=>[window.follows,window.posts,document.querySelector('input').files.length]),[0,1,3]);

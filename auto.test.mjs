@@ -270,8 +270,9 @@ test('failed after-Post verification continues normal cadence without rechecking
  assert.equal(f.saved().nextAt-f.deps.now(),120000);assert.equal(f.saved().history[p.url].state,'sent_unverified');
 });
 
-test('follow before comment is opt-in and rejects non-boolean settings',()=>{
- assert.equal(autoConfig({}).followBeforeComment,false);assert.equal(autoConfig({followBeforeComment:true}).followBeforeComment,true);assert.equal(autoConfig({followBeforeComment:false}).followBeforeComment,false);assert.throws(()=>autoConfig({followBeforeComment:'true'}),/theo dõi/);
+test('removed follow setting is discarded even when older saved settings enable it',()=>{
+ assert.equal(Object.hasOwn(AUTO_DEFAULTS,'followBeforeComment'),false);
+ for(const value of [undefined,true,false,'true']){const input={followBeforeComment:value,tagHoanxu:true};const config=autoConfig(input);assert.equal(Object.hasOwn(config,'followBeforeComment'),false);assert.equal(config.tagHoanxu,true);assert.equal(input.followBeforeComment,value);}
 });
 
 test('Stop during startup preparation prevents opening a source or scheduling a session',async()=>{

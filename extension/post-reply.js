@@ -160,64 +160,6 @@ export async function typeReplyText(text,insert,{delayMs=60,shouldContinue=()=>t
     }
   }
 }
-export async function selectFollowForReply(url,random=Math.random){
-  const {replyFollowDecisions={}}=await chrome.storage.local.get('replyFollowDecisions');
-  if(typeof replyFollowDecisions[url]?.selected==='boolean')return replyFollowDecisions[url].selected;
-  const selected=random()<0.6;
-  replyFollowDecisions[url]={selected,createdAt:new Date().toISOString()};
-  await chrome.storage.local.set({replyFollowDecisions:Object.fromEntries(Object.entries(replyFollowDecisions).slice(-500))});
-  return selected;
-}
-export async function followAuthorBeforeReply(tabId,url,onProgress=()=>{},options={}){
-  const wait=options.wait||pause,delay=Math.max(1500,options.stepDelayMs??2000);
-  const ensureRunning=()=>{if(options.shouldContinue&&!options.shouldContinue())throw Error('Đã dừng trước khi follow/comment.');};
-  const step=async message=>{ensureRunning();onProgress(message);await wait(delay);ensureRunning();};
-  let inline;
-  for(let i=0;i<40;i++){
-    ensureRunning();try{inline=await dom(tabId,'inline-follow-state',{url});}catch{break;}
-    if(inline?.state!=='loading')break;
-    await wait(250);
-  }
-  if(inline?.available){
-    if(inline.state==='not-following'){
-      await step('Đang follow bằng nút + ở avatar người đăng…');
-      const clicked=await dom(tabId,'inline-follow-author',{url});
-      if(clicked?.state!=='clicked')throw Error('Không bấm được follow ở avatar; chưa gửi bình luận.');
-      await step('Đang chờ xác nhận follow…');
-      let confirmed=false,confirmationClicked=false;
-      for(let i=0;i<40;i++){
-        ensureRunning();inline=await dom(tabId,'inline-follow-state',{url,inlineClicked:true});
-        if(['following','requested'].includes(inline?.state)){confirmed=true;break;}
-        if(inline?.state==='confirm'&&!confirmationClicked){
-          await step('Đang xác nhận follow người đăng trong popup…');
-          const confirmation=await dom(tabId,'inline-follow-author',{url,inlineClicked:true});
-          if(confirmation?.state!=='clicked')throw Error('Không xác nhận được popup follow.');
-          confirmationClicked=true;
-        }
-        if(inline?.state==='blocked')throw Error('Popup follow chưa xác định đúng người đăng; chưa gửi bình luận.');
-        await wait(250);
-      }
-      if(!confirmed)throw Error('Chưa xác nhận được follow ở avatar; chưa gửi bình luận.');
-      await waitAfterFollow(inline.state,onProgress,options);
-    }
-    await step('Đã kiểm tra follow tại bài · chuẩn bị comment…');
-    return;
-  }
-  if(inline?.state==='blocked')throw Error('Trang đang có popup; chưa follow hoặc gửi bình luận.');
-  onProgress('Không có nút follow khả dụng ở avatar · bỏ qua follow, tiếp tục comment tại bài.');
-  return {skipped:true};
-}
-async function waitAfterFollow(state,onProgress,options){
-    const wait=options.wait||pause;
-    const ensureRunning=()=>{if(options.shouldContinue&&!options.shouldContinue())throw Error('Đã dừng trước khi follow/comment.');};
-    const seconds=210+Math.floor((options.random||Math.random)()*61);
-    for(let remaining=seconds;remaining>0;remaining--){
-      ensureRunning();
-      if(remaining===seconds||remaining%15===0)onProgress(`${state==='requested'?'Đã gửi yêu cầu follow':'Đã follow'} · còn ${remaining} giây trước khi comment…`);
-      await wait(1000);
-      ensureRunning();
-    }
-}
 export async function postReply(url,text,image,onProgress=()=>{},options={}){
   const stepDelayMs=options.stepDelayMs===undefined?2000:options.stepDelayMs;
   if(!Number.isFinite(stepDelayMs)||stepDelayMs<0||stepDelayMs>10000)throw Error("Thời gian chờ không hợp lệ.");
@@ -241,9 +183,6 @@ export async function postReply(url,text,image,onProgress=()=>{},options={}){
     }
     let ready=false;for(let i=0;i<40;i++){ensureRunning();try{ready=await dom(tab.id,'ready',args);if(ready)break;}catch{}await pause(250);}
     if(!ready)throw Error('Không mở được bài để comment.');
-    if(options.followBeforeComment===true&&await selectFollowForReply(url,options.followRandom||Math.random)){
-      ensureRunning();await followAuthorBeforeReply(tab.id,url,onProgress,options);ensureRunning();
-    }
     await step('Đang mở ô trả lời…');
     Object.assign(args,await dom(tab.id,'prepare',args));
     await step('Đang mở rộng ô trả lời để thêm ảnh…');

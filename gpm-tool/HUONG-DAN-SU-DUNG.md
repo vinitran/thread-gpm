@@ -96,14 +96,14 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 - Khi **Tạo mới**, **Từ GPM** hoặc **Nhập file**, chọn bộ prompt/chủ đề trước khi xác nhận thêm profile. Không chọn thì dùng Mặc định.
 - Bảng profile hiển thị cột **Bộ cài đặt**. Chọn một hoặc nhiều profile rồi bấm **Đổi bộ cài đặt…** để gán bộ khác.
 - **Lưu bộ** chỉ áp dụng cho các profile đang dùng bộ đó. Các lượt AI/comment đang thực hiện sẽ hoàn tất; bước tiếp theo dùng nội dung mới. Cả chạy tự động và chạy bằng extension dùng bộ đã chọn.
-- **Lưu cài đặt chung** áp dụng model, API key, nhịp chạy, ảnh, follow/tag/thả tim cho tất cả profile, giữ nguyên bộ prompt/chủ đề của từng profile.
+- **Lưu cài đặt chung** áp dụng model, API key, nhịp chạy, ảnh, tag/thả tim cho tất cả profile, giữ nguyên bộ prompt/chủ đề của từng profile.
 - Muốn xóa một bộ, đổi các profile đang dùng bộ đó sang bộ khác trước, rồi bấm **Xóa bộ**. Danh sách bộ và lựa chọn của profile được lưu trong SQLite trên máy.
 
 ## 6. Chạy tool
 
 Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở profile nếu cần, bắt đầu tìm bài, gọi AI và đăng bình luận bằng cài đặt chung đã lưu. Nên chạy một profile trước để quan sát kết quả.
 
-Mặc định tool bình luận trực tiếp vào bài viết, không follow và không chờ 4 phút. Nếu cần, bật **Theo dõi trước khi bình luận** trong Cài đặt rồi Lưu cài đặt chung. Tùy chọn áp dụng cho cả chạy trực tiếp và chạy bằng extension.
+Tool bình luận trực tiếp vào bài viết. Chức năng follow đã được gỡ khỏi cả chạy trực tiếp và chạy bằng extension; cài đặt follow cũ không còn tác dụng.
 
 Muốn chạy nhiều profile, kiểm tra đăng nhập từng profile và lưu cài đặt chung trước, rồi chọn các profile cần chạy. Thanh thao tác giữ trên màn hình khi cuộn; **Bỏ chọn** xoá toàn bộ lựa chọn. Nếu chọn profile nằm ngoài bộ lọc hiện tại, tool báo số lượng cạnh phần chọn.
 
@@ -169,7 +169,7 @@ App lưu dữ liệu trong SQLite `tool.sqlite` bên ngoài thư mục cài đ�
 4. Xem tiến độ, log và lịch sử ở app. Giữ app mở trong suốt quá trình chạy; extension nhận lệnh từ app trên máy này.
 5. Bấm **Dừng & đóng** để dừng và đóng profile qua GPM. Dừng trước khi đổi giữa **Chạy tự động** và **Chạy bằng extension**.
 
-Chế độ này dùng cùng bộ logic, AI, cấu hình realtime, giới hạn phiên và SQLite với chế độ chạy hiện tại. Các thao tác tab/DOM, nhập chữ, đính kèm ảnh và bấm nút được thực hiện qua API Chrome của extension. **Theo dõi trước khi bình luận** trong Cài đặt mặc định tắt: tool chỉ tìm bài và bình luận, không follow hoặc chờ sau follow. Khi bật và Lưu cài đặt chung, các lượt sau dùng xác suất 60%, follow bằng nút avatar và chờ 210–270 giây sau follow mới; không vào trang cá nhân. Khi nghỉ vẫn chỉ thả tim ngẫu nhiên 2–5 bài. Không sử dụng bộ chạy độc lập của extension cũ.
+Chế độ này dùng cùng bộ logic, AI, cấu hình realtime, giới hạn phiên và SQLite với chế độ chạy hiện tại. Các thao tác tab/DOM, nhập chữ, đính kèm ảnh và bấm nút được thực hiện qua API Chrome của extension. Tool chỉ tìm bài và bình luận, không follow người đăng hoặc chờ sau follow. Khi nghỉ vẫn chỉ thả tim ngẫu nhiên 2–5 bài. Không sử dụng bộ chạy độc lập của extension cũ.
 
 App lưu extension trong thư mục dữ liệu riêng của profile, ngoài thư mục cài app. Mỗi lần bấm Chạy bằng extension, app xoá file extension cũ trong thư mục riêng, chép bản hiện tại và thay extension có cùng ID. Không xoá các extension khác. Chrome cũ không hỗ trợ gỡ/nạp qua CDP sẽ tải lại extension cùng ID. Nếu Chrome đang mở chưa hỗ trợ nạp nóng, app có thể đóng/mở lại đúng profile đã chọn để nạp extension. Nếu GPM/Chrome không cho phép tự nạp extension, app báo lỗi và không tự đổi sang chạy trực tiếp. Cần dùng profile Chrome; Firefox chưa hỗ trợ chế độ này.
 
