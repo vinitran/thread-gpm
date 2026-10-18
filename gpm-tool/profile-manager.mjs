@@ -5,18 +5,16 @@ import {Store} from './store.mjs';
 import {dashboard,profileLogs} from './dashboard.mjs';
 import {redact,sharedProfileSettings,validateSettings,assertLiveSettings} from './settings.mjs';
 import {DEFAULT_PRESET_ID,ensurePresetCatalog,getPreset,validatePreset} from './settings-presets.mjs';
-import {generateRegistrationIdentity} from './ai.mjs';
-import {registrationDraft,randomRegistrationBirthday,validateRegistration} from './instagram-registration.mjs';
 const valid=id=>typeof id==='string'&&/^[-\w]{1,100}$/.test(id);
 const busy=view=>['running','stopping'].includes(view?.state?.status)||!!view?.operation;
 export class ProfileWorker{
- constructor(dir,onView,{vaultKey=()=>null}={}){this.dir=dir;this.onView=onView;this.vaultKey=vaultKey;}
+ constructor(dir,onView){this.dir=dir;this.onView=onView;}
  async boot(){
   if(this.ready)return this.ready;
   this.ready=new Promise((resolve,reject)=>{
-   this.child=fork(new URL('./server.mjs',import.meta.url),[],{env:{...process.env,GPM_TOOL_WORKER:'1',GPM_PROFILE_ID:path.basename(this.dir),GPM_TOOL_DATA:this.dir,HOANXU_GMAIL_OAUTH_CONFIG:process.env.HOANXU_GMAIL_OAUTH_CONFIG||path.join(path.dirname(path.dirname(this.dir)),'gmail-oauth.json'),PORT:'0'},stdio:['ignore','ignore','ignore','ipc']});
+   this.child=fork(new URL('./server.mjs',import.meta.url),[],{env:{...process.env,GPM_TOOL_WORKER:'1',GPM_PROFILE_ID:path.basename(this.dir),GPM_TOOL_DATA:this.dir,PORT:'0'},stdio:['ignore','ignore','ignore','ipc']});
    const timeout=setTimeout(()=>reject(Error('Bộ chạy profile chưa khởi động sau 30 giây.')),30000);
-   this.child.on('message',message=>{if(message.type==='vault-key-request')this.child.send({type:'vault-key',key:this.vaultKey()});if(message.type==='ready'){clearTimeout(timeout);this.base='http://127.0.0.1:'+message.port;this.token=message.token;resolve(this);}if(message.type==='view')this.onView(message.view);});
+   this.child.on('message',message=>{if(message.type==='ready'){clearTimeout(timeout);this.base='http://127.0.0.1:'+message.port;this.token=message.token;resolve(this);}if(message.type==='view')this.onView(message.view);});
    this.child.once('exit',()=>{clearTimeout(timeout);this.ready=null;this.base=null;this.onView({connected:false,operation:null,state:{status:'attention',activity:{message:'Bộ chạy profile đã thoát · bấm chạy lại để khôi phục.'}}});reject(Error('Bộ chạy profile đã thoát.'));});
   });return this.ready;
  }
@@ -35,7 +33,7 @@ export class ProfileWorker{
  }
 }
 export class ProfileManager{
- constructor(store,{workerFactory=(dir,onView)=>new ProfileWorker(dir,onView),onChange=()=>{},gpmFactory=base=>new GpmApi(base),identityGenerator=generateRegistrationIdentity}={}){this.identityGenerator=identityGenerator;this.gpmFactory=gpmFactory;this.store=store;this.workerFactory=workerFactory;this.onChange=onChange;this.workers=new Map();this.views=new Map();this.locks=new Map();this.cancelled=new Map();this.closing=false;this.live=new Map();this.syncing=null;this.endpoints=new Map();this.stoppingProfiles=new Map();}
+ constructor(store,{workerFactory=(dir,onView)=>new ProfileWorker(dir,onView),onChange=()=>{},gpmFactory=base=>new GpmApi(base)}={}){this.gpmFactory=gpmFactory;this.store=store;this.workerFactory=workerFactory;this.onChange=onChange;this.workers=new Map();this.views=new Map();this.locks=new Map();this.cancelled=new Map();this.closing=false;this.live=new Map();this.syncing=null;this.endpoints=new Map();this.stoppingProfiles=new Map();}
  rows(){return Object.values(this.store.value.profileRegistry||{}).map(({view:discarded,...row})=>({...row,...(this.live.get(row.id)?.metadata||{}),gpm:this.live.get(row.id)?{...this.live.get(row.id),metadata:undefined}:{status:'unknown',fresh:false},view:this.views.get(row.id)||{state:{status:'idle',events:[]},counts:{today:0,total:0,session:0,unverified:0,sessions:0},recent:[],connected:false}})).map(row=>({...row,settingPresetName:this.store.value.settingsPresets?.find(p=>p.id===(row.settingPresetId||DEFAULT_PRESET_ID))?.name||'Mặc định',view:{...row.view,logs:profileLogs(row,row.view)}})).sort((a,b)=>(b.lastUsedAt||'').localeCompare(a.lastUsedAt||''));}
  startSync(intervalMs=3000){if(this.syncTimer)return;const tick=()=>this.syncLive().catch(()=>{});tick();this.syncTimer=setInterval(tick,intervalMs);this.syncTimer.unref();}
  async syncLive(){
@@ -133,30 +131,6 @@ export class ProfileManager{
   if((this.cancelled.get(id)||0)!==epoch){await this.gpmStop(id);return {ok:true,cancelled:true};}
   await this.register({...settings,profileName:result.profileName},'mở profile');return result;
  });}
- async instagramDraft(id){
-  if(!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id))throw Error('Chọn một profile đã thêm.');
-  if(busy(this.views.get(id))||this.stoppingProfiles.has(id))throw Error('Dừng bộ chạy của profile trước khi chuẩn bị đăng ký.');
-  const birthday=randomRegistrationBirthday(),epoch=this.cancelled.get(id)||0,saved=(await this.profileStore(id)).value.settings,settings=await this.currentSettings(this.effectiveSettings(saved));
-  const identity=await this.identityGenerator(settings);
-  if(this.closing||(this.cancelled.get(id)||0)!==epoch)throw Error('Đã hủy tạo tên Instagram do Dừng.');
-  return {...registrationDraft({...settings,id,name:settings.profileName},{birthday}),...identity,hasSavedPassword:!!this.store.value.instagramSignupPassword};
- }
- async prepareInstagram(id,input){
-  if(!valid(id)||!Object.hasOwn(this.store.value.profileRegistry||{},id))throw Error('Chọn một profile đã thêm.');
-  if(busy(this.views.get(id))||this.stoppingProfiles.has(id))throw Error('Dừng bộ chạy của profile trước khi chuẩn bị đăng ký.');
-  const epoch=this.cancelled.get(id)||0,check=()=>{if(this.closing||this.stoppingProfiles.has(id)||(this.cancelled.get(id)||0)!==epoch)throw Error('Đã hủy chuẩn bị đăng ký do Dừng.');};
-  const data=validateRegistration({...input,password:input.password||this.store.value.instagramSignupPassword||''});
-  return this.locked(id,async()=>{
-   check();const settings=await this.currentSettings((await this.profileStore(id)).value.settings);check();await this.configure(settings);check();
-   const worker=this.worker(id),current=await worker.call('state');if(busy(current))throw Error('Dừng bộ chạy của profile trước khi chuẩn bị đăng ký.');check();
-   if(input.rememberPassword===true&&data.password)await this.store.set({instagramSignupPassword:data.password});
-   try{
-    await worker.call('profile-open',{useCurrentProxy:true},90000);check();
-    const result=await worker.call('instagram-prepare',data,330000);check();
-    await this.register((await this.profileStore(id)).value.settings,'Instagram · '+result.message);return result;
-   }catch(e){check();throw e;}
-  });
- }
  async dryRun(id){
   if(!valid(id)||!this.store.value.profileRegistry?.[id])throw Error('Chọn profile đã thêm vào tool.');
   if(busy(this.views.get(id)))throw Error('Dừng bộ chạy trước khi chạy thử.');

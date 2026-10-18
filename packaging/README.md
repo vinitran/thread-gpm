@@ -26,12 +26,4 @@ Bản build không nhúng API key. Điền key trong **Cài đặt chung → API
 
 CI chỉ dùng `GITHUB_TOKEN` do GitHub cấp để tạo release. Không cần secret AI trong Actions. Không đưa `.env`, SQLite, file export phiên Threads hay bản build cũ đã nhúng key vào repository.
 
-## Đóng gói Gmail và khóa app bằng mật khẩu
-
-`packaging/gmail-vault.enc.json` chứa Gmail OAuth đã mã hóa AES-256-GCM bằng khóa scrypt từ mật khẩu mở app (salt ngẫu nhiên, IV mới cho mỗi lần lưu). Hai script build tự chép file này vào payload; CI không cần biết mật khẩu hay OAuth dạng rõ. Không dùng Base64 để bảo vệ bí mật và không hardcode mật khẩu vào source/app. Gói mã hóa được phát hành công khai cùng app; chỉ chia sẻ mật khẩu cho người được phép dùng hộp thư đó.
-
-Để tạo lại gói khi thay Gmail/token/mật khẩu, chạy `node packaging/gmail-vault.mjs /duong-dan-rieng/gmail-oauth.json`, cung cấp mật khẩu qua stdin (12–512 ký tự), kết thúc stdin để mã hóa. Không truyền mật khẩu trong tham số dòng lệnh hoặc lưu vào file source. Có thể chỉ định file đầu ra làm tham số thứ hai. Commit **chỉ** `packaging/gmail-vault.enc.json`, không commit cấu hình/token/mật khẩu dạng rõ. Build riêng có thể chọn gói khác bằng `HOANXU_BUILD_VAULT_FILE`; backend kiểm thử có thể chọn `HOANXU_VAULT_FILE`.
-
-Khi mở app, backend chỉ trả trạng thái khóa và từ chối các API dữ liệu/thao tác cho đến khi mở khóa. Giao diện native hỏi mật khẩu mỗi lần khởi động backend mới. Các profile nhận khóa trong bộ nhớ qua IPC riêng; không ghi mật khẩu/khóa vào env, SQLite hay log. Token mới được mã hóa lại trong thư mục dữ liệu và được khóa file khi refresh để các profile dùng chung. Không đóng gói gói Gmail thì giữ chế độ cấu hình OAuth riêng như trước.
-
 Cập nhật từ xa được bật cho GitHub Releases công khai. App kiểm tra khi mở và định kỳ, hiện cảnh báo khi có bản mới, cài khi người dùng bấm nút. Có thể build với `GPM_UPDATES_ENABLED=0` để tắt.

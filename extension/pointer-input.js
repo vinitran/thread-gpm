@@ -22,7 +22,7 @@ export function installNativePointer(api,{shouldContinue=()=>true,random=Math.ra
  const pause=async ms=>{let left=ms;while(left>0){active();const part=Math.min(100,left);await wait(part);left-=part;}active();};
  const read=async(id,token)=>{active();const result=(await execute({target:{tabId:id},func:pointerTarget,args:[token]}))[0]?.result;if(!result)throw Error('Không đọc được vị trí mục tiêu chuột.');return result;};
  async function move(id,point){
-  const start=positions.get(id)||{x:Math.max(1,point.x-90),y:Math.max(1,point.y-65)},distance=Math.hypot(point.x-start.x,point.y-start.y),duration=Math.min(1400,450+distance*.45+random()*250),steps=Math.ceil(duration/20);
+  const start=positions.get(id)||{x:Math.max(1,point.x-90),y:Math.max(1,point.y-65)},duration=450+random()*350,steps=10;
   for(let i=1;i<=steps;i++){const t=i/steps,ease=t*t*(3-2*t);await send(id,{type:'mouseMoved',x:start.x+(point.x-start.x)*ease,y:start.y+(point.y-start.y)*ease});await pause(duration/steps);}
   positions.set(id,point);
  }

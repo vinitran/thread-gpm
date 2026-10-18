@@ -81,32 +81,8 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     func connect(_ address: String) {
         api = ToolAPI(address); message.stringValue = "Đã mở app · đang tải dữ liệu…"
-        tabs.isHidden = true; poll?.invalidate()
-        Task { @MainActor in
-            do {
-                guard let api = self.api else { return }
-                let access = try await api.request("state")
-                if access["requiresPassword"] as? Bool == true {
-                    var unlocked = false, warning = "Nhập mật khẩu để mở app và Gmail đã đóng gói."
-                    while !unlocked {
-                        let alert = NSAlert(); alert.messageText = "Mở khóa Hoàn Xu GPM"; alert.informativeText = warning; alert.addButton(withTitle:"Mở khóa"); alert.addButton(withTitle:"Thoát")
-                        let password = NSSecureTextField(frame:NSRect(x:0,y:0,width:360,height:28)); password.placeholderString = "Mật khẩu mở app"; alert.accessoryView = password
-                        alert.window.initialFirstResponder = password
-                        guard await alert.beginSheetModal(for:self.view.window!) == .alertFirstButtonReturn else { NSApp.terminate(nil); return }
-                        var value = password.stringValue; password.stringValue = ""
-                        do { _ = try await api.request("unlock",["password":value]); unlocked = true } catch { warning = error.localizedDescription }; value = ""
-                    }
-                }
-                tabs.isHidden = false; await refresh(); await loadUpdate(); if busy == 0 { spinner.stopAnimation(nil) }
-                poll = Timer.scheduledTimer(withTimeInterval:2,repeats:true) { [weak self] _ in
-                    Task { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        await self.refresh()
-                        if Date().timeIntervalSince(self.lastUpdateCheck) >= 60 { await self.checkForUpdate() }
-                    }
-                }
-            } catch { showMessage(error.localizedDescription,error:true); spinner.stopAnimation(nil) }
-        }
+        Task { @MainActor in await refresh(); await loadUpdate(); if busy == 0 { spinner.stopAnimation(nil) } }
+        poll?.invalidate(); poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in Task { @MainActor in await self?.refresh(); if let self = self, Date().timeIntervalSince(self.lastUpdateCheck) >= 60 { await self.checkForUpdate() } } }
     }
     func showMessage(_ text: String, error: Bool = false) { message.stringValue = text; message.textColor = error ? .systemRed : .secondaryLabelColor }
     func tab(_ title: String, _ content: NSView) { let item = NSTabViewItem(identifier: title); item.label = title; let host = NSView(); pin(content, in: host, inset: 16); item.view = host; tabs.addTabViewItem(item) }
@@ -149,7 +125,6 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         addWide(scroll(table),to:page)
         addWide(row([selection,button("Mở trình duyệt","open-selected",#selector(openSelected)),button("Chạy thử · không đăng","dry-run-selected",#selector(dryRunSelected)),button("Dừng & đóng","stop-selected",#selector(stopSelected))]),to:page)
         addWide(row([button("Chạy tự động","start-selected",#selector(startSelected)),button("Chạy bằng extension","start-extension",#selector(startExtensionSelected)),label("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")]),to:page)
-        addWide(row([button("Đăng ký Instagram…","instagram-signup",#selector(instagramSignup)),label("Tự đăng ký và xác minh bằng Gmail OAuth trong app · có thể nhập mã thủ công")]),to:page)
         addWide(row([button("Đổi bộ cài đặt…","assign-preset",#selector(assignPreset)),button("Sửa tên / proxy…","edit-profile",#selector(editProfile)),button("Xóa khỏi GPM…","delete-profile",#selector(deleteProfile)),label("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")]),to:page)
         table.setContentHuggingPriority(.defaultLow,for:.vertical)
     }
@@ -195,7 +170,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     func setBusy(_ delta: Int) { busy += delta; if busy > 0 { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }; controls() }
     func controls() {
         let any = !selected.isEmpty, one = selected.count == 1, ready = api != nil && loadedSettings
-        for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected","start-extension"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","dry-run-selected","instagram-signup"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
+        for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected","start-extension"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","dry-run-selected"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
         for key in ["install-update","install-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && (updater["available"] as? Bool == true) && (updater["installSupported"] as? Bool == true) }
         for key in ["check-update","check-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && !string(updater["repository"]).isEmpty }
         presetPicker.isEnabled = ready && busy == 0; buttons["delete-preset"]?.isEnabled = ready && busy == 0 && presetID != "default"; buttons["assign-preset"]?.isEnabled = ready && any && busy == 0
@@ -316,7 +291,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
                 let parse = CallbackButton("Parse") {}
                 parse.callback = { [weak self, weak parse, weak alert] in
                     guard let api = self?.api else { return }; parse?.isEnabled = false; alert?.buttons.first?.isEnabled = false; note.stringValue = "Đang parse proxy…"
-                    Task { @MainActor [weak parse, weak alert] in
+                    Task { @MainActor in
                         defer { parse?.isEnabled = true; alert?.buttons.first?.isEnabled = true }
                         do { let r = try await api.request("proxy-parse",["proxy":f.stringValue]); f.stringValue = string(r["proxy"]); note.stringValue = "Hợp lệ · " + string(r["label"]) }
                         catch { note.stringValue = error.localizedDescription }
@@ -328,32 +303,6 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         let sets = settingPresets, choice = NSPopUpButton(); if choosePreset { choice.addItems(withTitles:sets.map { string($0["name"]) }); content.addArrangedSubview(label("Bộ prompt / chủ đề")); content.addArrangedSubview(choice) }
         content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:450,height:CGFloat(values.count)*65+(choosePreset ? 105 : 40)); alert.accessoryView = content
         alert.beginSheetModal(for:view.window!) { response in self.editingProfileForm = false; if response == .alertFirstButtonReturn { done(fields.map { $0.stringValue } + (choosePreset ? [sets.indices.contains(choice.indexOfSelectedItem) ? string(sets[choice.indexOfSelectedItem]["id"]) : "default"] : [])) } }
-    }
-    @objc func instagramSignup() {
-        guard let id = selected.first, selected.count == 1 else { return }
-        perform("Đang gọi AI tạo tên nữ Việt Nam…") { [weak self] api in
-            let draft = try await api.request("instagram-draft",["id":id]); self?.showInstagramForm(id,draft); return "AI đã gợi ý tên. Username dùng hai từ cuối và 4 số ngẫu nhiên; bạn vẫn có thể sửa."
-        }
-    }
-    func showInstagramForm(_ id: String, _ draft: JSONObject) {
-        editingProfileForm = true
-        let alert = NSAlert(); alert.messageText = "Chuẩn bị đăng ký Instagram"; alert.informativeText = "Kiểm tra thông tin tại đây. App điền form, gửi đăng ký và lấy mã qua Gmail OAuth trong app để xác nhận. Nếu Gmail chưa kết nối, bạn nhập mã trong profile GPM."
-        alert.addButton(withTitle:"Đăng ký & xác minh Gmail"); alert.addButton(withTitle:"Hủy")
-        let content = column(); var fields:[String:NSTextField] = [:]
-        for (key,title) in [("email","Gmail · lấy từ tên profile"),("fullName","Tên nữ Việt Nam · AI gợi ý, có thể sửa"),("username","Username · hai từ cuối + 4 số, có thể sửa")] {
-            content.addArrangedSubview(label(title)); let field = NSTextField(string:string(draft[key])); field.widthAnchor.constraint(equalToConstant:460).isActive = true; fields[key] = field; content.addArrangedSubview(field)
-        }
-        content.addArrangedSubview(label("Mật khẩu cố định · trống = dùng bản đã lưu hoặc tự điền"))
-        let password = NSSecureTextField(); password.placeholderString = draft["hasSavedPassword"] as? Bool == true ? "Đã có mật khẩu lưu trên máy" : "Nhập mật khẩu hoặc tự điền trong Instagram"; password.widthAnchor.constraint(equalToConstant:460).isActive = true; content.addArrangedSubview(password)
-        let remember = NSButton(checkboxWithTitle:"Nhớ mật khẩu trên máy cho lần sau",target:nil,action:nil); content.addArrangedSubview(remember)
-        content.addArrangedSubview(label("Ngày sinh được chọn ngẫu nhiên trong năm 2004–2007. Giới tính: nữ nếu form có mục này. Mật khẩu chỉ lưu local khi tích Nhớ."))
-        content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:480,height:340); alert.accessoryView = content
-        alert.beginSheetModal(for:view.window!) { [weak self] response in
-            self?.editingProfileForm = false; guard response == .alertFirstButtonReturn else { return }
-            var body:JSONObject = ["id":id,"birthday":string(draft["birthday"]),"password":password.stringValue,"rememberPassword":remember.state == .on]
-            for (key,field) in fields { body[key] = field.stringValue }
-            self?.perform("Đang đăng ký và lấy mã xác minh từ Gmail OAuth trong app…") { api in let result = try await api.request("instagram-prepare",body); return string(result["message"]) }
-        }
     }
     @objc func createProfile() { showForm("Tạo profile GPM mới",values:[("Tên profile",""),("Proxy · IP:port:user:pass (trống = không dùng)",""),("Chrome · để trống tự chọn","")],choosePreset:true) { [weak self] values in self?.perform("Đang tạo profile GPM…") { api in let r = try await api.request("profile-create",["name":values[0],"proxy":values[1],"browserVersion":values[2],"settingPresetId":values[3]]); self?.selected = [string(object(r["profile"])["id"])]; return "Đã tạo profile. Chọn Mở trình duyệt để kiểm tra đăng nhập." } } }
     @objc func editProfile() { guard let id = selected.first, let p = profiles.first(where:{string($0["id"]) == id}) else { return }; showForm("Sửa profile",values:[("Tên",string(p["name"])),("Proxy",string(p["proxy"]))]) { [weak self] values in self?.perform("Đang cập nhật GPM…") { api in _ = try await api.request("profile-edit",["id":id,"name":values[0],"proxy":values[1]]); return "Đã cập nhật tên và proxy." } } }

@@ -99,49 +99,6 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 - **Lưu cài đặt chung** áp dụng model, API key, nhịp chạy, ảnh, follow/tag/thả tim cho tất cả profile, giữ nguyên bộ prompt/chủ đề của từng profile.
 - Muốn xóa một bộ, đổi các profile đang dùng bộ đó sang bộ khác trước, rồi bấm **Xóa bộ**. Danh sách bộ và lựa chọn của profile được lưu trong SQLite trên máy.
 
-### Chuẩn bị đăng ký Instagram theo profile
-
-1. Chọn **một profile** và dừng bộ chạy nếu đang chạy.
-2. Bấm **Đăng ký Instagram…**. App đọc tên profile từ GPM để lấy Gmail và gọi AI bằng **model/API key đã lưu trong Cài đặt** để tạo tên nữ Việt Nam hư cấu. App lấy hai từ cuối của tên, chuyển thành chữ thường không dấu và thêm 4 số ngẫu nhiên để tạo username: `Nguyễn Minh An` → `minh.an.7356`. Username được tạo bằng code, không do AI chọn. Bạn có thể sửa cả hai trước khi mở form. Tên thật, Gmail, proxy và mật khẩu không được gửi trong prompt tạo tên. Nếu AI lỗi, app báo lỗi để bạn thử lại, không lấy tên Gmail làm tên hiển thị. Username vẫn có thể bị trùng trên Instagram; sửa ở form nếu cần.
-3. Điền mật khẩu cố định, tích **Nhớ mật khẩu trên máy cho lần sau** nếu muốn dùng lại. Trống sẽ dùng mật khẩu đã lưu hoặc để bạn tự nhập trên Instagram. Mật khẩu không nằm trong repo, log hay file xuất profile; lưu cục bộ trong SQLite khi bạn chọn Nhớ.
-4. App ẩn ô ngày sinh trong form chuẩn bị và tự chọn một ngày hợp lệ từ **01/01/2004 đến 31/12/2007** ngay từ đầu mỗi lần chuẩn bị, bằng code local, không gọi AI. Ngày đã chọn được giữ nguyên từ form xem trước tới bước điền trên Instagram. Ngày này được điền trên Instagram trước khi gửi đăng ký. Giới tính chọn nữ nếu form có trường này.
-5. Kiểm tra thông tin rồi bấm **Đăng ký & xác minh Gmail**. App mở đúng profile, vào `https://www.instagram.com/`, di chuột bấm nút **Sign up / Đăng ký** trên trang chủ rồi chờ form tải xong. App không mở thẳng link form đăng ký. Sau đó điền các nhóm theo thứ tự hiển thị trên form để tránh cuộn lên xuống qua lại; di chuột tới ô rồi bấm và gõ từng ký tự, có khoảng nghỉ giữa các bước theo nhịp thao tác đã lưu. Ngày sinh được chọn năm → tháng → ngày và đọc lại để tránh form tự đổi ngày. App nhận diện lại ô nhập khi form cập nhật, không dùng vị trí input cũ. Bấm Dừng để ngắt khi đang chờ hoặc đang gõ. Khi điền đủ và kiểm tra lại thông tin, app tự bấm nút đăng ký đúng một lần và chờ tối đa 30 giây để nhận diện bước xác minh; kết quả được ghi vào log profile. Profile đã đăng nhập, popup xác minh hoặc giao diện chưa nhận diện sẽ được báo để bạn xử lý thủ công.
-6. Nếu đã kết nối Gmail OAuth, backend trong app lưu thời điểm yêu cầu mã vào SQLite của profile, chờ ô mã nhập được rồi tự đọc Gmail qua Google để tìm mã đúng người nhận. App di chuột/gõ mã, rời ô để form kiểm tra và chờ tối đa 10 giây cho nút xác nhận khả dụng trước khi bấm đúng một lần. App kiểm tra kết quả và ghi trạng thái vào log. Nếu Gmail/OAuth lỗi, hết 60 giây chưa có mã, mã không hợp lệ, có CAPTCHA hoặc chưa rõ kết quả xác nhận, app giữ profile mở để bạn xử lý thủ công; không tự gửi lại đăng ký hoặc gửi lại mã. CAPTCHA được ưu tiên dừng kể cả khi ô mã vẫn còn phía sau popup.
-
-Sau khi bấm xác nhận mã, app giữ tab và đợi Instagram xử lý/tải trang mới tối đa **60 giây**, có log đang chờ. App chờ ít nhất **3 giây** và chỉ ghi nhận kết quả khi trang tải xong, không còn chỉ báo đang tải, giao diện và URL ổn định ít nhất **2 giây**; Instagram cập nhật giao diện trong cùng URL cũng được nhận diện. Trong lúc chờ không bấm thêm hay gửi lại mã. Hết thời gian mà chưa rõ kết quả thì giữ profile mở, ghi trạng thái chưa xác minh; bấm **Dừng** sẽ ngắt thời gian chờ.
-
-Ở bước ngày sinh, log ghi rõ đang chọn năm, tháng hay ngày. App hỗ trợ nhãn `Year/Month/Day`, `Select Year/Month/Day` và tiếng Việt; tháng được đối chiếu theo chữ hiển thị, tránh lệch khi giá trị nội bộ bắt đầu từ 0. Danh sách lựa chọn được chờ tải tối đa 5 giây; với dropdown tùy chỉnh, app chỉ chọn trong danh sách của ô đang mở. Nếu chưa tìm được một lựa chọn duy nhất, app báo rõ ô cần kiểm tra và không gửi đăng ký.
-
-### Tự lấy mã Gmail trong app bằng OAuth
-
-Backend Node được đóng gói trong app tự gọi Google OAuth và Gmail trực tiếp. **Không cần API local, cổng 8787, Python hoặc chạy script trong Terminal.** Dùng tài khoản Gmail đã cấp quyền `gmail.readonly`; app không đọc toàn bộ nội dung thư, chỉ lấy các header của tối đa 50 email Instagram phù hợp.
-
-**Bản có Gmail đóng gói:** mỗi lần khởi động backend mới, app hiện hộp nhập mật khẩu mở khóa trước khi cho dùng tool. Nhập mật khẩu do chủ bản build cung cấp; bấm Thoát để đóng app. Gmail OAuth đã được mã hóa AES-256-GCM và đi kèm cả bản Mac/Windows, nên chuyển máy chỉ cần cài app và nhập mật khẩu, không phải chép các file OAuth bên dưới. Mật khẩu không được lưu; token làm mới được lưu mã hóa trong `gmail-vault/` ở thư mục dữ liệu. Người có bản app và mật khẩu có thể sử dụng hộp thư được đóng gói. OAuth hết hạn/bị thu hồi vẫn cần chủ Gmail kết nối lại rồi đóng gói lại.
-
-Với bản không đóng gói Gmail, đặt `token.json` và `credentials.json` riêng tư trong thư mục `gmail-oauth/` thuộc thư mục dữ liệu app. Bấm **Mở thư mục dữ liệu** trong Nhật ký & lịch sử để mở đúng vị trí. Tạo `gmail-oauth.json` bên cạnh thư mục này:
-
-```json
-{
-  "enabled": true,
-  "account": "yourname@gmail.com",
-  "tokenFile": "gmail-oauth/token.json",
-  "credentialsFile": "gmail-oauth/credentials.json"
-}
-```
-
-- macOS: `~/Library/Application Support/HoanXu-GPM/data/gmail-oauth.json`.
-- Windows: `%LOCALAPPDATA%\HoanXu-GPM\data\gmail-oauth.json`.
-- Có thể dùng đường dẫn tuyệt đối tới các file OAuth đã có; với Windows, dùng dấu `/` hoặc `\\` trong chuỗi JSON. Nếu `token.json` đã chứa `client_id` và `client_secret`, `credentialsFile` có thể bỏ trống.
-- Nếu dùng thư mục dữ liệu tùy chỉnh, đặt cấu hình trong thư mục đó; có thể chỉ định file cấu hình khác qua biến môi trường `HOANXU_GMAIL_OAUTH_CONFIG`. Đặt `enabled: false` để chỉ nhập mã thủ công.
-
-Sau khi gửi đăng ký, app tìm thư từ đúng `no-reply@mail.instagram.com`, đúng địa chỉ nhận (kể cả `+alias`) và sau thời điểm yêu cầu mã; chọn mã 6 chữ số trong tiêu đề của email mới nhất. Gmail nhận mã phải thuộc tài khoản OAuth đã kết nối hoặc địa chỉ cộng của tài khoản đó. App kiểm tra Gmail thực tế của token trước khi đọc thư.
-
-Sau khi gửi yêu cầu mã, app đợi đủ khoảng **10 giây** từ thời điểm yêu cầu để email về Gmail, rồi kiểm tra lại mỗi **3 giây**, tối đa **60 giây** kể từ khi bắt đầu lấy mã (tính cả lượt đợi đầu và thời gian gọi Google). Phản hồi rỗng, sai JSON, lỗi mạng hoặc Google tạm ngừng phản hồi sẽ được thử lại trong thời gian này. Nút **Dừng** ngắt được lúc chờ và khi đang gọi Google. App tự làm mới access token khi cần, lưu token mới an toàn và tránh nhiều profile cùng làm mới chồng nhau. Nếu refresh token hết hạn/bị thu hồi hoặc thiếu quyền Gmail, app báo cần kết nối lại và giữ profile để bạn nhập mã thủ công. App hiện dùng OAuth đã có; việc cấp lại sự đồng ý Google khi token bị thu hồi cần thực hiện lại và thay token trên máy.
-
-Các file cấu hình/token riêng và token mã hóa làm mới nằm ngoài thư mục cài app, được giữ qua cập nhật và không nằm trong dữ liệu xuất profile. Token, client secret và mã xác minh không được ghi vào log hoặc SQLite; SQLite chỉ lưu người nhận, username, thời điểm yêu cầu và trạng thái. Bản không đóng gói Gmail cần kết nối/cấu hình Gmail riêng khi chuyển máy; không đưa file OAuth dạng rõ lên Git.
-
-Tham khảo giao thức chính thức: [làm mới token OAuth của Google](https://developers.google.com/identity/protocols/oauth2/web-server#offline), [tìm thư Gmail](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list), [đọc metadata thư](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/get).
-
 ## 6. Chạy tool
 
 Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở profile nếu cần, bắt đầu tìm bài, gọi AI và đăng bình luận bằng cài đặt chung đã lưu. Nên chạy một profile trước để quan sát kết quả.

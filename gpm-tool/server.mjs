@@ -5,9 +5,6 @@ import {randomBytes} from 'node:crypto';
 import {Store} from './store.mjs';
 import {GpmBrowser} from './browser.mjs';
 import {createRunner,root} from './runner.mjs';
-import {loadGmailOAuthConfig,GmailOAuthClient} from './gmail-oauth.mjs';
-import {loadGmailVault} from './gmail-vault.mjs';
-import {prepareInstagramRegistration} from './instagram-registration.mjs';
 import {dryRunProfile} from './dry-run.mjs';
 import {GpmApi,checkGpmConnection,parseProxy} from './gpm-api.mjs';
 import {AUTO_DEFAULTS,autoConfig} from '../extension/auto-runner.js';
@@ -16,7 +13,7 @@ import {models} from '../extension/ai.js';
 import {assetSummary,listAssets} from './assets.mjs';
 import {validateSettings,publicSettings,redact,assertLiveSettings,applyRunnerSettings} from './settings.mjs';
 import {dashboard} from './dashboard.mjs';
-import {ProfileManager,ProfileWorker} from './profile-manager.mjs';
+import {ProfileManager} from './profile-manager.mjs';
 import {captureSession,restoreSession} from './profile-transfer.mjs';
 import {DEFAULT_PRESET_ID,getPreset} from './settings-presets.mjs';
 import {ProfileImporter} from './profile-import.mjs';
@@ -24,11 +21,6 @@ import {Updater,VERSION,updateRepository,assertUpdateIdle} from './updates.mjs';
 import {ExtensionBridge} from './extension-bridge.mjs';
 import {stageManagedExtension,extensionArguments,connectManagedExtension,MANAGED_EXTENSION_ID} from './managed-extension.mjs';
 let port=Number(process.env.PORT||4317);const isWorker=process.env.GPM_TOOL_WORKER==='1',dataDir=path.resolve(process.env.GPM_TOOL_DATA||path.join(root,'data'));
-const vault=await loadGmailVault(process.env.HOANXU_VAULT_FILE||path.join(root,'../gmail-vault.enc.json'),isWorker?path.dirname(path.dirname(dataDir)):dataDir);
-if(vault){await vault.prepare();if(isWorker){
- const key=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{process.off('message',receive);reject(Error('Chưa nhận quyền mở Gmail từ app.'));},15000);function receive(message){if(message?.type==='vault-key'){clearTimeout(timer);process.off('message',receive);resolve(message.key);}}process.on('message',receive);process.send?.({type:'vault-key-request'});});
- vault.acceptKey(Buffer.from(typeof key==='string'?key:'','base64'));
-}}
 await fs.mkdir(dataDir,{recursive:true});
 const lockPath=path.join(dataDir,'process.lock');
 try{const existing=JSON.parse(await fs.readFile(lockPath,'utf8'));try{process.kill(existing.pid,0);throw Error('Tool đang chạy với data folder này (PID '+existing.pid+').');}catch(e){if(e.code!=='ESRCH')throw e;}await fs.unlink(lockPath);}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -47,8 +39,6 @@ const browser=new GpmBrowser(store),runner=createRunner(store,browser),clients=n
 const token=randomBytes(24).toString('hex');let operation=null,startEpoch=0,publishing,shuttingDown=false,manager,importer,pendingPosts=0;
 let extensionBridge;
 const updater=isWorker?null:new Updater({dir:dataDir,repo:await updateRepository()});
-let initialized,unlocking=false,unlockAfter=0;
-async function initializeManager(){if(isWorker)return;initialized??=(async()=>{manager=new ProfileManager(store,{onChange:broadcast,workerFactory:(dir,onView)=>new ProfileWorker(dir,onView,{vaultKey:()=>vault?.exportKey()})});await manager.init();importer=new ProfileImporter(manager);manager.startSync();})();return initialized;}
 const active=()=>['running','stopping'].includes(runner.state?.status);
 function idleOnly(){if(operation||active())throw Error('Stop và đợi thao tác hiện tại hoàn tất trước khi chỉnh cài đặt.');}
 function view(){const profiles=manager?.rows();const selected=profiles?.find(p=>p.id===store.value.settings.profileId);return {...(selected?.view||dashboard(store.value,!!browser.browser?.isConnected())),operation,...(manager?{settingsPresets:store.value.settingsPresets||[]}:{}),version:VERSION,updateDownload:updater?.status().download,...(manager?{profiles,selectedProfileId:store.value.settings.profileId}:{})};}
@@ -88,10 +78,6 @@ const server=http.createServer(async(req,res)=>{
   if(shuttingDown)return json(res,{error:'Tool đang tắt. Hãy mở lại sau.'},503);
   if(req.headers.host!==`127.0.0.1:${port}`&&req.headers.host!==`localhost:${port}`)return json(res,{error:'Invalid host'},403);
   const url=new URL(req.url,`http://127.0.0.1:${port}`);
-  if(vault?.locked){
-   if(req.method==='GET'&&url.pathname==='/api/state')return json(res,{locked:true,requiresPassword:true,token,version:VERSION});
-   if(req.method!=='POST'||!['/api/unlock','/api/app-quit'].includes(url.pathname))return json(res,{error:'Nhập mật khẩu để mở app.'},423);
-  }
   if(isWorker&&extensionBridge&&!extensionBridge.closed&&url.pathname.startsWith('/api/extension/')&&req.headers.origin==='chrome-extension://'+MANAGED_EXTENSION_ID){
    res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Vary','Origin');
    if(req.method==='OPTIONS'){
@@ -116,7 +102,7 @@ const server=http.createServer(async(req,res)=>{
    return json(res,{error:'Not found'},404);
   }
   if(req.method==='GET'&&url.pathname==='/api/update-status'&&updater)return json(res,updater.status());
-  if(req.method==='GET'&&url.pathname==='/api/state')return json(res,{...view(),token,requiresPassword:!!vault,settings:publicSettings(manager?(store.value.sharedSettings||store.value.settings):store.value.settings),assets:await assets((manager?(store.value.sharedSettings||store.value.settings):store.value.settings).imagesFolder),defaults:AUTO_DEFAULTS});
+  if(req.method==='GET'&&url.pathname==='/api/state')return json(res,{...view(),token,settings:publicSettings(manager?(store.value.sharedSettings||store.value.settings):store.value.settings),assets:await assets((manager?(store.value.sharedSettings||store.value.settings):store.value.settings).imagesFolder),defaults:AUTO_DEFAULTS});
   if(req.method==='GET'&&url.pathname==='/api/events'){
    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive','X-Content-Type-Options':'nosniff'});clients.add(res);res.write('data: '+JSON.stringify(view())+'\n\n');req.on('close',()=>clients.delete(res));return;
   }
@@ -131,11 +117,6 @@ const server=http.createServer(async(req,res)=>{
    if(req.headers['x-tool-token']!==token||req.headers.origin!==`http://${req.headers.host}`)return json(res,{error:'Invalid origin/token'},403);
    pendingPosts++;trackedPost=true;
    const input=await body(req,['/api/settings','/api/settings-preset-save'].includes(url.pathname)?220000:['/api/profiles-import-preview','/api/profile-session-import'].includes(url.pathname)?6*1024*1024:100000);
-   if(url.pathname==='/api/unlock'&&!isWorker){
-    if(!vault)return json(res,{ok:true});
-    if(unlocking||Date.now()<unlockAfter)throw Error('Vui lòng đợi vài giây rồi nhập lại mật khẩu.');
-    unlocking=true;try{await vault.unlock(input.password);await initializeManager();return json(res,{ok:true});}catch{unlockAfter=Date.now()+2000;throw Error('Mật khẩu không đúng hoặc không mở được gói Gmail.');}finally{unlocking=false;}
-   }
    if(operation==='cài bản cập nhật'&&!['/api/stop','/api/profile-close','/api/profiles-stop','/api/profiles-close'].includes(url.pathname))throw Error('Đang cài cập nhật. Đợi tool mở lại trước khi thao tác.');
    if(url.pathname==='/api/proxy-parse')return json(res,parseProxy(input.proxy));
    if(updater&&url.pathname==='/api/update-check')return json(res,await updater.check());
@@ -155,21 +136,6 @@ const server=http.createServer(async(req,res)=>{
    if(manager&&url.pathname==='/api/profiles-import')return json(res,await importer.commit(input));
    if(url.pathname==='/api/stop'){startEpoch++;if(manager){const ids=manager.rows().map(r=>r.id);return json(res,ids.length?await manager.batch('close',ids):{results:[]});}await runner.stop();return json(res,{ok:true});}
    if(manager&&url.pathname==='/api/profile-close')return json(res,await manager.closeProfile(input.id));
-   if(manager&&url.pathname==='/api/instagram-draft')return json(res,await manager.instagramDraft(input.id));
-   if(manager&&url.pathname==='/api/instagram-prepare')return json(res,await manager.prepareInstagram(input.id,input));
-   if(isWorker&&url.pathname==='/api/instagram-prepare'){
-    idleOnly();const epoch=startEpoch;
-    return json(res,await exclusive('đăng ký Instagram và xác minh Gmail',async()=>{
-     await connect();
-     const onState=patch=>store.set({instagramRegistration:{...store.value.instagramRegistration,...patch,updatedAt:new Date().toISOString()}});
-     const result=await prepareInstagramRegistration(browser.context,input,{
-      shouldContinue:()=>!shuttingDown&&epoch===startEpoch,stepDelayMs:(store.value.settings.runConfig?.stepSeconds??2)*1000,typingDelayMs:store.value.settings.runConfig?.typingDelayMs??60,
-      onState,onProgress:message=>runner.progress(message).catch(()=>{}),
-      getEmailCode:async request=>{if(vault){const {config,tokenStorage}=vault.clientOptions();return new GmailOAuthClient(config,{tokenStorage}).pollCode(request);}return new GmailOAuthClient(await loadGmailOAuthConfig(process.env.HOANXU_GMAIL_OAUTH_CONFIG||path.join(dataDir,'gmail-oauth.json'))).pollCode(request);}
-     });
-     await onState({status:result.status||'manual',requestedAt:result.requestedAt||null,recipient:result.email||input.email,username:result.username||input.username,url:result.url});return result;
-    }));
-   }
    if(manager&&url.pathname==='/api/profile-dry-run')return json(res,await manager.dryRun(input.id));
    if(isWorker&&url.pathname==='/api/dry-run'){idleOnly();return json(res,await exclusive('chạy thử không đăng',async()=>{await connect();const result=await dryRunProfile(browser,store.value.settings);await store.set({lastDryRun:result});return result;}));}
    if(manager&&url.pathname==='/api/profiles-start')return json(res,await manager.batch('start',input.ids));
@@ -277,7 +243,7 @@ const server=http.createServer(async(req,res)=>{
  }catch(e){json(res,{error:redact(e.message,store.value.settings)},400);}finally{if(trackedPost)pendingPosts--;}
 });
 await runner.load();
-if(!vault?.locked)await initializeManager();
+if(!isWorker){manager=new ProfileManager(store,{onChange:broadcast});await manager.init();importer=new ProfileImporter(manager);manager.startSync();}
 server.listen(port,'127.0.0.1',()=>{port=server.address().port;console.log(`GPM tool UI: http://127.0.0.1:${port}`);if(isWorker&&process.connected)process.send({type:'ready',port,token});});
 server.on('error',async e=>{console.error(e.message);await fs.unlink(lockPath).catch(()=>{});process.exit(1);});
 if(isWorker&&runner.state.status==='running'){
@@ -288,7 +254,7 @@ async function shutdown(exitCode=0){
  if(shuttingDown)return;shuttingDown=true;startEpoch++;extensionBridge?.close();runner.dispose();if(manager)await manager.close();for(const res of clients)res.end();server.close();
  // Preserve running status for restart; bound exit wait instead of killing an active Post midway when possible.
  const deadline=Date.now()+5000;while(runner.running&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));
- await store.pending;vault?.close();await fs.unlink(lockPath).catch(()=>{});process.exit(exitCode);
+ await store.pending;await fs.unlink(lockPath).catch(()=>{});process.exit(exitCode);
 }
 if(isWorker){process.on('disconnect',()=>shutdown());process.on('message',message=>{if(message?.type==='shutdown')shutdown();});}
 process.on('SIGINT',()=>shutdown());process.on('SIGTERM',()=>shutdown());
