@@ -98,7 +98,13 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
                     }
                 }
                 tabs.isHidden = false; await refresh(); await loadUpdate(); if busy == 0 { spinner.stopAnimation(nil) }
-                poll = Timer.scheduledTimer(withTimeInterval:2,repeats:true) { [weak self] _ in Task { @MainActor in await self?.refresh(); if let self = self,Date().timeIntervalSince(self.lastUpdateCheck) >= 60 { await self.checkForUpdate() } } }
+                poll = Timer.scheduledTimer(withTimeInterval:2,repeats:true) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
+                        await self.refresh()
+                        if Date().timeIntervalSince(self.lastUpdateCheck) >= 60 { await self.checkForUpdate() }
+                    }
+                }
             } catch { showMessage(error.localizedDescription,error:true); spinner.stopAnimation(nil) }
         }
     }
@@ -310,7 +316,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
                 let parse = CallbackButton("Parse") {}
                 parse.callback = { [weak self, weak parse, weak alert] in
                     guard let api = self?.api else { return }; parse?.isEnabled = false; alert?.buttons.first?.isEnabled = false; note.stringValue = "Đang parse proxy…"
-                    Task { @MainActor in
+                    Task { @MainActor [weak parse, weak alert] in
                         defer { parse?.isEnabled = true; alert?.buttons.first?.isEnabled = true }
                         do { let r = try await api.request("proxy-parse",["proxy":f.stringValue]); f.stringValue = string(r["proxy"]); note.stringValue = "Hợp lệ · " + string(r["label"]) }
                         catch { note.stringValue = error.localizedDescription }
