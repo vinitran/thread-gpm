@@ -2,6 +2,7 @@ import {randomInt,randomUUID} from 'node:crypto';
 import {installNativePointer} from '../extension/pointer-input.js';
 import {typeReplyText} from '../extension/post-reply.js';
 export const INSTAGRAM_SIGNUP_URL='https://www.instagram.com/accounts/emailsignup/';
+export const INSTAGRAM_HOME_URL='https://www.instagram.com/';
 export function randomRegistrationBirthday(){
  const start=Date.UTC(2004,0,1),days=(Date.UTC(2008,0,1)-start)/86400000;
  return new Date(start+randomInt(days)*86400000).toISOString().slice(0,10);
@@ -77,18 +78,45 @@ export async function prepareInstagramRegistration(context,input,{shouldContinue
  const publicURL=()=>{const url=new URL(page.url());return url.origin+url.pathname.replace(/(?<!\d)\d{6}(?!\d)/g,'[redacted]');};
  const result=(status,message)=>({ok:true,ready:['awaiting_email_code','awaiting_manual_confirmation','completed','onboarding'].includes(status),status,submitted,submissionAttempted,requestedAt,emailCodeAttempted,emailCodeSubmitted,url:publicURL(),email:data.email,username:data.username,warnings,message});
  try{
-  await page.goto(INSTAGRAM_SIGNUP_URL,{waitUntil:'domcontentloaded',timeout:30000});await page.bringToFront();check();
-  const current=new URL(page.url());
-  if(current.origin!=='https://www.instagram.com'||!current.pathname.startsWith('/accounts/emailsignup'))return {ok:true,ready:false,url:publicURL(),message:'Profile có thể đã đăng nhập hoặc Instagram chuyển trang. Kiểm tra trình duyệt; tool không đăng xuất tài khoản hiện có.'};
-  const challenge=page.locator('iframe[src*="captcha"],iframe[title*="challenge" i],[data-sitekey]');
-  if(await challenge.count())return {ok:true,ready:false,url:publicURL(),message:'Instagram yêu cầu xác minh. Bạn tự xử lý trong trình duyệt rồi mở lại luồng.'};
-  await page.locator('input:visible').first().waitFor({state:'visible',timeout:15000});check();
+  await onProgress('Đang mở trang chủ Instagram…');await page.goto(INSTAGRAM_HOME_URL,{waitUntil:'domcontentloaded',timeout:30000});await page.bringToFront();check();
+  if(new URL(page.url()).origin!==new URL(INSTAGRAM_HOME_URL).origin)return result('signup_entry_unavailable','Instagram đã chuyển sang trang khác. Bạn kiểm tra profile trước khi đăng ký.');
   session=await context.newCDPSession(page);
   const pointer=installNativePointer({scripting:{executeScript:async({func,args})=>[{frameId:0,result:await page.evaluate(func,args[0])}]},debugger:{attach:async()=>{},detach:async()=>{},sendCommand:async(target,method,params)=>session.send(method,params)}},{shouldContinue,random,wait:pause});
   const click=async locator=>{
    check();const token='hx'+randomUUID().replace(/-/g,''),element=await locator.elementHandle();if(!element)throw Error('Mục tiêu không còn trên form.');await element.evaluate((e,token)=>e.setAttribute('data-hoanxu-pointer',token),token);
    try{await pointer.pointer.click({tabId:1},{token});check();}finally{await element.evaluate((e,token)=>{if(e.getAttribute('data-hoanxu-pointer')===token)e.removeAttribute('data-hoanxu-pointer');},token).catch(()=>{});await element.dispose().catch(()=>{});}
   };
+  await step();
+  const entryState=async()=>{
+   const state=await signupState(page);
+   if(state?.status==='challenge')return result(state.status,state.message);
+   if(['completed','onboarding'].includes(state?.status))return result('already_signed_in','Profile đã đăng nhập Instagram. Tool giữ nguyên tài khoản hiện có, không đăng xuất để tạo tài khoản mới.');
+   if(state?.status==='awaiting_email_code')return result('verification_in_progress','Profile đang có bước xác minh Instagram chưa hoàn tất. Bạn kiểm tra trực tiếp trong trình duyệt.');
+  };
+  const cookies=page.getByRole('button',{name:/^(Decline optional cookies|Only allow essential cookies|Allow essential cookies|Từ chối cookie không bắt buộc|Chỉ cho phép cookie cần thiết)$/i});
+  if(await cookies.count()===1&&await cookies.isVisible()&&await cookies.isEnabled()){await click(cookies);await step();}
+  const signupName=/^\s*(Sign up|Sign-up|Đăng ký|Create new account|Tạo tài khoản(?: mới)?)\s*$/i,entries=page.getByRole('link',{name:signupName}).or(page.getByRole('button',{name:signupName}));
+  const signupEntries=async()=>{const visible=[];for(let i=0;i<await entries.count();i++){const entry=entries.nth(i);if(await entry.isVisible()&&await entry.isEnabled())visible.push(entry);}return visible;};
+  let signup;
+  for(let elapsed=0;elapsed<=15000;elapsed+=250){
+   check();const state=await entryState();if(state)return state;
+   const available=await signupEntries();if(available.length>1)return result('signup_entry_unavailable','Có nhiều nút đăng ký trên trang chủ. Bạn kiểm tra profile; tool chưa bấm nút nào.');
+   if(available.length===1){signup=available[0];break;}if(elapsed<15000)await pause(250);
+  }
+  if(!signup)return result('signup_entry_unavailable','Chưa tìm thấy nút Đăng ký trên trang chủ Instagram. Bạn kiểm tra giao diện hoặc popup trong profile.');
+  await onProgress('Đã mở trang chủ · đang bấm Đăng ký…');await step();check();const beforeEntry=await entryState();if(beforeEntry)return beforeEntry;
+  if((await signupEntries()).length!==1)return result('signup_entry_unavailable','Nút đăng ký trên trang chủ đã thay đổi. Bạn kiểm tra profile.');
+  const href=await signup.getAttribute('href');if(href){const destination=new URL(href,page.url());if(destination.origin!==new URL(INSTAGRAM_HOME_URL).origin||!destination.pathname.startsWith('/accounts/emailsignup'))return result('signup_entry_unavailable','Liên kết Đăng ký chưa dẫn tới form Instagram được hỗ trợ. Bạn kiểm tra profile.');}
+  await click(signup);await onProgress('Đã bấm Đăng ký · đang chờ form Instagram tải…');
+  let formReady=false;
+  for(let elapsed=0;elapsed<=30000;elapsed+=250){
+   check();let state;try{state=await entryState();}catch{}if(state)return state;
+   const current=new URL(page.url());if(current.origin!==new URL(INSTAGRAM_HOME_URL).origin)return result('signup_entry_unavailable','Instagram đã chuyển sang trang khác. Bạn kiểm tra profile.');
+   if(current.pathname.startsWith('/accounts/emailsignup')&&await page.locator('input:visible').first().isVisible()){formReady=true;break;}
+   if(elapsed<30000)await pause(250);
+  }
+  if(!formReady)return result('signup_entry_unavailable','Đã bấm Đăng ký nhưng form chưa tải xong. Tool giữ profile mở và không bấm lại.');
+  await step();
   const focused=async locator=>{check();if(!await locator.evaluate(e=>document.activeElement===e))throw Error('Ô nhập đã mất focus.');};
   const type=async(locator,value)=>{
    if(!await locator.isEditable())throw Error('Ô nhập chưa sẵn sàng.');await click(locator);await pause(250+random()*250);await focused(locator);
