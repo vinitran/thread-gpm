@@ -40,7 +40,7 @@ export class AutoRunner{
  engagementDelay(){return 20000+Math.floor(this.d.random()*25001);}
  async scheduleNext(){
   const s=this.state;if(!this.active())return;
-  if(s.sessionRest){await this.d.schedule(s.sessionRest.until);return;}
+  if(s.sessionRest){await this.d.schedule(this.d.closeSession&&!s.sessionRest.profileClosed?Math.min(s.sessionRest.until,this.d.now()+60000):s.sessionRest.until);return;}
   s.nextIdleAt??=this.d.now()+15000;
   const times=[s.nextAt];if(s.config.idleScroll&&s.current?.phase!=='posting')times.push(s.nextIdleAt);
   if(this.canIdleEngage()){
@@ -95,22 +95,27 @@ export class AutoRunner{
   if(!s.sessionRest){
    s.sessionRest={until:this.d.now()+3*60*60*1000,oldTabId:s.source,closed:false};s.nextAt=s.sessionRest.until;
    s.sessionHistory=[...(s.sessionHistory||[]),{startedAt:s.startedAt,endedAt:new Date(this.d.now()).toISOString(),stats:{...s.stats}}].slice(-100);
-   await this.activity('session-rest','Đã đạt 10 lần gửi · nghỉ 3 giờ, sau đó tự mở tab mới và chạy tiếp');
+   await this.activity('session-rest','Đã đạt 10 lần gửi · nghỉ 3 giờ, sau đó tự mở '+(this.d.openSession?'profile GPM':'tab mới')+' và chạy tiếp');
    await this.scheduleNext();
   }
-  if(!s.sessionRest.closed){
-   try{await this.d.closeSource(s.sessionRest.oldTabId);s.sessionRest.closed=true;s.source=null;this.event('Đã đóng tab Threads của phiên · chờ đến '+new Date(s.sessionRest.until).toLocaleTimeString('vi-VN'));await this.save();}
-   catch(e){this.event('Chưa đóng được tab phiên cũ: '+e.message);await this.save();}
+  if(!s.sessionRest.closed||(this.d.closeSession&&!s.sessionRest.profileClosed)){
+   try{
+    if(this.d.closeSession){await this.d.closeSession();s.sessionRest.profileClosed=true;}
+    else await this.d.closeSource(s.sessionRest.oldTabId);
+    s.sessionRest.closed=true;s.source=null;this.event('Đã đóng '+(this.d.closeSession?'profile GPM':'tab Threads của phiên')+' · chờ đến '+new Date(s.sessionRest.until).toLocaleTimeString('vi-VN'));await this.save();
+   }catch(e){this.event('Chưa đóng được '+(this.d.closeSession?'profile GPM':'tab phiên cũ')+': '+e.message);await this.save();}
   }
   if(!this.active())return;
   if(this.d.now()<s.sessionRest.until){await this.scheduleNext();return;}
-  if(!s.sessionRest.closed){await this.d.schedule(this.d.now()+60000);return;}
+  if(!s.sessionRest.closed||(this.d.closeSession&&!s.sessionRest.profileClosed)){await this.d.schedule(this.d.now()+60000);return;}
+  if(this.d.openSession)await this.d.openSession();
+  if(!this.active())return this.finish('stopped','Đã dừng · hủy phiên tiếp theo');
   const source=await this.d.newSource();s.source=source;
-  if(!this.active()){await this.d.closeSource(source);return this.finish('stopped','Đã dừng · hủy phiên tiếp theo');}
+  if(!this.active()){if(this.d.closeSession)await this.d.closeSession();else await this.d.closeSource(source);return this.finish('stopped','Đã dừng · hủy phiên tiếp theo');}
   s.sessionRest=null;s.current=null;s.queue=[];s.selectionBatch=null;s.recovery=null;s.recoveryAttempts=0;s.browserRetries=0;s.nextImageAt=null;s.needsScroll=false;s.emptyScans=0;s.authors=[];
   s.history=Object.fromEntries(Object.entries(s.history).filter(([,v])=>v.state!=='queued'));
   s.stats={scanned:0,selected:0,posted:0,sent:0,failed:0,unknown:0};s.startedAt=new Date(this.d.now()).toISOString();s.nextAt=this.d.now()+15000;s.nextIdleAt=s.nextAt+15000;
-  await this.activity('waiting','Đã nghỉ đủ 3 giờ · mở tab mới, chờ 15 giây rồi bắt đầu phiên 10 comment tiếp theo');await this.scheduleNext();
+  await this.activity('waiting','Đã nghỉ đủ 3 giờ · mở '+(this.d.openSession?'profile GPM':'tab mới')+', chờ 15 giây rồi bắt đầu phiên 10 comment tiếp theo');await this.scheduleNext();
  }
  async recover(reason){
   const s=this.state;

@@ -12,11 +12,12 @@ import {generate,selectPosts} from './ai.mjs';
 import {engagementPage} from './idle-engagement.mjs';
 export const root=path.dirname(fileURLToPath(import.meta.url));
 export {attachments} from './assets.mjs';
-export function createRunner(store,browser){
+export function createRunner(store,browser,sessionLifecycle={}){
  let timer,maintenance=false;
  const settings=async()=>{const {settings}=await store.get('settings');return settings;};
  const home=async()=>{const tabs=(await browser.query()).filter(t=>t.url.startsWith('https://www.threads.com/'));const t=tabs.find(t=>new URL(t.url).pathname==='/')||tabs[0];if(!t)return (await browser.create({url:'https://www.threads.com/',active:true})).id;await browser.update(t.id,{url:'https://www.threads.com/',active:true});return t.id;};
  const runner=new AutoRunner({now:Date.now,random:Math.random,read:async()=> (await store.get('autoRun')).autoRun,write:autoRun=>store.set({autoRun}),
+ ...sessionLifecycle,
  aiRetryPolicy:{maxRetries:3,delayMs:120000,retryAllErrors:true},
  idleCandidates:id=>browser.evaluate(id,engagementPage,[{action:'candidates'}]),idleEngage:(id,url,until)=>browser.evaluate(id,engagementPage,[{action:'engage',url,until,stepDelayMs:(runner.state.config.stepSeconds||2)*1000}]),
  schedule:async when=>{clearTimeout(timer);timer=setTimeout(()=>maintenance?undefined:runner.tick().catch(async e=>{await runner.finish('attention',e.message);}),Math.max(1000,when-Date.now()));},clear:async()=>clearTimeout(timer),keepAlive:()=>null,endKeepAlive:()=>{},

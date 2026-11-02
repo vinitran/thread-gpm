@@ -35,7 +35,7 @@ if(environmentKey){
  if(store.value.sharedSettings&&!store.value.sharedSettings.apiKey)patch.sharedSettings={...store.value.sharedSettings,apiKey:environmentKey};
  if(Object.keys(patch).length)await store.set(patch);
 }
-const browser=new GpmBrowser(store),runner=createRunner(store,browser),clients=new Set();
+const browser=new GpmBrowser(store),runner=createRunner(store,browser,{closeSession:closeRestingProfile,openSession:openRestingProfile}),clients=new Set();
 const token=randomBytes(24).toString('hex');let operation=null,startEpoch=0,publishing,shuttingDown=false,manager,importer,pendingPosts=0;
 let extensionBridge;
 const updater=isWorker?null:new Updater({dir:dataDir,repo:await updateRepository()});
@@ -70,6 +70,33 @@ async function enableExtension(configured,result,epoch=startEpoch,staged){
   catch{check();await restart();await connectManagedExtension(browser,bridge,{directory:staged.directory,base:`http://127.0.0.1:${port}`,loadExtension:false});}
   check();browser.installChrome();await store.set({executionMode:'extension',extensionRevision:staged.revision});return result;
  }catch(e){bridge.close();if(extensionBridge===bridge)extensionBridge=null;browser.extensionBridge=null;throw e;}
+}
+// The backend owns the rest timer so the whole GPM browser can stay closed.
+async function closeRestingProfile(){
+ const s=store.value.settings;
+ await new GpmApi(s.gpmApi).stop(s.profileId);
+ const deadline=Date.now()+10000;
+ while(browser.browser?.isConnected()&&Date.now()<deadline)await new Promise(r=>setTimeout(r,200));
+ if(browser.browser?.isConnected())throw Error('GPM chưa đóng trình duyệt của profile.');
+ extensionBridge?.close();extensionBridge=null;browser.extensionBridge=null;
+}
+async function openRestingProfile(){
+ const epoch=startEpoch,s=store.value.settings,api=new GpmApi(s.gpmApi);
+ const cancelled=()=>epoch!==startEpoch||shuttingDown||!runner.active();
+ if(cancelled())return;
+ const staged=store.value.executionMode==='extension'?await stageManagedExtension(dataDir):null;
+ if(cancelled())return;
+ try{
+  const result=await api.open(s.profileId,staged?{additionArgs:extensionArguments(staged.directory)}:{});
+  if(cancelled())return;
+  await store.set({settings:{...store.value.settings,cdp:result.cdp,profileName:result.profileName}});
+  if(cancelled())return;
+  if(staged)await enableExtension(store.value.settings,result,epoch,staged);
+  else await connect();
+ }finally{
+  // Stop can arrive while GPM is still opening the browser.
+  if(cancelled())await api.stop(s.profileId);
+ }
 }
 async function assets(folder){try{return await assetSummary(folder);}catch(e){return {error:e.message,count:0,names:[]};}}
 const server=http.createServer(async(req,res)=>{
@@ -213,6 +240,7 @@ const server=http.createServer(async(req,res)=>{
     }));
    }
    if(isWorker&&url.pathname==='/api/extension-reconnect'){
+    if(store.value.executionMode==='extension'&&runner.active()&&runner.state.sessionRest)return json(res,{ok:true,alreadyRunning:true,resting:true});
     if(store.value.executionMode!=='extension'||!extensionBridge||extensionBridge.closed||runner.state.status!=='running')throw Error('Phiên extension đã dừng · bấm Dừng & đóng profile rồi Chạy bằng extension lại.');
     const bridge=extensionBridge,epoch=startEpoch;
     return json(res,await exclusive('thay extension bằng bản hiện tại',()=>runner.withBrowserMaintenance(async()=>{
@@ -248,7 +276,14 @@ server.listen(port,'127.0.0.1',()=>{port=server.address().port;console.log(`GPM 
 server.on('error',async e=>{console.error(e.message);await fs.unlink(lockPath).catch(()=>{});process.exit(1);});
 if(isWorker&&runner.state.status==='running'){
  operation='khôi phục lịch đã lưu';
- try{if(store.value.executionMode==='extension')await enableExtension(store.value.settings,{cdp:store.value.settings.cdp,profileId:store.value.settings.profileId,profileName:store.value.settings.profileName});else await connect();await runner.scheduleNext();}catch(e){await runner.finish('attention','Không kết nối lại được GPM: '+redact(e.message,store.value.settings));}finally{operation=null;broadcast();}
+ try{
+  if(runner.state.sessionRest)await runner.tick();
+  else{
+   if(store.value.executionMode==='extension')await enableExtension(store.value.settings,{cdp:store.value.settings.cdp,profileId:store.value.settings.profileId,profileName:store.value.settings.profileName});
+   else await connect();
+   await runner.scheduleNext();
+  }
+ }catch(e){await runner.finish('attention','Không kết nối lại được GPM: '+redact(e.message,store.value.settings));}finally{operation=null;broadcast();}
 }else if(runner.state.status==='stopping')await runner.finish('stopped','Đã hoàn tất yêu cầu Stop từ lần trước.');
 async function shutdown(exitCode=0){
  if(shuttingDown)return;shuttingDown=true;startEpoch++;extensionBridge?.close();runner.dispose();if(manager)await manager.close();for(const res of clients)res.end();server.close();

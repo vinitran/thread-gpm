@@ -288,3 +288,33 @@ test('Stop while the source is opening cannot be overwritten by startup completi
  const starting=f.runner.start();await opening;await f.runner.stop();release();await starting;
  assert.equal(f.runner.state.status,'stopped');assert.equal(scheduled,0);
 });
+
+test('GPM session lifecycle closes entire profile and reopens only after the persisted deadline',async()=>{
+ const f=fixture(),calls=[];f.deps.closeSession=async()=>calls.push('close-profile');f.deps.openSession=async()=>calls.push('open-profile');
+ f.deps.closeSource=async()=>assert.fail('must close the profile rather than its tab');
+ f.deps.newSource=async()=>{calls.push('new-tab');return 12;};
+ await f.runner.start();f.runner.state.stats.sent=10;f.advance();await f.runner.tick();
+ const until=f.saved().sessionRest.until;
+ assert.deepEqual(calls,['close-profile']);assert.equal(f.saved().sessionRest.profileClosed,true);assert.equal(f.saved().source,null);
+ const resumed=new AutoRunner(f.deps);f.advance(60000);await resumed.tick();
+ assert.deepEqual(calls,['close-profile']);assert.equal(f.saved().nextAt,until);
+ f.advance(until-f.deps.now());await resumed.tick();
+ assert.deepEqual(calls,['close-profile','open-profile','new-tab']);assert.equal(f.saved().source,12);assert.equal(f.saved().stats.sent,0);
+});
+test('old tab-only rest is upgraded to closing GPM without resetting the deadline',async()=>{
+ const f=fixture();await f.runner.start();f.runner.state.stats.sent=10;f.advance();await f.runner.tick();
+ const until=f.saved().sessionRest.until;let closed=0;f.deps.closeSession=async()=>closed++;
+ const resumed=new AutoRunner(f.deps);f.advance(1000);await resumed.tick();
+ assert.equal(closed,1);assert.equal(f.saved().sessionRest.profileClosed,true);assert.equal(f.saved().sessionRest.until,until);
+});
+test('failed GPM close retries after one minute without opening or extending rest',async()=>{
+ const f=fixture(),scheduled=[];let attempts=0;f.deps.schedule=async at=>scheduled.push(at);
+ f.deps.closeSession=async()=>{if(++attempts===1)throw Error('GPM busy');};f.deps.openSession=async()=>assert.fail('too early');
+ await f.runner.start();f.runner.state.stats.sent=10;f.advance();await f.runner.tick();
+ const until=f.saved().sessionRest.until;assert.equal(f.saved().sessionRest.profileClosed,undefined);assert.equal(scheduled.at(-1),f.deps.now()+60000);
+ f.advance(60000);await f.runner.tick();assert.equal(attempts,2);assert.equal(f.saved().sessionRest.until,until);assert.equal(scheduled.at(-1),until);
+});
+test('Stop during GPM resume prevents creating a new Threads tab',async()=>{
+ const f=fixture();f.deps.closeSession=async()=>{};f.deps.openSession=async()=>f.runner.stop();f.deps.newSource=async()=>assert.fail('stopped');
+ await f.runner.start();f.runner.state.stats.sent=10;f.advance();await f.runner.tick();f.advance(10800000);await f.runner.tick();assert.equal(f.saved().status,'stopped');
+});

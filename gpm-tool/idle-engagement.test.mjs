@@ -90,3 +90,19 @@ test('each wait randomly chooses 2 to 5 posts and preserves quota after reload',
   f.runner.state.nextAt=f.now()+200000;f.runner.d.random=()=>0;await f.runner.scheduleNext();assert.equal(f.runner.state.engagementWait.limit,2);f.runner.dispose();
  }
 });
+
+test('backend rest lifecycle keeps the timer alive while GPM is closed for either engine',async()=>{
+ for(const executionMode of ['direct','extension']){
+  const f=fixture(),calls=[];f.store.value.executionMode=executionMode;
+  const runner=createRunner(f.store,{}, {closeSession:async()=>calls.push('close'),openSession:async()=>calls.push('open')});
+  const scheduled=[];let time=f.now();runner.d.now=()=>time;runner.d.schedule=async at=>scheduled.push(at);
+  runner.d.newSource=async()=>{calls.push('tab');return 9;};
+  try{
+   await runner.load();runner.state.stats.sent=10;await runner.tick();
+   const until=f.store.value.autoRun.sessionRest.until;
+   assert.deepEqual(calls,['close']);assert.equal(scheduled.at(-1),until);assert.equal(f.store.value.autoRun.status,'running');
+   time=until-1;await runner.tick();assert.deepEqual(calls,['close']);
+   time=until;await runner.tick();assert.deepEqual(calls,['close','open','tab']);assert.equal(f.store.value.autoRun.sessionRest,null);
+  }finally{runner.dispose();}
+ }
+});
