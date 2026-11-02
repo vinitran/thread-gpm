@@ -10,15 +10,7 @@ export async function saveFolder(files){
 export async function readFolder(){
   const db=await database();let saved;
   try{saved=await new Promise((resolve,reject)=>{const r=db.transaction('images').objectStore('images').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}finally{db.close();}
-  if(saved.length){
-    const name='hoan-xu-thong-bao-hoan-tien.png';
-    if(!saved.some(im=>im.name.toLowerCase()===name)){
-      const response=await fetch(chrome.runtime.getURL('default-assets/'+name));
-      if(!response.ok)throw Error('Không đọc được ảnh bổ sung '+name);
-      saved.push({name,path:'hoan xu image/'+name,blob:await response.blob()});
-    }
-    return saved;
-  }
+  if(saved.length)return saved;
   const response=await fetch(chrome.runtime.getURL('default-assets/index.json'));
   if(!response.ok)throw Error('Không tìm thấy bộ ảnh mặc định.');
   const names=await response.json();const files=[];
