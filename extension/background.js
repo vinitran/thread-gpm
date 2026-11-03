@@ -42,7 +42,7 @@ async function handle(m,internal=false){
       if(internal&&replyReceipts[m.url]?.state==='sent_unverified'){const options={waitBeforeHome:true,shouldContinue:()=>runner.active()};await verifyAfterPost(replyReceipts[m.url],progress,options);return {receipt:await returnToFeed(replyReceipts[m.url],progress,options)};}
       if(m.type==='check-response'||replyReceipts[m.url])return {receipt:await checkReply(m.url,progress)};
       const response=aiResults[m.url];if(!response?.text)throw Error('Chưa có response AI cho bài này.');
-      const image=m.withImages===false?{files:[],names:[]}:await makeReplyAttachments(selectReplyAssets(await readFolder()),{optimizeUpload:true});
+      const image=m.withImages===false?{files:[],names:[]}:await makeReplyAttachments(selectReplyAssets(await readFolder()),{optimizeUpload:true,varyImages:true});
       const stepDelayMs=Number(m.stepDelayMs??2000);if(!Number.isFinite(stepDelayMs)||stepDelayMs<500||stepDelayMs>10000)throw Error('Thời gian chờ phải từ 0.5 đến 10 giây.');
       const typingDelayMs=Number(m.typingDelayMs??60);if(!Number.isFinite(typingDelayMs)||typingDelayMs<0||typingDelayMs>500)throw Error('Tốc độ nhập phải từ 0 đến 500 ms.');
       const targetTabId=internal?runner.state.source:(await listTabs()).sort((a,b)=>Number(b.active)-Number(a.active))[0]?.id;

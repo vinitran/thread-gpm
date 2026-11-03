@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import sharp from 'sharp';
-import {selectReplyAssets,makeReplyAttachments} from '../extension/reply-assets.js';
+import {selectReplyAssets,makeReplyAttachments,uploadDot} from '../extension/reply-assets.js';
 const bundled=fileURLToPath(new URL('../extension/default-assets/',import.meta.url)),cache=new Map();
 export async function listAssets(folder=''){
  const dir=folder?path.resolve(folder):bundled;
@@ -21,6 +21,12 @@ export async function attachments(folder=''){
    const image=sharp(bytes,{limitInputPixels:40000000});await image.metadata();
    if(bytes.length>=700*1024){const jpg=await image.resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).jpeg({quality:88}).toBuffer();if(jpg.length<bytes.length){bytes=jpg;name=name.replace(/\.[^.]+$/,'.jpg');}}
    transport={name,blob:new Blob([bytes])};cache.set(key,transport);if(cache.size>12)cache.delete(cache.keys().next().value);
-  }images.push({...file,...transport});
+  }
+  // Cache only the base image. Every upload gets a newly rendered dot.
+  const base=Buffer.from(await transport.blob.arrayBuffer()),image=sharp(base,{limitInputPixels:40000000});
+  const {width,height}=await image.metadata(),dot=uploadDot(width,height);
+  const pixels=Buffer.from(dot.colors.flatMap(color=>[...color,255]));
+  const bytes=await image.composite([{input:pixels,raw:{width:dot.size,height:dot.size,channels:4},left:dot.left,top:dot.top}]).png().toBuffer();
+  images.push({...file,name:transport.name.replace(/\.[^.]+$/,'.png'),blob:new Blob([bytes],{type:'image/png'})});
  }return makeReplyAttachments(images);
 }

@@ -26,22 +26,37 @@ export function selectReplyAssets(images,random=Math.random){
   const pool=[...others];for(let i=pool.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
   return [pool[0],center,pool[1]];
 }
-export async function uploadImage(im){
-  if(im.blob.size<700*1024)return {blob:im.blob,name:im.name};
+// Keep the change at an edge and encode losslessly so it survives export.
+export function uploadDot(width,height){
+  // Four independent RGB pixels + a corner give 98 random bits for normal images.
+  // Use OS entropy across worker processes and restarts, rather than Math.random.
+  const bytes=crypto.getRandomValues(new Uint8Array(14));
+  const size=Math.min(2,width,height),left=(bytes[0]&1)?0:width-size;
+  const top=(bytes[1]&1)?0:height-size;
+  const colors=Array.from({length:size*size},(_,i)=>Array.from(bytes.subarray(2+i*3,5+i*3)));
+  return {left,top,size,colors};
+}
+export async function uploadImage(im,{vary=false}={}){
+  if(!vary&&im.blob.size<700*1024)return {blob:im.blob,name:im.name};
   const bitmap=await createImageBitmap(im.blob);
   try{
     const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
     const canvas=new OffscreenCanvas(Math.max(1,Math.round(bitmap.width*scale)),Math.max(1,Math.round(bitmap.height*scale)));
     const ctx=canvas.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+    if(vary){
+      const dot=uploadDot(canvas.width,canvas.height);
+      for(let i=0;i<dot.colors.length;i++){ctx.fillStyle='rgb('+dot.colors[i].join(',')+')';ctx.fillRect(dot.left+i%dot.size,dot.top+Math.floor(i/dot.size),1,1);}
+      return {blob:await canvas.convertToBlob({type:'image/png'}),name:im.name.replace(/\.[^.]+$/,'.png')};
+    }
     const blob=await canvas.convertToBlob({type:'image/jpeg',quality:.88});
     return blob.size<im.blob.size?{blob,name:im.name.replace(/\.[^.]+$/,'.jpg')}:{blob:im.blob,name:im.name};
   }finally{bitmap.close();}
 }
-export async function makeReplyAttachments(images,{optimizeUpload=false}={}){
+export async function makeReplyAttachments(images,{optimizeUpload=false,varyImages=false}={}){
   if(images.length!==3)throw Error('Comment cần tổng 3 ảnh riêng lẻ.');
   const files=[];
   for(const im of images){
-    const transport=optimizeUpload?await uploadImage(im):{blob:im.blob,name:im.name};
+    const transport=optimizeUpload||varyImages?await uploadImage(im,{vary:varyImages}):{blob:im.blob,name:im.name};
     const type=/\.png$/i.test(transport.name)?'image/png':/\.webp$/i.test(transport.name)?'image/webp':'image/jpeg';
     const bytes=new Uint8Array(await transport.blob.arrayBuffer());let binary='';
     for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
