@@ -257,18 +257,20 @@ test('next AI generation reads the newly saved model and invalidates results fro
  }finally{runner.dispose();globalThis.fetch=original;}
 });
 
-test('opening a profile preserves tabs; only starting automation opens Threads',async()=>{
+test('repeated profile Open reuses its connected browser and preserves tabs; only Start opens Threads',async()=>{
  const {default:http}=await import('node:http');const {ProfileWorker}=await import('./profile-manager.mjs');
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-open-only-')),port=await freePort();let context,worker,api;
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-open-only-')),port=await freePort();let context,worker,api,starts=0;
  const executable=process.env.TEST_CHROME||(process.platform==='darwin'?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':process.platform==='win32'?'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe':'/usr/bin/google-chrome');
  try{
  context=await chromium.launchPersistentContext(path.join(dir,'fixture-browser'),{executablePath:executable,headless:true,args:[`--remote-debugging-port=${port}`]});
  await context.route('**/*',route=>route.fulfill({contentType:'text/html',body:'<html><body>Local fixture</body></html>'}));
  const page=context.pages()[0];await page.goto('https://example.test/keep-this-tab');
- api=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true,data:req.url.includes('/start/')?{profile_id:'fixture',remote_debugging_port:port}:{id:'fixture',name:'Fixture',raw_proxy:''}}));});
+ api=http.createServer((req,res)=>{if(req.url.includes('/start/'))starts++;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true,data:req.url.includes('/start/')?{profile_id:'fixture',remote_debugging_port:port}:{id:'fixture',name:'Fixture',raw_proxy:''}}));});
  await new Promise(resolve=>api.listen(0,'127.0.0.1',resolve));
  const dataDir=path.join(dir,'fixture'),store=await new Store(dataDir).load();await store.set({settings:{profileId:'fixture',profileName:'Fixture',proxy:'',gpmApi:`http://127.0.0.1:${api.address().port}/api/v3`,cdp:`http://127.0.0.1:${port}`,apiKey:'fixture-key',model:'fixture-model',prompt:'Fixture prompt',runConfig:AUTO_DEFAULTS}});
  worker=new ProfileWorker(dataDir,()=>{});const result=await worker.call('profile-open',{proxy:''});assert.equal(result.ok,true);
+ for(let i=0;i<3;i++){const again=await worker.call('profile-open',{useCurrentProxy:true});assert.equal(again.alreadyOpen,true);assert.equal(again.profileId,'fixture');assert.equal(new URL(again.cdp).href,new URL(result.cdp).href);}
+ assert.equal(starts,1);
  assert.deepEqual(context.pages().map(p=>p.url()),['https://example.test/keep-this-tab']);
  // Exercise the exact source step used by Start, with the fixture CDP browser.
  const browser=new GpmBrowser(store);await browser.connect(result.cdp);const runner=createRunner(store,browser);

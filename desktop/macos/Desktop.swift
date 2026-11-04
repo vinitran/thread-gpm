@@ -173,7 +173,8 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         for key in ["install-update","install-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && (updater["available"] as? Bool == true) && (updater["installSupported"] as? Bool == true) }
         for key in ["check-update","check-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && !string(updater["repository"]).isEmpty }
         presetPicker.isEnabled = ready && busy == 0; buttons["delete-preset"]?.isEnabled = ready && busy == 0 && presetID != "default"; buttons["assign-preset"]?.isEnabled = ready && any && busy == 0
-        selection.stringValue = selected.isEmpty ? "Chưa chọn profile" : "Đã chọn \(selected.count) profile"
+        let shown = Set(visible.map { string($0["id"]) }), outside = selected.subtracting(shown).count
+        selection.stringValue = selected.isEmpty ? "Chưa chọn profile" : "Đã chọn \(selected.count) profile" + (outside > 0 ? " · \(outside) ngoài bộ lọc" : "")
         for input in inputs.values { input.isEnabled = ready && busy == 0 }; for check in checks.values { check.isEnabled = ready && busy == 0 }; prompt.isEditable = ready && busy == 0; inputs["presetName"]?.isEnabled = ready && busy == 0 && presetID != "default"
     }
     func perform(_ title: String, _ task: @escaping (ToolAPI) async throws -> String) {

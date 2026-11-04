@@ -37,7 +37,7 @@ if(environmentKey){
 }
 const browser=new GpmBrowser(store),runner=createRunner(store,browser,{closeSession:closeRestingProfile,openSession:openRestingProfile}),clients=new Set();
 const token=randomBytes(24).toString('hex');let operation=null,startEpoch=0,publishing,shuttingDown=false,manager,importer,pendingPosts=0;
-let extensionBridge;
+let extensionBridge,openedProfile;
 const updater=isWorker?null:new Updater({dir:dataDir,repo:await updateRepository()});
 const active=()=>['running','stopping'].includes(runner.state?.status);
 function idleOnly(){if(operation||active())throw Error('Stop và đợi thao tác hiện tại hoàn tất trước khi chỉnh cài đặt.');}
@@ -227,7 +227,13 @@ const server=http.createServer(async(req,res)=>{
      const raw=input.proxy.trim();
      const configured=validateSettings({...settings,proxy:raw},settings);
      await store.set({settings:configured});
-     const engine=input.engine==='extension'?'extension':'direct',staged=engine==='extension'?await stageManagedExtension(dataDir):null;
+     const engine=input.engine==='extension'?'extension':'direct';
+     if(openEpoch!==startEpoch||shuttingDown)throw Error('Đã hủy mở profile do Dừng.');
+     // Repeating Open must not send another Start while this exact browser is connected.
+     if(engine==='direct'&&store.value.executionMode==='direct'&&browser.browser?.isConnected()&&browser.context&&browser.profileId===configured.profileId&&openedProfile?.id===configured.profileId&&openedProfile.gpmApi===configured.gpmApi&&openedProfile.proxy===raw&&browser.address===new URL(configured.cdp).href){
+      return {ok:true,alreadyOpen:true,profileId:configured.profileId,profileName:configured.profileName,cdp:configured.cdp,hasProxy:!!raw,engine};
+     }
+     const staged=engine==='extension'?await stageManagedExtension(dataDir):null;
      if(openEpoch!==startEpoch||shuttingDown)throw Error('Đã hủy mở profile do Dừng.');
      let result=await new GpmApi(settings.gpmApi||'http://localhost:9495').applyAndOpen(settings.profileId,raw,staged?{additionArgs:extensionArguments(staged.directory)}:{});
      if(openEpoch!==startEpoch||shuttingDown)throw Error('Đã hủy mở profile do Dừng.');
@@ -235,7 +241,7 @@ const server=http.createServer(async(req,res)=>{
      await store.set({settings:{...configured,cdp:result.cdp,profileName:result.profileName},proxyAppliedAt:new Date().toISOString()});
      if(engine==='extension')result=await enableExtension(configured,result,openEpoch,staged);
      else{extensionBridge?.close();extensionBridge=null;browser.extensionBridge=null;await connect();await store.set({executionMode:'direct'});}
-     browser.profileId=result.profileId;
+     browser.profileId=result.profileId;openedProfile={id:result.profileId,gpmApi:configured.gpmApi,proxy:raw};
      return {ok:true,...result,hasProxy:!!raw,engine};
     }));
    }

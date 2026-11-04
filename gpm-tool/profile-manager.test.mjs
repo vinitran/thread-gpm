@@ -181,3 +181,21 @@ test('Run by extension reconnects a running profile instead of skipping setup or
   await assert.rejects(manager.start('a',undefined,'direct'),/Dừng profile/);
  }finally{await manager.close();await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('opening selected profiles targets only their IDs and rejects a duplicate pending open',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-open-scope-')),store=await new Store(dir).load(),calls=[];
+ let release,entered;const waiting=new Promise(resolve=>entered=resolve),gate=new Promise(resolve=>release=resolve);
+ const base=fakeFactory(calls);
+ const manager=new ProfileManager(store,{workerFactory:(dir,onView)=>{
+  const worker=base(dir,onView),call=worker.call;
+  worker.call=async(route,input)=>{if(route==='profile-open'&&path.basename(dir)==='a'){entered();await gate;}return call(route,input);};return worker;
+ }});
+ try{
+  for(const id of ['a','b','unselected'])await manager.register(settings(id));
+  const pending=manager.open(settings('a'));await waiting;
+  await assert.rejects(()=>manager.open(settings('a')),/đang xử lý/);
+  release();await pending;await manager.open(settings('b'));
+  assert.deepEqual(calls.filter(c=>c.route==='profile-open').map(c=>c.id),['a','b']);
+  assert.equal(manager.workers.has('unselected'),false);assert.equal(calls.some(c=>c.route==='start'),false);
+ }finally{release();await manager.close();await store.pending;await fs.rm(dir,{recursive:true,force:true});}
+});

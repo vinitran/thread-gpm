@@ -124,7 +124,8 @@ sealed class MainWindow : Window
         foreach (var id in new[] { "edit-profile", "delete-profile", "dry-run-selected" }) buttons[id].IsEnabled &= Selected.Count() == 1;
         foreach (var id in new[] { "install-update", "install-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.B(update["available"]) && J.B(update["installSupported"]);
         foreach (var id in new[] { "check-update", "check-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.S(update["repository"]).Length > 0;
-        selection.Text = Selected.Any() ? $"Đã chọn {Selected.Count()} profile" : "Chưa chọn profile";
+        var outside = Selected.Count(p => !rows.Contains(p));
+        selection.Text = Selected.Any() ? $"Đã chọn {Selected.Count()} profile" + (outside > 0 ? $" · {outside} ngoài bộ lọc" : "") : "Chưa chọn profile";
         foreach (var field in fields.Values) field.IsEnabled = api != null && loaded && busy == 0;
         presetPicker.IsEnabled = api != null && loaded && busy == 0; fields.GetValueOrDefault("presetName")?.SetCurrentValue(IsEnabledProperty, api != null && loaded && busy == 0 && presetId != "default"); buttons["delete-preset"].IsEnabled = api != null && loaded && busy == 0 && presetId != "default"; buttons["assign-preset"].IsEnabled = api != null && loaded && busy == 0 && Ids.Length > 0;
         foreach (var check in checks.Values) check.IsEnabled = api != null && loaded && busy == 0;
