@@ -164,7 +164,7 @@ sealed class MainWindow : Window
         var modelPanel = new StackPanel { Width = 320, Margin = new(0, 0, 15, 10) }; modelPanel.Children.Add(Note("Model AI")); model.MinHeight = 30; modelPanel.Children.Add(model); model.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => Edited()));
         var keyPanel = new StackPanel { Width = 320, Margin = new(0, 0, 15, 10) }; keyPanel.Children.Add(Note("API key · để trống giữ key đã lưu")); key.MinHeight = 30; key.PasswordChanged += (_, _) => Edited(); keyPanel.Children.Add(key);
         page.Children.Add(Row(modelPanel, keyPanel, Action("Tải model", "load-models", () => Perform("Đang lấy danh sách model…", async api => { var r = await api.Request("models", new()); var current = model.Text; model.Items.Clear(); foreach (var node in r["models"] as JsonArray ?? new()) model.Items.Add(J.S(node)); model.Text = current; return "Chọn model rồi bấm Lưu cài đặt chung."; }))));
-        page.Children.Add(Row(Field("Nghỉ trung bình · giây (±20%)", "restAverageSeconds", 255), Field("Gõ mỗi ký tự · ms", "typingDelayMs", 255), Field("Chờ giữa thao tác · giây", "stepSeconds", 255)));
+        page.Children.Add(Row(Note("Nghỉ cố định 30–40 phút · 10 lần gửi nghỉ 3 giờ"), Field("Gõ mỗi ký tự · ms", "typingDelayMs", 255), Field("Chờ giữa thao tác · giây", "stepSeconds", 255)));
         page.Children.Add(Row(Field("Chờ tìm bài mới · giây", "searchDelaySeconds", 255), Field("Folder ảnh · trống dùng ảnh đi kèm", "imagesFolder", 430), Action("Chọn folder…", "choose-images", () => { var d = new OpenFolderDialog(); if (d.ShowDialog(this) == true) fields["imagesFolder"].Text = d.FolderName; })));
         foreach (var (name, text) in new[] { ("tagHoanxu", "Tag @hoanxu.app · sau mỗi 4 bài ảnh, thêm 1 bài chữ có tag"), ("idleScroll", "Cuộn nhẹ khi nghỉ"), ("idleEngagement", "Thả tim khi chờ · ngẫu nhiên 2–5 bài") }) { var check = new CheckBox { Content = text, Margin = new(0, 0, 0, 12) }; check.Checked += (_, _) => Edited(); check.Unchecked += (_, _) => Edited(); checks[name] = check; page.Children.Add(check); }
         page.Children.Add(new Separator()); page.Children.Add(Note("Bộ cài đặt riêng · chỉ prompt và chủ đề · chọn cho từng profile"));
@@ -211,8 +211,7 @@ sealed class MainWindow : Window
     void FillSettings(JsonObject settings)
     {
         filling = true; var config = J.O(settings["runConfig"]);
-        foreach (var (name, field) in fields.Where(p => p.Key is not ("keywords" or "presetName"))) field.Text = J.S(name is "keywords" or "restAverageSeconds" or "typingDelayMs" or "stepSeconds" or "searchDelaySeconds" ? config[name] : settings[name]);
-        if (config["restAverageSeconds"] == null) fields["restAverageSeconds"].Text = ((double.Parse(J.S(config["minRestSeconds"] ?? JsonValue.Create(120)), CultureInfo.InvariantCulture) + double.Parse(J.S(config["maxRestSeconds"] ?? JsonValue.Create(180)), CultureInfo.InvariantCulture)) / 2).ToString(CultureInfo.InvariantCulture);
+        foreach (var (name, field) in fields.Where(p => p.Key is not ("keywords" or "presetName"))) field.Text = J.S(name is "keywords" or "typingDelayMs" or "stepSeconds" or "searchDelaySeconds" ? config[name] : settings[name]);
         model.Text = J.S(settings["model"]); key.Password = ""; foreach (var (name, check) in checks) check.IsChecked = config[name] == null ? name == "idleEngagement" : J.B(config[name]);
         filling = false; dirty = false; saved.Text = "Đã lưu · áp dụng cho tất cả profile"; saved.Foreground = Brushes.DimGray;
     }
@@ -221,7 +220,7 @@ sealed class MainWindow : Window
         var value = J.O(snapshot["settings"]).DeepClone().AsObject(); var config = J.O(value["runConfig"]).DeepClone().AsObject();
         foreach (var (name, field) in fields.Where(p => p.Key is not ("keywords" or "presetName")))
         {
-            if (name is "restAverageSeconds" or "typingDelayMs" or "stepSeconds" or "searchDelaySeconds") { if (!double.TryParse(field.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) || !double.IsFinite(n) || n < 0) throw new Exception(name + ": nhập số không âm."); config[name] = n; }
+            if (name is "typingDelayMs" or "stepSeconds" or "searchDelaySeconds") { if (!double.TryParse(field.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) || !double.IsFinite(n) || n < 0) throw new Exception(name + ": nhập số không âm."); config[name] = n; }
             else value[name] = field.Text.Trim();
         }
         foreach (var (name, check) in checks) config[name] = check.IsChecked == true;
@@ -362,8 +361,8 @@ sealed class MainWindow : Window
     async Task Smoke()
     {
         if (api == null || !loaded || allRows.Count != 0) throw new Exception("Native smoke must start with isolated empty data.");
-        model.Text = "cx/gpt-5.6-luna"; fields["restAverageSeconds"].Text = "60"; await Save(api);
-        var saved = await api.Request("state"); if (J.S(J.O(saved["settings"])["model"]) != "cx/gpt-5.6-luna" || J.S(J.O(J.O(saved["settings"])["runConfig"])["restAverageSeconds"]) != "60") throw new Exception("Native settings save failed.");
+        model.Text = "cx/gpt-5.6-luna"; await Save(api);
+        var saved = await api.Request("state"); if (J.S(J.O(saved["settings"])["model"]) != "cx/gpt-5.6-luna" || J.S(J.O(J.O(saved["settings"])["runConfig"])["minRestSeconds"]) != "1800") throw new Exception("Native settings save failed.");
         update = new() { ["currentVersion"] = "0.4.0", ["latestVersion"] = "0.4.1", ["available"] = true, ["installSupported"] = true, ["repository"] = "fixture/tool" }; RenderUpdate();
         if (updateBanner.Visibility != Visibility.Visible || !buttons["install-update-top"].IsEnabled || !updateWarning.Text.Contains("0.4.1")) throw new Exception("Native update warning/button failed.");
         update["available"] = false; update["checkError"] = "Fixture offline"; RenderUpdate();

@@ -139,7 +139,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         addWide(field("GPM Local API · đúng địa chỉ trong cài đặt GPM","gpmApi",width:600),to:form)
         addWide(row([button("Kiểm tra / tìm GPM","check-gpm",#selector(checkGpm)),label("Mở GPM trước · tìm cổng 9495 hoặc 19995")]),to:form)
         addWide(row([field("Model AI","model",width:270),field("API key · để trống để giữ key đã lưu","apiKey",secure:true,width:300),button("Tải model…","load-models",#selector(loadModels))]),to:form)
-        addWide(row([field("Nghỉ trung bình · giây (±20%)","restAverageSeconds"),field("Gõ mỗi ký tự · ms","typingDelayMs"),field("Chờ giữa thao tác · giây","stepSeconds")]),to:form)
+        addWide(row([label("Nghỉ cố định 30–40 phút · 10 lần gửi nghỉ 3 giờ"),field("Gõ mỗi ký tự · ms","typingDelayMs"),field("Chờ giữa thao tác · giây","stepSeconds")]),to:form)
         addWide(row([field("Chờ tìm bài mới · giây","searchDelaySeconds"),field("Folder ảnh · trống dùng ảnh đi kèm","imagesFolder",width:330),button("Chọn folder…","choose-images",#selector(chooseImages))]),to:form)
         let idle = NSButton(checkboxWithTitle:"Cuộn nhẹ khi nghỉ",target:self,action:#selector(settingsEdited)), likes = NSButton(checkboxWithTitle:"Thả tim khi chờ · ngẫu nhiên 2–5 bài",target:self,action:#selector(settingsEdited)); checks["idleScroll"] = idle; checks["idleEngagement"] = likes; addWide(row([idle,likes]),to:form)
         let tag = NSButton(checkboxWithTitle:"Tag @hoanxu.app · sau mỗi 4 bài ảnh, thêm 1 bài chữ có tag",target:self,action:#selector(settingsEdited)); checks["tagHoanxu"] = tag; addWide(tag,to:form)
@@ -193,14 +193,14 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     func loadSettings(_ value: JSONObject) {
         let config = object(value["runConfig"])
-        for (key,input) in inputs { if ["keywords","presetName"].contains(key) { continue }; if key == "apiKey" { input.stringValue = "" } else if key.hasSuffix("Seconds") || key == "typingDelayMs" { input.stringValue = key == "restAverageSeconds" ? string(config[key] ?? ((config["minRestSeconds"] as? Double ?? 120) + (config["maxRestSeconds"] as? Double ?? 180)) / 2) : string(config[key]) } else { input.stringValue = string(value[key]) } }
+        for (key,input) in inputs { if ["keywords","presetName"].contains(key) { continue }; if key == "apiKey" { input.stringValue = "" } else if key.hasSuffix("Seconds") || key == "typingDelayMs" { input.stringValue = string(config[key]) } else { input.stringValue = string(value[key]) } }
         for (key,check) in checks { check.state = (config[key] as? Bool ?? (key == "idleEngagement")) ? .on : .off }
         dirty = false; saved.stringValue = "Đã lưu · áp dụng cho tất cả profile"; saved.textColor = .secondaryLabelColor
     }
     func settingsBody() throws -> JSONObject {
         var value = object(snapshot["settings"]), config = object(value["runConfig"])
         for (key,input) in inputs {
-            if ["keywords","presetName"].contains(key) { continue }; if ["restAverageSeconds","typingDelayMs","stepSeconds","searchDelaySeconds"].contains(key) { guard let n = Double(input.stringValue), n.isFinite, n >= 0 else { throw failure("\(key): nhập số không âm.") }; config[key] = n }
+            if ["keywords","presetName"].contains(key) { continue }; if ["typingDelayMs","stepSeconds","searchDelaySeconds"].contains(key) { guard let n = Double(input.stringValue), n.isFinite, n >= 0 else { throw failure("\(key): nhập số không âm.") }; config[key] = n }
             else { value[key] = input.stringValue.trimmingCharacters(in:.whitespacesAndNewlines) }
         }
         for (key,check) in checks { config[key] = check.state == .on }

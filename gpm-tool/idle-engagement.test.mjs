@@ -8,7 +8,7 @@ import {engagementPage} from './idle-engagement.mjs';
 function fixture(config={}){
  let time=100000,runner;const actions=[],scheduled=[];
  const posts=Array.from({length:6},(_,i)=>({url:'https://www.threads.com/@demo/post/'+i}));
- const store={value:{autoRun:{status:'running',config:{...AUTO_DEFAULTS,idleScroll:false,...config},source:1,current:null,history:{},events:[],stats:{},queue:[],activity:{phase:'resting'},nextAt:time+180000}},async get(key){return {[key]:structuredClone(this.value[key])};},async set(patch){Object.assign(this.value,structuredClone(patch));}};
+ const store={value:{autoRun:{status:'running',config:{...AUTO_DEFAULTS,idleScroll:false,...config},source:1,current:null,history:{},events:[],stats:{},queue:[],activity:{phase:'resting'},nextAt:time+1800000,nextCommentAt:time+1800000}},async get(key){return {[key]:structuredClone(this.value[key])};},async set(patch){Object.assign(this.value,structuredClone(patch));}};
  const browser={evaluate:async(id,fn,[args])=>{
   if(args.action==='candidates')return {posts};
   assert.equal(store.value.autoRun.idleEngagementHistory[args.url].state,'attempting');
@@ -26,7 +26,7 @@ test('idle engagement is limited to a random quota with distinct posts, random g
   if(i===0)await f.reopen();
  }
  f.at(f.now()+20000);await f.runner.tick();assert.equal(f.actions.length,2);assert.equal(new Set(f.actions).size,2);assert.equal(f.scheduled.at(-1),f.runner.state.nextAt);
- f.runner.state.nextAt=f.now()+180000;await f.runner.scheduleNext();f.at(f.runner.state.engagementWait.nextAt);await f.runner.tick();assert.equal(f.actions.length,3);assert.equal(new Set(f.actions).size,3);
+ f.runner.state.nextAt=f.runner.state.nextCommentAt=f.now()+1800000;await f.runner.scheduleNext();f.at(f.runner.state.engagementWait.nextAt);await f.runner.tick();assert.equal(f.actions.length,3);assert.equal(new Set(f.actions).size,3);
  f.runner.dispose();
 });
 

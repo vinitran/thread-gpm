@@ -1,11 +1,10 @@
 const LEGACY_TOPICS='mua sắm, mua đồ, mua quà, shopping, shopee, săn sale, đồ ăn, ăn gì, đặt đồ ăn, quán ăn, nhà hàng, trà sữa, thời trang, quần áo, outfit, phối đồ, váy, giày, túi xách';
-export const AUTO_DEFAULTS={minRestSeconds:120,maxRestSeconds:180,searchDelaySeconds:30,stepSeconds:2,idleScroll:true,tagHoanxu:false,typingDelayMs:60,keywords:'mua sắm online, hỏi mua đồ, xin review, đánh giá sản phẩm, so sánh sản phẩm, săn sale, mã giảm giá, voucher, freeship, giỏ hàng, chốt đơn, shopee, sàn S, tiktok shop, tíc tóc, lazada, mua quà, đồ gia dụng, đồ dùng học tập, phụ kiện điện thoại, mỹ phẩm, skincare, quần áo, thời trang, outfit, váy, giày, túi xách, đồ ăn đặt online'};
+const COMMENT_REST_MIN=1800,COMMENT_REST_MAX=2400;
+export const AUTO_DEFAULTS={minRestSeconds:COMMENT_REST_MIN,maxRestSeconds:COMMENT_REST_MAX,searchDelaySeconds:30,stepSeconds:2,idleScroll:true,tagHoanxu:false,typingDelayMs:60,keywords:'mua sắm online, hỏi mua đồ, xin review, đánh giá sản phẩm, so sánh sản phẩm, săn sale, mã giảm giá, voucher, freeship, giỏ hàng, chốt đơn, shopee, sàn S, tiktok shop, tíc tóc, lazada, mua quà, đồ gia dụng, đồ dùng học tập, phụ kiện điện thoại, mỹ phẩm, skincare, quần áo, thời trang, outfit, váy, giày, túi xách, đồ ăn đặt online'};
 export function autoConfig(input={}){
  const c={...AUTO_DEFAULTS,...input};if(c.keywords===LEGACY_TOPICS)c.keywords=AUTO_DEFAULTS.keywords;delete c.followBeforeComment;delete c.maxComments;delete c.minMinutes;delete c.maxMinutes;
- const average=input.restAverageSeconds;
- if(average!==undefined){if(!Number.isFinite(average)||average<0||!Number.isFinite(average*1.2))throw Error('Thời gian nghỉ trung bình cần là số không âm hợp lệ.');c.minRestSeconds=Math.round(average*.8);c.maxRestSeconds=Math.round(average*1.2);}
- if(average===undefined&&Number.isFinite(c.minRestSeconds)&&Number.isFinite(c.maxRestSeconds)&&c.minRestSeconds>=40&&c.minRestSeconds<=c.maxRestSeconds&&c.maxRestSeconds<=60){c.minRestSeconds=120;c.maxRestSeconds=180;}
- for(const [key,min,max] of [['minRestSeconds',120,180],['maxRestSeconds',120,180],['searchDelaySeconds',1,180],['stepSeconds',.5,10],['typingDelayMs',0,500]])if(!(['minRestSeconds','maxRestSeconds'].includes(key)&&average!==undefined)&&(!Number.isFinite(c[key])||c[key]<min||c[key]>max))throw Error('Cấu hình tự động không hợp lệ: '+key);
+ delete c.restAverageSeconds;c.minRestSeconds=COMMENT_REST_MIN;c.maxRestSeconds=COMMENT_REST_MAX;
+ for(const [key,min,max] of [['searchDelaySeconds',1,180],['stepSeconds',.5,10],['typingDelayMs',0,500]])if(!Number.isFinite(c[key])||c[key]<min||c[key]>max)throw Error('Cấu hình tự động không hợp lệ: '+key);
  if(typeof c.tagHoanxu!=='boolean')throw Error('Tùy chọn tag không hợp lệ.');
  if(typeof c.idleScroll!=='boolean')throw Error('Chế độ cuộn khi nghỉ không hợp lệ.');
  if(c.idleEngagement!==undefined&&typeof c.idleEngagement!=='boolean')throw Error('Chế độ Thả tim khi nghỉ không hợp lệ.');
@@ -20,7 +19,19 @@ export const SESSION_LIMIT=10;
 export const sessionSendCount=stats=>(stats?.posted||0)+Math.max(stats?.sent||0,stats?.unknown||0);
 export class AutoRunner{
  constructor(deps){this.d=deps;this.state=null;this.running=false;this.starting=false;this.stopEpoch=0;}
- async load(){if(!this.state){this.loading??=this.d.read();this.state=await this.loading||{status:'idle',history:{},events:[]};if(this.state.config){this.state.config=autoConfig(this.state.config);if(this.state.activity?.phase==='resting'&&this.state.nextAt&&!this.state.current&&!this.state.selectionBatch&&!this.state.sessionRest)this.state.nextAt=Math.min(this.state.nextAt,this.d.now()+this.state.config.maxRestSeconds*1000);}}return this.state;}
+ restDelay(){return Math.min(COMMENT_REST_MAX,COMMENT_REST_MIN+Math.floor(this.d.random()*(COMMENT_REST_MAX-COMMENT_REST_MIN+1)))*1000;}
+ async load(){
+  if(!this.state){
+   this.loading??=this.d.read();this.state=await this.loading||{status:'idle',history:{},events:[]};
+   if(this.state.config){
+    this.state.config=autoConfig(this.state.config);
+    // Upgrade an old short rest once; preserve the deadline on later reloads.
+    if(this.state.status==='running'&&this.state.activity?.phase==='resting'&&!this.state.current&&!this.state.selectionBatch&&!this.state.sessionRest&&!this.state.nextCommentAt){
+     this.state.nextCommentAt=Math.max(this.state.nextAt||0,this.d.now()+this.restDelay());this.state.nextAt=this.state.nextCommentAt;await this.save();
+    }
+   }
+  }return this.state;
+ }
  async save(){
   this.state.history=Object.fromEntries(Object.entries(this.state.history||{}).slice(-5000));
   const snapshot=structuredClone(this.state);
@@ -112,7 +123,7 @@ export class AutoRunner{
   if(!this.active())return this.finish('stopped','Đã dừng · hủy phiên tiếp theo');
   const source=await this.d.newSource();s.source=source;
   if(!this.active()){if(this.d.closeSession)await this.d.closeSession();else await this.d.closeSource(source);return this.finish('stopped','Đã dừng · hủy phiên tiếp theo');}
-  s.sessionRest=null;s.current=null;s.queue=[];s.selectionBatch=null;s.recovery=null;s.recoveryAttempts=0;s.browserRetries=0;s.nextImageAt=null;s.needsScroll=false;s.emptyScans=0;s.authors=[];
+  s.sessionRest=null;s.current=null;s.queue=[];s.selectionBatch=null;s.recovery=null;s.recoveryAttempts=0;s.browserRetries=0;s.nextImageAt=null;s.nextCommentAt=null;s.needsScroll=false;s.emptyScans=0;s.authors=[];
   s.history=Object.fromEntries(Object.entries(s.history).filter(([,v])=>v.state!=='queued'));
   s.stats={scanned:0,selected:0,posted:0,sent:0,failed:0,unknown:0};s.startedAt=new Date(this.d.now()).toISOString();s.nextAt=this.d.now()+15000;s.nextIdleAt=s.nextAt+15000;
   await this.activity('waiting','Đã nghỉ đủ 3 giờ · mở '+(this.d.openSession?'profile GPM':'tab mới')+', chờ 15 giây rồi bắt đầu phiên 10 comment tiếp theo');await this.scheduleNext();
@@ -137,8 +148,8 @@ export class AutoRunner{
    for(const post of s.queue||[])if(s.history[post.url]?.state==='queued')delete s.history[post.url];
    s.current=null;s.queue=[];s.selectionBatch=null;s.needsScroll=false;s.emptyScans=0;s.browserRetries=0;s.recovery=null;
    if(!this.active())return this.finish('stopped','Đã dừng trong lúc khôi phục tab');
-   s.nextAt=this.d.now()+15000;s.nextIdleAt=s.nextAt+15000;
-   await this.activity('waiting','Đã khôi phục tab · chờ trang chủ tải 15 giây rồi tìm bài mới');await this.scheduleNext();
+   s.nextAt=Math.max(this.d.now()+15000,s.nextCommentAt||0);s.nextIdleAt=s.nextAt+15000;
+   await this.activity('waiting','Đã khôi phục tab · chờ lịch comment tiếp theo và trang chủ tải xong');await this.scheduleNext();
   }catch(e){await this.finish(this.active()?'attention':'stopped','Không khôi phục được tab: '+e.message);}
  }
  async settle(receipt){
@@ -160,6 +171,7 @@ export class AutoRunner{
    if(this.active()&&item.rechecks<=2){this.event('Chờ kiểm tra lại URL comment (không gửi lại): '+item.post.url);s.nextAt=this.d.now()+60000;await this.activity('resting','Đang nghỉ 1 phút trước khi kiểm tra lại URL comment');await this.scheduleNext();return;}
    this.event('Chưa xác minh được: '+item.post.url);
   }
+  s.nextCommentAt=this.d.now()+this.restDelay();
   s.current=null;if(!s.queue.length)s.needsScroll=true;
   if(sessionSendCount(s.stats)>=SESSION_LIMIT)return this.restBetweenSessions();
   if(receipt.navigation_error)return this.recover('Chưa quay lại trang chủ: '+receipt.navigation_error);
@@ -167,15 +179,14 @@ export class AutoRunner{
   s.recoveryAttempts=0;s.browserRetries=0;
   if(!this.active())return this.finish('stopped','Đã dừng sau lần gửi đang xử lý');
   for(const post of s.queue){if(s.history[post.url]?.state==='queued')delete s.history[post.url];}s.queue=[];s.needsScroll=false;
-  const restSeconds=Math.floor(s.config.minRestSeconds+this.d.random()*(s.config.maxRestSeconds-s.config.minRestSeconds+1));
-  s.nextAt=this.d.now()+Math.min(restSeconds,s.config.maxRestSeconds)*1000;
-  if(s.nextImageAt)s.nextAt=Math.min(s.nextAt,Math.max(this.d.now()+15000,s.nextImageAt));await this.activity('resting','Đã về trang chủ · Đang nghỉ '+Math.ceil((s.nextAt-this.d.now())/1000)+' giây trước khi tìm bài mới');await this.scheduleNext();
+  s.nextAt=s.nextCommentAt;await this.activity('resting','Đã về trang chủ · Đang nghỉ ngẫu nhiên 30–40 phút trước khi tìm bài mới');await this.scheduleNext();
  }
  async tick(){
   await this.load();if(this.running||!this.active())return;
   if(this.state.sessionRest||sessionSendCount(this.state.stats)>=SESSION_LIMIT){
    this.running=true;try{await this.restBetweenSessions();}catch(e){await this.finish(this.active()?'attention':'stopped','Chưa mở được phiên mới: '+e.message);}finally{this.running=false;if(this.state.status==='stopping')await this.finish('stopped','Đã dừng · hủy lần chạy tiếp');}return;
   }
+  if(!this.state.current&&!this.state.recovery&&this.state.nextCommentAt)this.state.nextAt=Math.max(this.state.nextAt||0,this.state.nextCommentAt);
   if(this.state.nextAt>this.d.now()){await this.idle();await this.scheduleNext();return;}
   this.running=true;const keep=this.d.keepAlive();
   try{

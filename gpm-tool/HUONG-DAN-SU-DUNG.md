@@ -82,7 +82,7 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 2. Điền API key của dịch vụ AI mà tool đang dùng: `https://ai.hoanxu.com/v1`. Không tự thay bằng key của một dịch vụ khác.
 3. Chọn model được key đó hỗ trợ; có thể dùng **Tải danh sách model**. Khi đổi key, lưu trước rồi tải danh sách vì nút tải dùng key đã lưu.
 4. Chọn hoặc tạo bộ **prompt / chủ đề**, sửa nội dung phù hợp rồi bấm **Lưu bộ**.
-5. Người mới có thể giữ mặc định: gõ 60ms, chờ giữa bước 2 giây, nghỉ tìm bài 30 giây, nghỉ trung bình 150 giây (tự dao động 120–180 giây).
+5. Người mới có thể giữ mặc định: gõ 60ms, chờ giữa bước 2 giây, nghỉ tìm bài 30 giây, nghỉ sau mỗi comment cố định ngẫu nhiên 30–40 phút.
 6. Chọn bật/tắt **Cuộn nhẹ lên/xuống khi nghỉ** và **Thả tim khi chờ**.
 7. Ảnh: để trống folder để dùng ảnh đi kèm. Folder riêng cần `app_store.png` và ít nhất 2 ảnh khác; bấm **Kiểm tra folder** trước khi lưu.
 8. Bấm **Lưu cài đặt chung**, đợi báo đã lưu.
@@ -126,7 +126,7 @@ Giữ máy, GPM và dashboard hoạt động để tiếp tục đúng lịch. K
 
 Luồng lần đầu: mở GPM → thêm/nhập profile → nhập proxy → Mở trình duyệt → đăng nhập Threads → Cài đặt AI → Lưu và áp dụng → chọn profile → Chạy tự động → theo dõi log.
 
-Thời gian nghỉ sau bình luận dùng một giá trị trung bình: mặc định 150 giây, mỗi lượt dao động ngẫu nhiên ±20% (120–180 giây). Bấm Lưu và áp dụng để dùng giá trị mới từ lượt nghỉ tiếp theo.
+Thời gian nghỉ sau mỗi bình luận được cố định ngẫu nhiên 30–40 phút, áp dụng cho mọi profile và cả hai chế độ chạy. Cài đặt nghỉ cũ bị bỏ qua; lịch ảnh không rút ngắn khoảng nghỉ. Đủ 10 lần gửi, tool đóng profile GPM nghỉ 3 giờ rồi tự mở lại và chạy tiếp.
 
 Đổi model rồi bấm **Lưu cài đặt chung** sẽ áp dụng chính model đang chọn (Sol, Luna hoặc model khác) cho mọi profile đã thêm và profile mới. Lượt AI đang thực hiện hoàn tất; lần gọi AI tiếp theo dùng model mới. Nhật ký ghi model được dùng khi lọc bài và tạo bình luận. Nếu một profile chưa áp dụng được, giao diện báo lỗi để bấm Lưu thử lại.
 

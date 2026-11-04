@@ -140,7 +140,7 @@ test('settings persist all run controls, allow clearing profile and reject inval
  const input={cdp:'http://localhost:9222',gpmApi:'http://localhost:9495',model:'m',prompt:'Prompt',profileId:'',runConfig:{minRestSeconds:130,maxRestSeconds:175,searchDelaySeconds:45,typingDelayMs:90,stepSeconds:3,idleScroll:false,keywords:'mua sách'}};
  const settings=validateSettings(input,old);assert.equal(settings.apiKey,old.apiKey);assert.equal(settings.profileId,'');assert.equal(settings.profileName,undefined);assert.equal(settings.runConfig.idleScroll,false);assert.equal(settings.runConfig.searchDelaySeconds,45);
  const safe=JSON.stringify(publicSettings(settings));assert.ok(!safe.includes('private-key'));assert.equal(publicSettings(settings).proxy,old.proxy);assert.equal(redact('private-key secret',settings),'[secret] [secret]');
- assert.throws(()=>validateSettings({...input,runConfig:{minRestSeconds:180,maxRestSeconds:120}},old));
+ assert.equal(validateSettings({...input,runConfig:{minRestSeconds:180,maxRestSeconds:120}},old).runConfig.minRestSeconds,1800);
 });
 test('dashboard separates confirmed sends from unknown and respects Vietnam daily boundary',async()=>{
  const {dashboard}=await import('./dashboard.mjs');
@@ -237,8 +237,13 @@ test('saving live settings updates runner config without changing the current jo
  await applyRunnerSettings(runner,settings);assert.equal(runner.state.config.typingDelayMs,85);assert.equal(runner.state.config.idleEngagement,false);assert.equal(runner.state.config.keywords,'new topic');assert.equal(saved.status,'running');assert.equal(saved.nextAt,5000);assert.deepEqual(saved.current,current);assert.ok(saved.history.keep);
 });
 
-test('one average rest setting derives a random range and legacy min/max settings remain supported',async()=>{
- const {autoConfig}=await import('../extension/auto-runner.js');const c=autoConfig({restAverageSeconds:150});assert.equal(c.minRestSeconds,120);assert.equal(c.maxRestSeconds,180);assert.deepEqual([autoConfig({restAverageSeconds:120}).minRestSeconds,autoConfig({restAverageSeconds:120}).maxRestSeconds],[96,144]);assert.equal(autoConfig(c).restAverageSeconds,150);assert.equal(autoConfig({minRestSeconds:130,maxRestSeconds:170}).minRestSeconds,130);for(const seconds of [0,30,60,181,300,600]){const config=autoConfig({restAverageSeconds:seconds});assert.equal(config.restAverageSeconds,seconds);assert.equal(config.minRestSeconds,Math.round(seconds*.8));assert.equal(config.maxRestSeconds,Math.round(seconds*1.2));assert.equal(autoConfig(config).restAverageSeconds,seconds);}for(const value of [NaN,-1,Infinity])assert.throws(()=>autoConfig({restAverageSeconds:value}));
+test('comment rest is hardcoded regardless of saved averages or min/max controls',async()=>{
+ const {autoConfig}=await import('../extension/auto-runner.js');
+ for(const value of [0,30,60,150,600,NaN,-1,Infinity]){
+  const config=autoConfig({restAverageSeconds:value,minRestSeconds:1,maxRestSeconds:2});
+  assert.equal(config.minRestSeconds,1800);assert.equal(config.maxRestSeconds,2400);assert.equal(config.restAverageSeconds,undefined);
+  assert.deepEqual(autoConfig(config),config);
+ }
 });
 
 test('next AI generation reads the newly saved model and invalidates results from the previous model',async()=>{

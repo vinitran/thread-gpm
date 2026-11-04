@@ -14,10 +14,10 @@ export function initAutoUI({send,beforeStart=()=>{},onState=()=>{},onError=()=>{
  }
  function render(state,receipts,tabLifecycle=[]){
   snapshot={state,receipts,tabLifecycle};
-  if(!loadedConfig&&state.config){$('auto-search-delay').value=state.config.searchDelaySeconds??AUTO_DEFAULTS.searchDelaySeconds;$('auto-keywords').value=state.config.keywords;$('auto-min-rest').value=state.config.minRestSeconds??120;$('auto-max-rest').value=state.config.maxRestSeconds??180;$('auto-idle-scroll').checked=state.config.idleScroll??true;$('auto-typing-delay').value=state.config.typingDelayMs??60;loadedConfig=true;}
+  if(!loadedConfig&&state.config){$('auto-search-delay').value=state.config.searchDelaySeconds??AUTO_DEFAULTS.searchDelaySeconds;$('auto-keywords').value=state.config.keywords;$('auto-idle-scroll').checked=state.config.idleScroll??true;$('auto-typing-delay').value=state.config.typingDelayMs??60;loadedConfig=true;}
   const active=['running','stopping'].includes(state.status);
   $('auto-begin').disabled=active;$('auto-end').disabled=!active;
-  for(const id of ['auto-keywords','auto-min-rest','auto-max-rest','auto-idle-scroll','auto-typing-delay','auto-search-delay'])$(id).disabled=active;
+  for(const id of ['auto-keywords','auto-idle-scroll','auto-typing-delay','auto-search-delay'])$(id).disabled=active;
   $('auto-run-status').textContent=state.sessionRest&&active?'Nghỉ giữa phiên · 3 giờ':statusNames[state.status]||state.status;
   renderActivity();
   const all=Object.values(receipts),posted=all.filter(r=>(r.state==='posted'&&r.comment_url)||r.state==='sent_unverified'),today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'});
@@ -31,7 +31,7 @@ export function initAutoUI({send,beforeStart=()=>{},onState=()=>{},onError=()=>{
   onState(state);
  }
  async function refresh(){const r=await send({type:'auto-state'});render(r.state,r.receipts,r.tabLifecycle);}
- $('auto-begin').onclick=async()=>{try{beforeStart();$('auto-begin').disabled=true;await send({type:'auto-start',config:{searchDelaySeconds:Number($('auto-search-delay').value),idleScroll:$('auto-idle-scroll').checked,typingDelayMs:Number($('auto-typing-delay').value),minRestSeconds:Number($('auto-min-rest').value),maxRestSeconds:Number($('auto-max-rest').value),stepSeconds:Number($('comment-delay').value),keywords:$('auto-keywords').value}});await refresh();}catch(e){onError(e);$('auto-begin').disabled=false;}};
+ $('auto-begin').onclick=async()=>{try{beforeStart();$('auto-begin').disabled=true;await send({type:'auto-start',config:{searchDelaySeconds:Number($('auto-search-delay').value),idleScroll:$('auto-idle-scroll').checked,typingDelayMs:Number($('auto-typing-delay').value),stepSeconds:Number($('comment-delay').value),keywords:$('auto-keywords').value}});await refresh();}catch(e){onError(e);$('auto-begin').disabled=false;}};
  $('auto-end').onclick=async()=>{try{await send({type:'auto-stop'});await refresh();}catch(e){onError(e);}};
  $('auto-stats-refresh').onclick=()=>refresh().catch(onError);
  $('auto-export').onclick=()=>{if(!snapshot)return;const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='threads-comment-history.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
