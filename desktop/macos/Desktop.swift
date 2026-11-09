@@ -140,7 +140,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         addWide(row([button("Kiểm tra / tìm GPM","check-gpm",#selector(checkGpm)),label("Mở GPM trước · tìm cổng 9495 hoặc 19995")]),to:form)
         addWide(row([field("Model AI","model",width:270),field("API key · để trống để giữ key đã lưu","apiKey",secure:true,width:300),button("Tải model…","load-models",#selector(loadModels))]),to:form)
         addWide(label("Mỗi profile: 5 lượt giới thiệu trong 3 giờ; sau mỗi lượt là 1–2 trả lời thông thường, sau đó đóng GPM nghỉ 4 giờ."),to:form)
-        addWide(row([label("3 giờ: 5 giới thiệu + reply xen kẽ · nghỉ 4 giờ"),field("Gõ mỗi ký tự · ms","typingDelayMs"),field("Chờ giữa thao tác · giây","stepSeconds")]),to:form)
+        addWide(row([label("Nhịp thao tác trong mỗi lượt"),field("Gõ mỗi ký tự · ms","typingDelayMs"),field("Chờ giữa thao tác · giây","stepSeconds")]),to:form)
         addWide(row([field("Chờ tìm bài mới · giây","searchDelaySeconds"),field("Folder ảnh · trống dùng ảnh đi kèm","imagesFolder",width:330),button("Chọn folder…","choose-images",#selector(chooseImages))]),to:form)
         let idle = NSButton(checkboxWithTitle:"Cuộn nhẹ khi nghỉ",target:self,action:#selector(settingsEdited)), likes = NSButton(checkboxWithTitle:"Thả tim khi chờ · ngẫu nhiên 2–5 bài",target:self,action:#selector(settingsEdited)); checks["idleScroll"] = idle; checks["idleEngagement"] = likes; addWide(row([idle,likes]),to:form)
         let tag = NSButton(checkboxWithTitle:"Tag @hoanxu.app · sau mỗi 4 bài ảnh, thêm 1 bài chữ có tag",target:self,action:#selector(settingsEdited)); checks["tagHoanxu"] = tag; addWide(tag,to:form)
