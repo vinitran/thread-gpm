@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 import {Store} from './store.mjs';
 import {GpmBrowser,endpoint} from './browser.mjs';
 import {attachments,createRunner} from './runner.mjs';
-import {AUTO_DEFAULTS} from '../extension/auto-runner.js';
+import {AUTO_DEFAULTS,createCommentCycle} from '../extension/auto-runner.js';
 import {postReply} from '../extension/post-reply.js';
 import {autoPage} from '../extension/auto-dom.js';
 import {replyAction} from '../extension/reply-dom.js';
@@ -47,7 +47,8 @@ test('GPM retries every AI error three times at two-minute intervals and preserv
   const post={url:'https://www.threads.com/@demo/post/a',author:'demo'};
   const configure=()=>{runner=createRunner(store,{});runner.d.now=()=>time;runner.d.schedule=async()=>{};runner.d.post=async()=>{posted++;};runner.d[stage==='filtering'?'classify':'generate']=async()=>{calls++;throw Error(message);};};
   try{
-   await store.set({autoRun:{status:'running',config:{...AUTO_DEFAULTS,restAverageSeconds:30,idleScroll:false},source:1,history:{},events:[],stats:{failed:0},queue:[],nextAt:0,...(stage==='filtering'?{selectionBatch:{posts:[post],batch:{posts:[post]},retries:0}}:{current:{post,phase:'generating',withImages:false}})}});
+   const cycle=createCommentCycle(0,()=>0);cycle.slots[0].at=0;
+   await store.set({autoRun:{commentCycle:cycle,status:'running',config:{...AUTO_DEFAULTS,restAverageSeconds:30,idleScroll:false},source:1,history:{},events:[],stats:{failed:0},queue:[],nextAt:0,...(stage==='filtering'?{selectionBatch:{posts:[post],batch:{posts:[post]},retries:0}}:{current:{post,phase:'generating',withImages:false}})}});
    configure();
    for(let retry=1;retry<=3;retry++){
     await runner.tick();assert.equal(calls,retry);assert.equal(store.value.autoRun.status,'running');assert.equal(store.value.autoRun.nextAt,time+120000);
@@ -140,7 +141,7 @@ test('settings persist all run controls, allow clearing profile and reject inval
  const input={cdp:'http://localhost:9222',gpmApi:'http://localhost:9495',model:'m',prompt:'Prompt',profileId:'',runConfig:{minRestSeconds:130,maxRestSeconds:175,searchDelaySeconds:45,typingDelayMs:90,stepSeconds:3,idleScroll:false,keywords:'mua sách'}};
  const settings=validateSettings(input,old);assert.equal(settings.apiKey,old.apiKey);assert.equal(settings.profileId,'');assert.equal(settings.profileName,undefined);assert.equal(settings.runConfig.idleScroll,false);assert.equal(settings.runConfig.searchDelaySeconds,45);
  const safe=JSON.stringify(publicSettings(settings));assert.ok(!safe.includes('private-key'));assert.equal(publicSettings(settings).proxy,old.proxy);assert.equal(redact('private-key secret',settings),'[secret] [secret]');
- assert.equal(validateSettings({...input,runConfig:{minRestSeconds:180,maxRestSeconds:120}},old).runConfig.minRestSeconds,1800);
+ assert.equal(validateSettings({...input,runConfig:{minRestSeconds:180,maxRestSeconds:120}},old).runConfig.minRestSeconds,120);
 });
 test('dashboard separates confirmed sends from unknown and respects Vietnam daily boundary',async()=>{
  const {dashboard}=await import('./dashboard.mjs');
@@ -241,7 +242,7 @@ test('comment rest is hardcoded regardless of saved averages or min/max controls
  const {autoConfig}=await import('../extension/auto-runner.js');
  for(const value of [0,30,60,150,600,NaN,-1,Infinity]){
   const config=autoConfig({restAverageSeconds:value,minRestSeconds:1,maxRestSeconds:2});
-  assert.equal(config.minRestSeconds,1800);assert.equal(config.maxRestSeconds,2400);assert.equal(config.restAverageSeconds,undefined);
+  assert.equal(config.minRestSeconds,120);assert.equal(config.maxRestSeconds,180);assert.equal(config.restAverageSeconds,undefined);
   assert.deepEqual(autoConfig(config),config);
  }
 });

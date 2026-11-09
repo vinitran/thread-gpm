@@ -5,7 +5,7 @@ import {AutoRunner} from './auto-runner.js';
 import {autoPage} from './auto-dom.js';
 import {DEFAULT_API_KEY} from './ai-defaults.js';
 import {extractPosts} from './extract.js';
-import {DEFAULT_MODEL,models,generate,signature,selectPosts} from './ai.js';
+import {DEFAULT_MODEL,models,generate,signature,selectPosts,replySettings,finalizeReply} from './ai.js';
 import {readFolder,selectReplyAssets,makeReplyAttachments} from './reply-assets.js';
 import {postReply,checkReply,returnToFeed,verifyAfterPost} from './post-reply.js';
 let busy=false;
@@ -69,15 +69,16 @@ async function handle(m,internal=false){
     aiBusy=true;
     try{
       const {aiSettings={},aiResults={}}=await chrome.storage.local.get(['aiSettings','aiResults']);
-      const settings=await resolveAISettings(aiSettings,true);
-      if(m.withImages===false)settings.prompt+='\n\nYêu cầu cho lượt này: viết comment chữ không có ảnh quảng bá đính kèm. Giữ giọng và yêu cầu của prompt trên, thêm đúng @hoanxu.app một lần thật tự nhiên khi giới thiệu tài khoản Threads của Hoàn Xu. Không nói xem ảnh hoàn tiền đính kèm. Tổng tối đa 450 ký tự gồm cả @hoanxu.app.';
+      const kind=m.replyKind||'promotion',tag=kind==='promotion'&&m.tagHoanxu===true;
+      const settings=replySettings(await resolveAISettings(aiSettings,true),kind,tag);
+      if(m.withImages===false)settings.prompt+='\nLượt này chỉ có chữ, không có ảnh đính kèm. Tối đa 450 ký tự.';
       const cache_id=await signature(post,settings),cached=aiResults[post.url];
       if(!m.force&&cached?.cache_id===cache_id)return {result:{...cached,cached:true}};
       const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);
       let result;
       try{result=await generate(post,settings);}finally{clearInterval(keepAlive);}
       const {collage,...saved}=result;
-      if(m.withImages===false&&!saved.text.includes('@hoanxu.app'))saved.text=[...saved.text].slice(0,475).join('').trimEnd()+' @hoanxu.app';
+      saved.text=finalizeReply(saved.text,kind,tag);
       const entry={...saved,cache_id};delete aiResults[post.url];aiResults[post.url]=entry;
       const trimmed=Object.fromEntries(Object.entries(aiResults).slice(-1000));await chrome.storage.local.set({aiResults:trimmed});
       return {result:{...entry,collage}};
@@ -139,7 +140,7 @@ const runner=new AutoRunner({
  prepare:async()=>{selectReplyAssets(await readFolder());const {aiSettings={}}=await chrome.storage.local.get('aiSettings');await resolveAISettings(aiSettings,true);},
  source:async()=>{const tabs=await listTabs();const existing=tabs.find(t=>new URL(t.url).pathname==='/');const tab=existing?await activateTab(existing.id):tabs.length?await retryTabEdit(()=>chrome.tabs.update(tabs[0].id,{url:'https://www.threads.com/',active:true})):await chrome.tabs.create({url:'https://www.threads.com/',active:true});return tab.id;},
  newSource:async()=>{const t=await retryTabEdit(()=>chrome.tabs.create({url:'https://www.threads.com/',active:true}),{shouldContinue:()=>runner.active()});return t.id;},
- closeSource:async id=>{if(!id)return;let t;try{t=await chrome.tabs.get(id);}catch{return;}if(isThreads(t.url))await closeTabPreservingWindow(id,'nghỉ giữa phiên 3 giờ');},
+ closeSource:async id=>{if(!id)return;let t;try{t=await chrome.tabs.get(id);}catch{return;}if(isThreads(t.url))await closeTabPreservingWindow(id,'nghỉ giữa phiên 4 giờ');},
  replaceSource:async(oldTabId,options)=>replaceSourceTab(oldTabId,options),
  receipts:async()=> (await chrome.storage.local.get('replyReceipts')).replyReceipts||{},
  capture:async(tabId,excludeURLs=[])=>{
@@ -160,7 +161,7 @@ const runner=new AutoRunner({
   const posts=[...byURL.values()].slice(-1000);await chrome.storage.local.set({collectedCapture:{...batch,posts,count:posts.length}});
  },
  classify:async(posts,topics)=>{const {aiSettings={}}=await chrome.storage.local.get('aiSettings');return selectPosts(posts,await resolveAISettings(aiSettings),topics);},
- generate:async(post,withImages=true)=>(await handle({type:'generate-response',post,withImages},true)).result,
+ generate:async(post,withImages=true,tagHoanxu=false,replyKind='promotion')=>(await handle({type:'generate-response',post,withImages,tagHoanxu,replyKind},true)).result,
  post:async(url,stepDelayMs,shouldContinue,typingDelayMs,withImages=true)=>(await handle({type:'post-response',url,stepDelayMs,typingDelayMs,withImages},true)).receipt,
  check:async url=>(await handle({type:'check-response',url},true)).receipt
 });

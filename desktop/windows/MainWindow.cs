@@ -37,7 +37,7 @@ sealed class ProfileRow : INotifyPropertyChanged
     public string Status {
         get { var g = J.O(Data["gpm"]); var remote = J.B(g["fresh"]) && J.S(g["status"]) == "present" ? "GPM đã đồng bộ" : J.S(g["error"]) is { Length: > 0 } e ? e : "GPM chưa đồng bộ"; return string.Join(" · ", new[] { Category, remote, J.B(J.O(Data["view"])["connected"]) ? "CDP đã kết nối" : "CDP chưa kết nối", J.S(Data["error"]) is { Length: > 0 } error ? error : J.S(J.O(State["activity"])["message"]) }.Where(v => v.Length > 0)); }
     }
-    public string Counts => J.S(J.O(J.O(Data["view"])["counts"])["today"]) + " / " + J.S(J.O(J.O(Data["view"])["counts"])["total"]);
+    public string Counts { get { var c = J.O(J.O(Data["view"])["counts"]); return J.S(c["today"]) + " / " + J.S(c["total"]) + " · Giới thiệu " + J.S(c["promotions"]) + "/5 · Trả lời " + J.S(c["regular"]); } }
     public bool Selected { get => selected; set { if (selected == value) return; selected = value; Changed(nameof(Selected)); } }
     public event PropertyChangedEventHandler? PropertyChanged;
     public void Changed(string? name = null) => PropertyChanged?.Invoke(this, new(name));
@@ -146,7 +146,7 @@ sealed class MainWindow : Window
         DockPanel.SetDock(bottom, Dock.Bottom); page.Children.Add(bottom);
         profiles.Name = "ProfilesTable"; profiles.ItemsSource = rows; profiles.IsReadOnly = false; profiles.CanUserAddRows = false; profiles.CanUserDeleteRows = false; profiles.AutoGenerateColumns = false; profiles.HeadersVisibility = DataGridHeadersVisibility.Column; profiles.RowHeight = 46; profiles.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal; profiles.AlternatingRowBackground = Brushes.White; profiles.Background = Brushes.WhiteSmoke;
         profiles.Columns.Add(new DataGridCheckBoxColumn { Header = "✓", Binding = new Binding("Selected") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 40 });
-        foreach (var (path, title, width) in new[] { ("Name", "Profile", 215d), ("Preset", "Bộ cài đặt", 150d), ("Proxy", "Proxy", 160d), ("Status", "Trạng thái / thao tác", 360d), ("Counts", "Hôm nay / tổng", 120d) }) profiles.Columns.Add(new DataGridTextColumn { Header = title, Binding = new Binding(path), Width = width, IsReadOnly = true });
+        foreach (var (path, title, width) in new[] { ("Name", "Profile", 215d), ("Preset", "Bộ cài đặt", 150d), ("Proxy", "Proxy", 160d), ("Status", "Trạng thái / thao tác", 360d), ("Counts", "Hôm nay / tổng · chu kỳ", 250d) }) profiles.Columns.Add(new DataGridTextColumn { Header = title, Binding = new Binding(path), Width = width, IsReadOnly = true });
         var rowStyle = new Style(typeof(DataGridRow)); var selected = new DataTrigger { Binding = new Binding("Selected"), Value = true }; selected.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(213, 239, 229)))); rowStyle.Triggers.Add(selected); profiles.RowStyle = rowStyle;
         profiles.PreviewMouseLeftButtonDown += (_, e) => { var source = e.OriginalSource as DependencyObject; if (Find<CheckBox>(source) != null || Find<Button>(source) != null || Find<ScrollBar>(source) != null) return; if (Find<DataGridRow>(source)?.Item is ProfileRow p) { p.Selected = !p.Selected; e.Handled = true; } };
         page.Children.Add(profiles); return page;
@@ -165,7 +165,8 @@ sealed class MainWindow : Window
         var modelPanel = new StackPanel { Width = 320, Margin = new(0, 0, 15, 10) }; modelPanel.Children.Add(Note("Model AI")); model.MinHeight = 30; modelPanel.Children.Add(model); model.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => Edited()));
         var keyPanel = new StackPanel { Width = 320, Margin = new(0, 0, 15, 10) }; keyPanel.Children.Add(Note("API key · để trống giữ key đã lưu")); key.MinHeight = 30; key.PasswordChanged += (_, _) => Edited(); keyPanel.Children.Add(key);
         page.Children.Add(Row(modelPanel, keyPanel, Action("Tải model", "load-models", () => Perform("Đang lấy danh sách model…", async api => { var r = await api.Request("models", new()); var current = model.Text; model.Items.Clear(); foreach (var node in r["models"] as JsonArray ?? new()) model.Items.Add(J.S(node)); model.Text = current; return "Chọn model rồi bấm Lưu cài đặt chung."; }))));
-        page.Children.Add(Row(Note("Nghỉ cố định 30–40 phút · 10 lần gửi nghỉ 3 giờ"), Field("Gõ mỗi ký tự · ms", "typingDelayMs", 255), Field("Chờ giữa thao tác · giây", "stepSeconds", 255)));
+        page.Children.Add(Note("Mỗi profile: 5 lượt giới thiệu trong 3 giờ; sau mỗi lượt là 1–2 trả lời thông thường, sau đó đóng GPM nghỉ 4 giờ."));
+        page.Children.Add(Row(Note("3 giờ: 5 giới thiệu + reply xen kẽ · nghỉ 4 giờ"), Field("Gõ mỗi ký tự · ms", "typingDelayMs", 255), Field("Chờ giữa thao tác · giây", "stepSeconds", 255)));
         page.Children.Add(Row(Field("Chờ tìm bài mới · giây", "searchDelaySeconds", 255), Field("Folder ảnh · trống dùng ảnh đi kèm", "imagesFolder", 430), Action("Chọn folder…", "choose-images", () => { var d = new OpenFolderDialog(); if (d.ShowDialog(this) == true) fields["imagesFolder"].Text = d.FolderName; })));
         foreach (var (name, text) in new[] { ("tagHoanxu", "Tag @hoanxu.app · sau mỗi 4 bài ảnh, thêm 1 bài chữ có tag"), ("idleScroll", "Cuộn nhẹ khi nghỉ"), ("idleEngagement", "Thả tim khi chờ · ngẫu nhiên 2–5 bài") }) { var check = new CheckBox { Content = text, Margin = new(0, 0, 0, 12) }; check.Checked += (_, _) => Edited(); check.Unchecked += (_, _) => Edited(); checks[name] = check; page.Children.Add(check); }
         page.Children.Add(new Separator()); page.Children.Add(Note("Bộ cài đặt riêng · chỉ prompt và chủ đề · chọn cho từng profile"));
@@ -363,7 +364,7 @@ sealed class MainWindow : Window
     {
         if (api == null || !loaded || allRows.Count != 0) throw new Exception("Native smoke must start with isolated empty data.");
         model.Text = "cx/gpt-5.6-luna"; await Save(api);
-        var saved = await api.Request("state"); if (J.S(J.O(saved["settings"])["model"]) != "cx/gpt-5.6-luna" || J.S(J.O(J.O(saved["settings"])["runConfig"])["minRestSeconds"]) != "1800") throw new Exception("Native settings save failed.");
+        var saved = await api.Request("state"); if (J.S(J.O(saved["settings"])["model"]) != "cx/gpt-5.6-luna" || J.S(J.O(J.O(saved["settings"])["runConfig"])["minRestSeconds"]) != "120") throw new Exception("Native settings save failed.");
         update = new() { ["currentVersion"] = "0.4.0", ["latestVersion"] = "0.4.1", ["available"] = true, ["installSupported"] = true, ["repository"] = "fixture/tool" }; RenderUpdate();
         if (updateBanner.Visibility != Visibility.Visible || !buttons["install-update-top"].IsEnabled || !updateWarning.Text.Contains("0.4.1")) throw new Exception("Native update warning/button failed.");
         update["available"] = false; update["checkError"] = "Fixture offline"; RenderUpdate();

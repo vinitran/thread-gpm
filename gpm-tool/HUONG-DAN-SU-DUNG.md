@@ -82,7 +82,7 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 2. Điền API key của dịch vụ AI mà tool đang dùng: `https://ai.hoanxu.com/v1`. Không tự thay bằng key của một dịch vụ khác.
 3. Chọn model được key đó hỗ trợ; có thể dùng **Tải danh sách model**. Khi đổi key, lưu trước rồi tải danh sách vì nút tải dùng key đã lưu.
 4. Chọn hoặc tạo bộ **prompt / chủ đề**, sửa nội dung phù hợp rồi bấm **Lưu bộ**.
-5. Người mới có thể giữ mặc định: gõ 60ms, chờ giữa bước 2 giây, nghỉ tìm bài 30 giây, nghỉ sau mỗi comment cố định ngẫu nhiên 30–40 phút.
+5. Người mới có thể giữ mặc định: gõ 60ms, chờ giữa bước 2 giây, nghỉ tìm bài 30 giây, lịch ngẫu nhiên theo chu kỳ 3 giờ, 5 lượt giới thiệu xen kẽ trả lời thông thường.
 6. Chọn bật/tắt **Cuộn nhẹ lên/xuống khi nghỉ** và **Thả tim khi chờ**.
 7. Ảnh: để trống folder để dùng ảnh đi kèm. Folder riêng cần `app_store.png` và ít nhất 2 ảnh khác; bấm **Kiểm tra folder** trước khi lưu.
 8. Bấm **Lưu cài đặt chung**, đợi báo đã lưu.
@@ -107,11 +107,11 @@ Tool bình luận trực tiếp vào bài viết. Chức năng follow đã đư�
 
 Muốn chạy nhiều profile, kiểm tra đăng nhập từng profile và lưu cài đặt chung trước, rồi chọn các profile cần chạy. Thanh thao tác giữ trên màn hình khi cuộn; **Bỏ chọn** xoá toàn bộ lựa chọn. Nếu chọn profile nằm ngoài bộ lọc hiện tại, tool báo số lượng cạnh phần chọn.
 
-Theo dõi **Xem log** ở từng hàng, trạng thái phiên, **Phiên /10**, **Hôm nay / Tổng**, lượt tiếp theo và lịch sử. “Chưa xác minh” nghĩa là đã ghi nhận gửi nhưng chưa xác nhận được comment; kiểm tra bài gốc trước khi thao tác thủ công để tránh trùng.
+Theo dõi **Xem log** ở từng hàng, trạng thái phiên, **Lượt trong chu kỳ**, **Hôm nay / Tổng**, lượt tiếp theo và lịch sử. “Chưa xác minh” nghĩa là đã ghi nhận gửi nhưng chưa xác nhận được comment; kiểm tra bài gốc trước khi thao tác thủ công để tránh trùng.
 
-Mỗi phiên có 10 lần gửi, sau đó tool đóng toàn bộ trình duyệt của profile GPM và nghỉ 3 giờ. Giữ app tool chạy để lưu lịch; hết giờ, tool tự mở lại đúng profile và tiếp tục, áp dụng cả chế độ trực tiếp và extension. Bấm Dừng trong lúc nghỉ sẽ hủy lượt tự mở lại. Mỗi profile có bộ đếm, lịch nghỉ và lịch sử riêng. Thả tim khi nghỉ tối đa 3 bài, cách nhau 20–45 giây; các bước tương tác mặc định cách nhau khoảng 2–3.5 giây. Bỏ qua tương tác nếu không đủ thời gian nghỉ, không rút ngắn nhịp bấm để kịp.
+Mỗi profile có chu kỳ 3 giờ với 5 lượt giới thiệu. Sau mỗi lượt giới thiệu là ngẫu nhiên 1–2 trả lời thông thường chỉ nói về nội dung bài, không dùng prompt quảng bá, không ảnh và không tag. Prompt và cách tạo nội dung giới thiệu giữ nguyên. Lịch 10–15 lượt được phân bố ngẫu nhiên, lưu trong SQLite; hết 3 giờ tool đóng profile GPM và nghỉ 4 giờ rồi tự mở lại, áp dụng cả chạy trực tiếp và extension. Dừng huỷ lượt tự mở lại. Không đăng bù dồn khi bỏ lỡ khung giờ hoặc gặp lỗi; 5 lượt là mục tiêu khi đủ bài và không có lỗi. Thả tim khi nghỉ ngẫu nhiên 2–5 bài, giữ nhịp thao tác hiện có.
 
-Giữ máy, GPM và dashboard hoạt động để tiếp tục đúng lịch. Không chạy automation của extension đồng thời với tool trên cùng profile.
+Giữ máy, GPM và dashboard hoạt động để tiếp tục đúng lịch. Không chạy bộ tự động độc lập của extension cũ đồng thời với tool trên cùng profile.
 
 ## 7. Dừng và xử lý lỗi
 
@@ -126,7 +126,7 @@ Giữ máy, GPM và dashboard hoạt động để tiếp tục đúng lịch. K
 
 Luồng lần đầu: mở GPM → thêm/nhập profile → nhập proxy → Mở trình duyệt → đăng nhập Threads → Cài đặt AI → Lưu và áp dụng → chọn profile → Chạy tự động → theo dõi log.
 
-Thời gian nghỉ sau mỗi bình luận được cố định ngẫu nhiên 30–40 phút, áp dụng cho mọi profile và cả hai chế độ chạy. Cài đặt nghỉ cũ bị bỏ qua; lịch ảnh không rút ngắn khoảng nghỉ. Đủ 10 lần gửi, tool đóng profile GPM nghỉ 3 giờ rồi tự mở lại và chạy tiếp.
+Lịch mới thay thế nhịp nghỉ 30–40 phút và giới hạn phiên 10 lần gửi trước đây. Giữ app và máy hoạt động để chạy đúng lịch; khi thiếu bài hoặc lỗi AI không tăng tốc đăng bù.
 
 Đổi model rồi bấm **Lưu cài đặt chung** sẽ áp dụng chính model đang chọn (Sol, Luna hoặc model khác) cho mọi profile đã thêm và profile mới. Lượt AI đang thực hiện hoàn tất; lần gọi AI tiếp theo dùng model mới. Nhật ký ghi model được dùng khi lọc bài và tạo bình luận. Nếu một profile chưa áp dụng được, giao diện báo lỗi để bấm Lưu thử lại.
 

@@ -121,7 +121,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         filter.addItems(withTitles:["Tất cả","Đang chạy","Đang nghỉ","Cần kiểm tra","Đã dừng"]); filter.target = self; filter.action = #selector(filterChanged)
         let tools = row([search,filter,button("Chọn tất cả","select-all",#selector(selectAllProfiles)),button("Bỏ chọn","clear-selection",#selector(clearSelection))]); search.widthAnchor.constraint(greaterThanOrEqualToConstant:300).isActive = true; addWide(tools,to:page)
         table.identifier = NSUserInterfaceItemIdentifier("profiles-table"); table.delegate = self; table.dataSource = self; table.allowsMultipleSelection = true; table.rowHeight = 48; table.usesAlternatingRowBackgroundColors = true; table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        for (key,title,width) in [("name","Profile",220.0),("settingPresetName","Bộ cài đặt",150.0),("proxy","Proxy",160.0),("status","Trạng thái / thao tác",350.0),("counts","Hôm nay / tổng",130.0)] { let c = NSTableColumn(identifier:NSUserInterfaceItemIdentifier(key)); c.title = title; c.width = width; c.minWidth = 80; table.addTableColumn(c) }
+        for (key,title,width) in [("name","Profile",220.0),("settingPresetName","Bộ cài đặt",150.0),("proxy","Proxy",160.0),("status","Trạng thái / thao tác",350.0),("counts","Hôm nay / tổng · chu kỳ",270.0)] { let c = NSTableColumn(identifier:NSUserInterfaceItemIdentifier(key)); c.title = title; c.width = width; c.minWidth = 80; table.addTableColumn(c) }
         addWide(scroll(table),to:page)
         addWide(row([selection,button("Mở trình duyệt","open-selected",#selector(openSelected)),button("Chạy thử · không đăng","dry-run-selected",#selector(dryRunSelected)),button("Dừng & đóng","stop-selected",#selector(stopSelected))]),to:page)
         addWide(row([button("Chạy tự động","start-selected",#selector(startSelected)),button("Chạy bằng extension","start-extension",#selector(startExtensionSelected)),label("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")]),to:page)
@@ -139,7 +139,8 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         addWide(field("GPM Local API · đúng địa chỉ trong cài đặt GPM","gpmApi",width:600),to:form)
         addWide(row([button("Kiểm tra / tìm GPM","check-gpm",#selector(checkGpm)),label("Mở GPM trước · tìm cổng 9495 hoặc 19995")]),to:form)
         addWide(row([field("Model AI","model",width:270),field("API key · để trống để giữ key đã lưu","apiKey",secure:true,width:300),button("Tải model…","load-models",#selector(loadModels))]),to:form)
-        addWide(row([label("Nghỉ cố định 30–40 phút · 10 lần gửi nghỉ 3 giờ"),field("Gõ mỗi ký tự · ms","typingDelayMs"),field("Chờ giữa thao tác · giây","stepSeconds")]),to:form)
+        addWide(label("Mỗi profile: 5 lượt giới thiệu trong 3 giờ; sau mỗi lượt là 1–2 trả lời thông thường, sau đó đóng GPM nghỉ 4 giờ."),to:form)
+        addWide(row([label("3 giờ: 5 giới thiệu + reply xen kẽ · nghỉ 4 giờ"),field("Gõ mỗi ký tự · ms","typingDelayMs"),field("Chờ giữa thao tác · giây","stepSeconds")]),to:form)
         addWide(row([field("Chờ tìm bài mới · giây","searchDelaySeconds"),field("Folder ảnh · trống dùng ảnh đi kèm","imagesFolder",width:330),button("Chọn folder…","choose-images",#selector(chooseImages))]),to:form)
         let idle = NSButton(checkboxWithTitle:"Cuộn nhẹ khi nghỉ",target:self,action:#selector(settingsEdited)), likes = NSButton(checkboxWithTitle:"Thả tim khi chờ · ngẫu nhiên 2–5 bài",target:self,action:#selector(settingsEdited)); checks["idleScroll"] = idle; checks["idleEngagement"] = likes; addWide(row([idle,likes]),to:form)
         let tag = NSButton(checkboxWithTitle:"Tag @hoanxu.app · sau mỗi 4 bài ảnh, thêm 1 bài chữ có tag",target:self,action:#selector(settingsEdited)); checks["tagHoanxu"] = tag; addWide(tag,to:form)
@@ -267,7 +268,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let p = visible[row],v = object(p["view"]),counts = object(v["counts"]),key = tableColumn?.identifier.rawValue ?? ""
         let text: String
-        switch key { case "name": text = string(p["name"]); case "settingPresetName": text = string(p["settingPresetName"]); case "proxy": text = string(p["proxy"]).isEmpty ? "Không proxy" : string(p["proxy"]); case "counts": text = "\(string(counts["today"])) / \(string(counts["total"]))"; default: text = profileStatus(p) }
+        switch key { case "name": text = string(p["name"]); case "settingPresetName": text = string(p["settingPresetName"]); case "proxy": text = string(p["proxy"]).isEmpty ? "Không proxy" : string(p["proxy"]); case "counts": text = "\(string(counts["today"])) / \(string(counts["total"])) · Giới thiệu \(string(counts["promotions"]))/5 · Trả lời \(string(counts["regular"]))"; default: text = profileStatus(p) }
         let cell = NSTableCellView(),label = NSTextField(labelWithString:text); label.lineBreakMode = .byTruncatingTail; label.font = key == "name" ? .systemFont(ofSize:13,weight:.semibold) : .systemFont(ofSize:12); cell.textField = label; pin(label,in:cell,inset:7); cell.toolTip = text; return cell
     }
     func tableViewSelectionDidChange(_ notification: Notification) { if selecting { return }; let shown = Set(visible.map { string($0["id"]) }); selected.subtract(shown); for index in table.selectedRowIndexes { selected.insert(string(visible[index]["id"])) }; controls(); renderLogs() }

@@ -98,7 +98,7 @@ test('backend rest lifecycle keeps the timer alive while GPM is closed for eithe
   const scheduled=[];let time=f.now();runner.d.now=()=>time;runner.d.schedule=async at=>scheduled.push(at);
   runner.d.newSource=async()=>{calls.push('tab');return 9;};
   try{
-   await runner.load();runner.state.stats.sent=10;await runner.tick();
+   await runner.load();time=runner.state.commentCycle.endsAt;await runner.tick();
    const until=f.store.value.autoRun.sessionRest.until;
    assert.deepEqual(calls,['close']);assert.equal(scheduled.at(-1),until);assert.equal(f.store.value.autoRun.status,'running');
    time=until-1;await runner.tick();assert.deepEqual(calls,['close']);

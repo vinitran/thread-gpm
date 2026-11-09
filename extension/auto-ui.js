@@ -9,7 +9,7 @@ export function initAutoUI({send,beforeStart=()=>{},onState=()=>{},onError=()=>{
   const seconds=state.activity?.since?Math.max(0,Math.floor((Date.now()-state.activity.since)/1000)):0;
   $('auto-elapsed').textContent=['running','stopping'].includes(state.status)?`Bước hiện tại: ${Math.floor(seconds/60)} phút ${seconds%60} giây`:'';
   if(state.status==='running'&&state.nextAt){const remaining=Math.max(0,Math.ceil((state.nextAt-Date.now())/1000));$('auto-next').textContent=remaining?`Tiếp tục sau ${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`:'Đang chờ Chrome kích hoạt lượt tiếp theo…';}
-  if(state.status==='running'&&!state.sessionRest&&state.nextImageAt)$('auto-next').textContent+=' · Lượt có ảnh: '+new Date(state.nextImageAt).toLocaleTimeString('vi-VN');
+
   if(!(state.status==='running'&&state.nextAt))$('auto-next').textContent=state.current?`Bài đang xử lý: @${state.current.post.author}`:'';
  }
  function render(state,receipts,tabLifecycle=[]){
@@ -18,11 +18,11 @@ export function initAutoUI({send,beforeStart=()=>{},onState=()=>{},onError=()=>{
   const active=['running','stopping'].includes(state.status);
   $('auto-begin').disabled=active;$('auto-end').disabled=!active;
   for(const id of ['auto-keywords','auto-idle-scroll','auto-typing-delay','auto-search-delay'])$(id).disabled=active;
-  $('auto-run-status').textContent=state.sessionRest&&active?'Nghỉ giữa phiên · 3 giờ':statusNames[state.status]||state.status;
+  $('auto-run-status').textContent=state.sessionRest&&active?'Nghỉ giữa phiên · 4 giờ':statusNames[state.status]||state.status;
   renderActivity();
   const all=Object.values(receipts),posted=all.filter(r=>(r.state==='posted'&&r.comment_url)||r.state==='sent_unverified'),today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'});
   const daily=posted.filter(r=>new Date(r.verified_at||r.created_at).toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'})===today);
-  $('auto-today').textContent=daily.length;$('auto-total').textContent=posted.length;$('auto-session').textContent=sessionSendCount(state.stats)+' / 10';$('auto-unknown').textContent=all.filter(r=>r.state!=='posted').length;
+  $('auto-today').textContent=daily.length;$('auto-total').textContent=posted.length;$('auto-session').textContent=`${state.stats?.promotions||0}/5 giới thiệu · ${state.stats?.regular||0} trả lời`;$('auto-unknown').textContent=all.filter(r=>r.state!=='posted').length;
   $('auto-log').textContent=(state.events||[]).map(e=>`${new Date(e.time).toLocaleTimeString('vi-VN')} · ${e.message}`).join('\n')||'Bắt đầu để tự quét trang chủ Threads theo từ khóa.';
   const list=$('auto-history');list.replaceChildren();
   for(const r of all.sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,30)){

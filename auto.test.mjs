@@ -1,12 +1,12 @@
 import {collectFreshPosts} from './extension/feed-collector.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AutoRunner,AUTO_DEFAULTS,eligible,autoConfig,searchWaitMs} from './extension/auto-runner.js';
+import {AutoRunner,AUTO_DEFAULTS,eligible,autoConfig,searchWaitMs,createCommentCycle,CYCLE_ACTIVE_MS,CYCLE_REST_MS} from './extension/auto-runner.js';
 const p={url:'https://www.threads.com/@shopper/post/abc',author:'shopper',text:'Mua sắm quần áo mới ở đâu đẹp các bạn?',images:[]};
 function fixture(){
  let saved,time=1000,receipts={},posts=0,checks=0;
  const deps={now:()=>time,random:()=>0,read:async()=>structuredClone(saved),write:async s=>{saved=structuredClone(s);},prepare:async()=>{},source:async()=>1,closeSource:async()=>{},newSource:async()=>9,replaceSource:async(old,options)=>{await options.onCreated(2);return 2;},schedule:async()=>{},clear:async()=>{},keepAlive:()=>1,endKeepAlive:()=>{},receipts:async()=>structuredClone(receipts),capture:async()=>({posts:[p,p],self:'me'}),scroll:async()=>{},idleScroll:async()=>{},refresh:async()=>{},savePosts:async()=>{},classify:async posts=>posts.map(p=>p.url),generate:async()=>({text:'response'}),post:async url=>{posts++;return receipts[url]={state:'posted',comment_url:'https://www.threads.com/@me/post/reply',verified_at:'2026-10-06T00:00:00Z'};},check:async url=>{checks++;return receipts[url];}};
- return {deps,runner:new AutoRunner(deps),advance(ms=1800000){time+=ms;},saved:()=>saved,setSaved:s=>{saved=s;},receipts,posts:()=>posts,checks:()=>checks};
+ return {deps,runner:new AutoRunner(deps),advance(ms){time=ms===undefined?Math.max(time+1,saved?.nextAt||0,!saved?.current&&!saved?.recovery?(saved?.commentCycle?.slots[saved.commentCycle.index]?.at||0):0):time+ms;},saved:()=>saved,setSaved:s=>{saved=s;},receipts,posts:()=>posts,checks:()=>checks};
 }
 test('filters three requested groups, own posts and every prior receipt',()=>{
  assert.equal(eligible(p,AUTO_DEFAULTS,'me',{},{}),true);
@@ -15,7 +15,7 @@ test('filters three requested groups, own posts and every prior receipt',()=>{
  assert.equal(eligible({...p,text:'Hôm nay tâm trạng không vui chút nào'},AUTO_DEFAULTS,'me',{},{}),true); // relevance is decided by AI
  assert.equal(eligible(p,AUTO_DEFAULTS,'shopper',{},{}),false);
  for(const state of ['posted','unknown','submitting'])assert.equal(eligible(p,AUTO_DEFAULTS,'me',{}, {[p.url]:{state}}),false);
- assert.equal(autoConfig({maxComments:10}).maxComments,undefined);assert.equal(autoConfig({minRestSeconds:180,maxRestSeconds:120}).minRestSeconds,1800);
+ assert.equal(autoConfig({maxComments:10}).maxComments,undefined);assert.equal(autoConfig({minRestSeconds:180,maxRestSeconds:120}).minRestSeconds,120);
 });
 test('one URL is selected once and runner keeps running after success',async()=>{
  const f=fixture();await f.runner.start({maxComments:1});await f.runner.tick();assert.equal(f.posts(),0);
@@ -48,12 +48,10 @@ test('temporary AI failure backs off and retries before any submission',async()=
  f.advance();await f.runner.tick();assert.equal(f.posts(),1);assert.equal(f.saved().status,'running');
 });
 
-test('session caps ten sends and Stop cancels continuation',async()=>{
+test('cycle caps promotional sends at five and Stop cancels continuation',async()=>{
  const f=fixture();let index=0;f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});
- await f.runner.start({maxComments:10});
- for(let i=0;i<10&&f.posts()<10;i++){f.advance();await f.runner.tick();}
- assert.equal(f.posts(),10);assert.equal(f.saved().status,'running');
- await f.runner.stop();f.advance();await f.runner.tick();assert.equal(f.posts(),10);assert.equal(f.saved().status,'stopped');
+ await f.runner.start();for(let i=0;i<10;i++){f.advance();await f.runner.tick();}
+ assert.equal(f.posts(),10);assert.equal(f.saved().stats.promotions,5);assert.equal(f.saved().stats.regular,5);await f.runner.stop();f.advance(CYCLE_ACTIVE_MS+CYCLE_REST_MS);await f.runner.tick();assert.equal(f.posts(),10);
 });
 test('empty feed refreshes and schedules another scan instead of completing',async()=>{
  const f=fixture();let refreshes=0;f.deps.capture=async()=>({posts:[],self:'me'});f.deps.refresh=async()=>{refreshes++;};
@@ -68,7 +66,7 @@ test('activity log records search, AI, upload and rest with timestamps',async()=
  await f.runner.start();f.advance();await f.runner.tick();
  const state=f.saved();assert.equal(state.activity.phase,'resting');assert.ok(state.nextAt>state.activity.since);
  const messages=state.events.map(e=>e.message).join('\n');
- for(const phrase of ['Đang lấy đầy đủ','Đang gọi AI','Đã nhận response','Đang gắn 3 ảnh','Đang nghỉ'])assert.ok(messages.includes(phrase));
+ for(const phrase of ['Đang lấy đầy đủ','Đang gọi AI','Đã nhận response','Đang gắn 3 ảnh','chờ lượt'])assert.ok(messages.includes(phrase));
  assert.ok(state.events.every(e=>Number.isFinite(Date.parse(e.time))));
 });
 test('repeated progress is deduplicated and logs survive reopening runner',async()=>{
@@ -108,19 +106,10 @@ test('idle actions can be disabled independently of automatic posting',async()=>
  f.advance();await f.runner.tick();assert.equal(f.posts(),1);
 });
 
-test('fixed 30–40 minute cadence ignores legacy controls and survives reload without changing deadline',async()=>{
- assert.equal(AUTO_DEFAULTS.minRestSeconds,1800);assert.equal(AUTO_DEFAULTS.maxRestSeconds,2400);
- assert.equal(autoConfig({restAverageSeconds:0,minRestSeconds:1,maxRestSeconds:2}).minRestSeconds,1800);
- for(const [random,delay] of [[0,1800000],[1,2400000]]){
-  const f=fixture();await f.runner.start();f.deps.random=()=>random;f.advance();await f.runner.tick();
-  assert.equal(f.saved().nextAt-f.deps.now(),delay);
-  const until=f.saved().nextAt;f.advance(1000);const resumed=new AutoRunner(f.deps);await resumed.load();assert.equal(resumed.state.nextAt,until);
- }
- const f=fixture();await f.runner.start();const old=f.saved();old.activity={phase:'resting'};old.nextAt=f.deps.now()+120000;old.config.restAverageSeconds=150;f.setSaved(old);
- const resumed=new AutoRunner(f.deps);await resumed.load();assert.equal(resumed.state.nextAt-f.deps.now(),1800000);
- f.advance(1000);const again=new AutoRunner(f.deps);await again.load();assert.equal(again.state.nextAt,resumed.state.nextAt);
+test('cycle pacing ignores obsolete saved rest controls and preserves its deadline after reload',async()=>{
+ assert.equal(AUTO_DEFAULTS.minRestSeconds,120);assert.equal(AUTO_DEFAULTS.maxRestSeconds,180);assert.equal(autoConfig({restAverageSeconds:0,minRestSeconds:1}).minRestSeconds,120);
+ const f=fixture();await f.runner.start();f.advance();await f.runner.tick();const until=f.saved().nextAt;f.advance(1000);const resumed=new AutoRunner(f.deps);await resumed.load();assert.equal(resumed.state.nextAt,until);
 });
-
 test('search wait uses configured seconds after empty batch and exhausted queue',async()=>{
  assert.equal(autoConfig().searchDelaySeconds,30);
  for(const invalid of [0,181,NaN])assert.throws(()=>autoConfig({searchDelaySeconds:invalid}));
@@ -149,7 +138,7 @@ test('unknown submission cooldown never scrolls source as idle activity',async()
 });
 
 test('old forty-sixty second settings migrate to two-three minutes',()=>{
- const c=autoConfig({minRestSeconds:40,maxRestSeconds:60});assert.equal(c.minRestSeconds,1800);assert.equal(c.maxRestSeconds,2400);
+ const c=autoConfig({minRestSeconds:40,maxRestSeconds:60});assert.equal(c.minRestSeconds,120);assert.equal(c.maxRestSeconds,180);
 });
 
  test('unverified Post click continues cooldown and excludes that URL on next search',async()=>{
@@ -214,54 +203,37 @@ test('random search interval varies around setting with bounded extremes',()=>{
  assert.equal(searchWaitMs(1,()=>0),1000);assert.equal(searchWaitMs(180,()=>1),180000);
 });
 
-test('10 sends closes source, waits three hours and starts fresh while preserving history',async()=>{
- const f=fixture();let index=0,closed=[],opened=0;f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});f.deps.closeSource=async id=>closed.push(id);f.deps.newSource=async()=>{opened++;return 9;};
- await f.runner.start();for(let i=0;i<10;i++){f.advance();await f.runner.tick();}
- assert.equal(f.posts(),10);assert.equal(f.saved().status,'running');assert.deepEqual(closed,[1]);assert.equal(f.saved().source,null);assert.equal(f.saved().nextAt-f.deps.now(),10800000);
- const history=Object.keys(f.saved().history);f.advance(10799999);await f.runner.tick();assert.equal(opened,0);assert.equal(f.posts(),10);
- f.advance(1);await f.runner.tick();assert.equal(opened,1);assert.equal(f.saved().source,9);assert.equal(f.saved().stats.posted,0);assert.equal(f.saved().sessionRest,null);assert.ok(history.every(url=>f.saved().history[url]));
- f.advance(15000);await f.runner.tick();assert.equal(f.posts(),11);
+test('five promotions with one or two regular replies fill a three-hour cycle, then rest four hours',async()=>{
+ for(const random of [()=>0,()=>.99]){
+  const f=fixture(),modes=[];let index=0,opened=0;const closed=[];f.deps.random=random;
+  f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});f.deps.generate=async(post,images,tag,kind)=>modes.push({images,tag,kind});f.deps.closeSource=async id=>closed.push(id);f.deps.newSource=async()=>{opened++;return 9;};
+  await f.runner.start();const plan=structuredClone(f.saved().commentCycle);
+  for(let i=0;i<plan.slots.length;i++){f.advance();await f.runner.tick();}
+  assert.equal(f.saved().stats.promotions,5);assert.equal(f.saved().stats.regular,random()===0?5:10);assert.equal(f.saved().sessionRest,undefined);assert.deepEqual(modes.map(m=>m.kind),plan.slots.map(s=>s.kind));assert.ok(modes.every(m=>m.images===(m.kind==='promotion')&&!m.tag));
+  const history=Object.keys(f.saved().history);f.advance(plan.endsAt-f.deps.now());await f.runner.tick();assert.deepEqual(closed,[1]);assert.equal(f.saved().source,null);assert.equal(f.saved().sessionRest.until,plan.endsAt+CYCLE_REST_MS);
+  const until=f.saved().sessionRest.until;const resumed=new AutoRunner(f.deps);f.advance(CYCLE_REST_MS-1);await resumed.tick();assert.equal(opened,0);assert.equal(f.saved().sessionRest.until,until);
+  f.advance(1);await resumed.tick();assert.equal(opened,1);assert.equal(f.saved().source,9);assert.equal(f.saved().stats.posted,0);assert.equal(f.saved().sessionRest,null);assert.ok(history.every(url=>f.saved().history[url]));assert.equal(f.saved().commentCycle.endsAt,f.deps.now()+CYCLE_ACTIVE_MS);
+ }
 });
-test('unverified 10th send enters rest even if returning home failed',async()=>{
- const f=fixture();f.deps.post=async url=>f.receipts[url]={state:'sent_unverified',navigation_error:'timeout'};
- await f.runner.start();f.runner.state.stats.sent=9;f.runner.state.stats.unknown=9;
- f.advance();await f.runner.tick();assert.equal(f.saved().status,'running');assert.equal(f.saved().source,null);assert.equal(f.saved().stats.sent,10);assert.ok(f.saved().sessionRest);
+test('Stop during four-hour rest cancels automatic reopening and idle actions',async()=>{
+ const f=fixture();let opened=0,idle=0;f.deps.newSource=async()=>{opened++;return 9;};f.deps.idleScroll=async()=>idle++;
+ await f.runner.start();f.advance(CYCLE_ACTIVE_MS);await f.runner.tick();assert.ok(f.saved().sessionRest);f.advance(1000);await f.runner.tick();assert.equal(idle,0);await f.runner.stop();f.advance(CYCLE_REST_MS);await f.runner.tick();assert.equal(opened,0);assert.equal(f.saved().status,'stopped');
 });
-test('worker reload preserves three-hour deadline and performs no idle scrolling',async()=>{
- const f=fixture();let idle=0;f.deps.idleScroll=async()=>idle++;await f.runner.start();f.runner.state.stats.posted=10;f.advance();await f.runner.tick();const until=f.saved().sessionRest.until;
- const resumed=new AutoRunner(f.deps);f.advance(60000);await resumed.tick();assert.equal(f.saved().sessionRest.until,until);assert.equal(f.saved().nextAt,until);assert.equal(idle,0);assert.equal(f.posts(),0);
+test('random schedule persists on restart and ordinary replies never carry image or tag',async()=>{
+ const f=fixture();let index=0;const modes=[];f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});f.deps.generate=async(post,images,tag,kind)=>modes.push({images,tag,kind});
+ await f.runner.start({tagHoanxu:true});for(let i=0;i<8;i++){f.advance();await f.runner.tick();}
+ assert.equal(f.saved().imageRepliesSinceTag,4);const original=f.saved().commentCycle;f.runner=new AutoRunner(f.deps);assert.deepEqual((await f.runner.load()).commentCycle,original);
+ f.advance();await f.runner.tick();assert.deepEqual(modes.at(-1),{images:false,tag:true,kind:'promotion'});assert.equal(f.saved().imageRepliesSinceTag,0);
+ f.advance();await f.runner.tick();assert.deepEqual(modes.at(-1),{images:false,tag:false,kind:'regular'});
 });
-test('Stop during three-hour rest cancels automatic reopening',async()=>{
- const f=fixture();let opened=0;f.deps.newSource=async()=>{opened++;return 9;};await f.runner.start();f.runner.state.stats.posted=10;f.advance();await f.runner.tick();await f.runner.stop();f.advance(10800000);await f.runner.tick();assert.equal(opened,0);assert.equal(f.saved().status,'stopped');
+test('cycle schedule is ordered, randomized and bounded, with exactly five promotion groups',()=>{
+ const plans=[];for(const value of [0,.25,.7,.99]){const plan=createCommentCycle(12345,()=>value);plans.push(plan.slots.map(s=>s.at));assert.equal(plan.slots.filter(s=>s.kind==='promotion').length,5);let regular=0;for(const [i,slot] of plan.slots.entries()){assert.ok(slot.at>plan.startedAt&&slot.at<plan.endsAt);assert.ok(slot.expiresAt>slot.at);if(i)assert.ok(slot.at>plan.slots[i-1].at);if(slot.kind==='promotion'){if(i)assert.ok(regular===1||regular===2);regular=0;}else regular++;}assert.ok(regular===1||regular===2);}
+ assert.equal(new Set(plans.map(p=>JSON.stringify(p))).size,4);
 });
-
-test('image deadline never shortens the fixed comment rest',async()=>{
- const f=fixture(),modes=[],generationModes=[];let index=0;
- f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});
- f.deps.generate=async(post,mode)=>{generationModes.push(mode);};
- f.deps.post=async(url,step,cont,typing,mode)=>{modes.push(mode);return f.receipts[url]={state:'sent_unverified',clicked_at:new Date(f.deps.now()).toISOString()};};
- await f.runner.start();f.advance(15000);await f.runner.tick();const deadline=f.saved().nextImageAt;assert.equal(deadline,f.deps.now()+360000);
- f.advance(360000);await f.runner.tick();assert.deepEqual(modes,[true]);
- for(let i=0;i<3;i++){f.advance(1800000);await f.runner.tick();}
- assert.deepEqual(modes,[true,true,true,true]);assert.deepEqual(generationModes,modes);assert.equal(f.saved().stats.sent,4);
- assert.ok(f.saved().nextImageAt>deadline);const resumed=new AutoRunner(f.deps);assert.equal((await resumed.load()).nextImageAt,f.saved().nextImageAt);
+test('offline gaps skip expired slots instead of catching up, and an AI call crossing the cutoff never posts',async()=>{
+ const f=fixture();await f.runner.start();f.advance(CYCLE_ACTIVE_MS/2);await f.runner.tick();assert.ok(f.saved().commentCycle.index>=4);assert.ok(f.posts()<=1);
+ const g=fixture();g.deps.generate=async()=>g.advance(CYCLE_ACTIVE_MS);await g.runner.start();g.advance();await g.runner.tick();assert.equal(g.posts(),0);assert.ok(g.saved().sessionRest);
 });
-
-test('optional tag defaults off and cycles after four image sends across restarts',async()=>{
- assert.equal(autoConfig().tagHoanxu,false);assert.throws(()=>autoConfig({tagHoanxu:'true'}));
- const f=fixture(),modes=[];let index=0;
- f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});
- f.deps.generate=async(post,images,tag)=>{modes.push({images,tag});};
- await f.runner.start({tagHoanxu:true});
- for(let i=0;i<4;i++){f.advance();await f.runner.tick();}
- assert.equal(f.saved().imageRepliesSinceTag,4);
- await f.runner.stop();f.runner=new AutoRunner(f.deps);await f.runner.start({tagHoanxu:true});
- f.advance();await f.runner.tick();assert.deepEqual(modes[4],{images:false,tag:true});assert.equal(f.saved().imageRepliesSinceTag,0);
- for(let i=0;i<5;i++){f.advance();await f.runner.tick();}
- assert.deepEqual(modes.map(m=>m.tag),[false,false,false,false,true,false,false,false,false,true]);
- f.runner.state.config.tagHoanxu=false;f.runner.state.imageRepliesSinceTag=4;f.advance();await f.runner.tick();assert.equal(modes.at(-1).tag,false);
-});
-
 test('failed image send does not advance optional tag counter',async()=>{
  const f=fixture();f.deps.post=async()=>{throw Error('HTTP 403');};
  await f.runner.start({tagHoanxu:true});f.advance();await f.runner.tick();assert.equal(f.saved().imageRepliesSinceTag,0);
@@ -272,7 +244,7 @@ test('failed after-Post verification continues normal cadence without rechecking
  f.deps.post=async url=>f.receipts[url]={state:'sent_unverified',checked_at:'2026-10-09T00:00:00Z',verification_error:'No matching comment',clicked_at:'2026-10-09T00:00:00Z'};
  f.deps.replaceSource=async()=>{recoveries++;return 2;};await f.runner.start();f.advance();await f.runner.tick();
  assert.equal(f.saved().status,'running');assert.equal(f.saved().current,null);assert.equal(f.saved().source,1);assert.equal(f.checks(),0);assert.equal(recoveries,0);assert.equal(f.saved().stats.sent,1);
- assert.equal(f.saved().nextAt-f.deps.now(),1800000);assert.equal(f.saved().history[p.url].state,'sent_unverified');
+ assert.equal(f.saved().nextAt,f.saved().commentCycle.slots[1].at);assert.equal(f.saved().history[p.url].state,'sent_unverified');
 });
 
 test('removed follow setting is discarded even when older saved settings enable it',()=>{
@@ -294,11 +266,23 @@ test('Stop while the source is opening cannot be overwritten by startup completi
  assert.equal(f.runner.state.status,'stopped');assert.equal(scheduled,0);
 });
 
+
+test('an uncertain send at the end of a cycle consumes its slot once and enters rest without a recheck loop',async()=>{
+ const f=fixture();let index=0;f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});f.deps.post=async url=>f.receipts[url]={state:'unknown'};
+ await f.runner.start();f.advance();await f.runner.tick();assert.equal(f.saved().commentCycle.index,1);const persisted=f.saved().commentCycle;
+ f.runner=new AutoRunner(f.deps);assert.deepEqual((await f.runner.load()).commentCycle,persisted);f.advance(persisted.endsAt-f.deps.now());await f.runner.tick();assert.ok(f.saved().sessionRest);assert.equal(f.checks(),1);assert.equal(f.saved().commentCycle.index,1);
+});
+test('Stop while saving skipped slots completes cleanly without posting',async()=>{
+ const f=fixture();await f.runner.start();f.advance(CYCLE_ACTIVE_MS/2);const write=f.deps.write;let stopped=false;
+ f.deps.write=async value=>{await write(value);if(!stopped){stopped=true;f.runner.stopEpoch++;f.runner.state.status='stopping';}};
+ await f.runner.tick();assert.equal(f.saved().status,'stopped');assert.equal(f.posts(),0);
+});
+
 test('GPM session lifecycle closes entire profile and reopens only after the persisted deadline',async()=>{
  const f=fixture(),calls=[];f.deps.closeSession=async()=>calls.push('close-profile');f.deps.openSession=async()=>calls.push('open-profile');
  f.deps.closeSource=async()=>assert.fail('must close the profile rather than its tab');
  f.deps.newSource=async()=>{calls.push('new-tab');return 12;};
- await f.runner.start();f.runner.state.stats.sent=10;f.advance();await f.runner.tick();
+ await f.runner.start();f.advance(CYCLE_ACTIVE_MS);await f.runner.tick();
  const until=f.saved().sessionRest.until;
  assert.deepEqual(calls,['close-profile']);assert.equal(f.saved().sessionRest.profileClosed,true);assert.equal(f.saved().source,null);
  const resumed=new AutoRunner(f.deps);f.advance(60000);await resumed.tick();
@@ -307,7 +291,7 @@ test('GPM session lifecycle closes entire profile and reopens only after the per
  assert.deepEqual(calls,['close-profile','open-profile','new-tab']);assert.equal(f.saved().source,12);assert.equal(f.saved().stats.sent,0);
 });
 test('old tab-only rest is upgraded to closing GPM without resetting the deadline',async()=>{
- const f=fixture();await f.runner.start();f.runner.state.stats.sent=10;f.advance();await f.runner.tick();
+ const f=fixture();await f.runner.start();f.advance(CYCLE_ACTIVE_MS);await f.runner.tick();
  const until=f.saved().sessionRest.until;let closed=0;f.deps.closeSession=async()=>closed++;
  const resumed=new AutoRunner(f.deps);f.advance(1000);await resumed.tick();
  assert.equal(closed,1);assert.equal(f.saved().sessionRest.profileClosed,true);assert.equal(f.saved().sessionRest.until,until);
@@ -315,25 +299,19 @@ test('old tab-only rest is upgraded to closing GPM without resetting the deadlin
 test('failed GPM close retries after one minute without opening or extending rest',async()=>{
  const f=fixture(),scheduled=[];let attempts=0;f.deps.schedule=async at=>scheduled.push(at);
  f.deps.closeSession=async()=>{if(++attempts===1)throw Error('GPM busy');};f.deps.openSession=async()=>assert.fail('too early');
- await f.runner.start();f.runner.state.stats.sent=10;f.advance();await f.runner.tick();
+ await f.runner.start();f.advance(CYCLE_ACTIVE_MS);await f.runner.tick();
  const until=f.saved().sessionRest.until;assert.equal(f.saved().sessionRest.profileClosed,undefined);assert.equal(scheduled.at(-1),f.deps.now()+60000);
  f.advance(60000);await f.runner.tick();assert.equal(attempts,2);assert.equal(f.saved().sessionRest.until,until);assert.equal(scheduled.at(-1),until);
 });
 test('Stop during GPM resume prevents creating a new Threads tab',async()=>{
  const f=fixture();f.deps.closeSession=async()=>{};f.deps.openSession=async()=>f.runner.stop();f.deps.newSource=async()=>assert.fail('stopped');
- await f.runner.start();f.runner.state.stats.sent=10;f.advance();await f.runner.tick();f.advance(10800000);await f.runner.tick();assert.equal(f.saved().status,'stopped');
+ await f.runner.start();f.advance(CYCLE_ACTIVE_MS);await f.runner.tick();f.advance(CYCLE_REST_MS);await f.runner.tick();assert.equal(f.saved().status,'stopped');
 });
 
-test('early image deadline and unexpected wakeups cannot send a comment before 30 minutes',async()=>{
- const f=fixture();let index=0;f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});
- await f.runner.start({restAverageSeconds:0});f.advance(15000);await f.runner.tick();assert.equal(f.posts(),1);
- const until=f.saved().nextAt;f.advance(1799999);f.runner.state.nextAt=f.deps.now();await f.runner.tick();
- assert.equal(f.posts(),1);assert.equal(f.runner.state.nextAt,until);
- f.advance(1);await f.runner.tick();assert.equal(f.posts(),2);
-});
-test('recovery after a sent comment preserves the 30-minute deadline',async()=>{
- const f=fixture();f.deps.post=async url=>f.receipts[url]={state:'sent_unverified',navigation_error:'timeout'};
- await f.runner.start();f.advance(15000);await f.runner.tick();
- assert.equal(f.saved().source,2);assert.equal(f.saved().stats.sent,1);assert.equal(f.saved().nextAt-f.deps.now(),1800000);
- const deadline=f.saved().nextAt;const resumed=new AutoRunner(f.deps);await resumed.load();assert.equal(resumed.state.nextAt,deadline);
+
+test('migration replaces an obsolete 40-minute wait and reserves an in-flight old submission',async()=>{
+ const f=fixture();await f.runner.start();const state=f.saved();delete state.commentCycle;state.nextAt=f.deps.now()+2400000;f.setSaved(state);
+ const resumed=new AutoRunner(f.deps);await resumed.load();assert.equal(resumed.state.nextAt,resumed.state.commentCycle.slots[0].at);const plan=structuredClone(resumed.state.commentCycle);
+ const g=fixture();state.current={post:p,phase:'posting'};g.setSaved(state);const inFlight=new AutoRunner(g.deps);await inFlight.load();assert.equal(inFlight.state.commentCycle.index,1);
+ assert.equal(inFlight.state.current.phase,'posting');assert.ok(plan.slots.length>=10);
 });
