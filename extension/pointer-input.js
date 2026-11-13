@@ -1,9 +1,29 @@
 // Pure DOM inspection, shared by CDP and the managed Chrome extension.
-export function pointerTarget(token){
+export function pointerTarget(token,exactScroller=false,preferredPoint){
  const e=document.querySelector('[data-hoanxu-pointer="'+token+'"]');if(!e||!e.isConnected)throw Error('Mục tiêu chuột không còn trên trang.');
  const r=e.getBoundingClientRect(),style=getComputedStyle(e);
  if(!r.width||!r.height||style.visibility==='hidden'||style.display==='none')throw Error('Mục tiêu chuột đang ẩn.');
  const viewport={width:innerWidth,height:innerHeight},center={x:(r.left+r.right)/2,y:(r.top+r.bottom)/2};
+ if(exactScroller){
+  const region=document.querySelector('[data-hoanxu-scroll-region="'+token+'"]');
+  const root=document.scrollingElement,box=region===root?{left:0,right:innerWidth,top:0,bottom:innerHeight}:region?.getBoundingClientRect();
+  const scrollMax=Math.max(0,e.scrollHeight-e.clientHeight);
+  if(!scrollMax||e!==root&&!/^(auto|scroll|overlay)$/.test(style.overflowY))return {scrollPoint:null,scrollTop:e.scrollTop,scrollMax};
+  const left=Math.max(0,box?.left??0),right=Math.min(innerWidth,box?.right??0),top=Math.max(0,box?.top??0),bottom=Math.min(innerHeight,box?.bottom??0);
+  const accepts=({x,y})=>{
+   if(!region||!e.contains(region)||x<=left||x>=right||y<=top||y>=bottom)return false;
+   const hit=document.elementFromPoint(x,y);
+   if(!hit||!region.contains(hit)||hit.closest('aside,nav,[role="complementary"],[role="navigation"],[role="dialog"],[role="menu"],[aria-modal="true"]'))return false;
+   // Do not send a wheel event over a nested scrolling area or an overlapping column.
+   for(let n=hit;n&&n!==e;n=n.parentElement){
+    const overflow=getComputedStyle(n).overflowY;
+    if(/^(auto|scroll|overlay)$/.test(overflow)&&n.scrollHeight>n.clientHeight+1)return false;
+   }
+   return true;
+  };
+  const points=preferredPoint?[preferredPoint]:[.5,.35,.65,.2,.8].flatMap(x=>[.5,.35,.65,.2,.8].map(y=>({x:left+(right-left)*x,y:top+(bottom-top)*y})));
+  return {scrollPoint:points.find(accepts)||null,scrollTop:e.scrollTop,scrollMax};
+ }
  let scroll=e;while(scroll&&scroll!==document.body){const s=getComputedStyle(scroll);if(scroll.clientHeight>100&&scroll.scrollHeight>scroll.clientHeight+20&&/auto|scroll/.test(s.overflowY))break;scroll=scroll.parentElement;}
  scroll=scroll&&scroll!==document.body?scroll:document.scrollingElement;
  const sr=scroll===document.scrollingElement?{left:0,top:0,right:innerWidth,bottom:innerHeight}:scroll.getBoundingClientRect();
@@ -20,15 +40,24 @@ export function installNativePointer(api,{shouldContinue=()=>true,random=Math.ra
  const active=()=>{if(!shouldContinue())throw Error('Đã dừng · hủy thao tác chuột.');};
  const send=async(id,params)=>{active();await api.debugger.attach({tabId:id});active();await api.debugger.sendCommand({tabId:id},'Input.dispatchMouseEvent',params);};
  const pause=async ms=>{let left=ms;while(left>0){active();const part=Math.min(100,left);await wait(part);left-=part;}active();};
- const read=async(id,token)=>{active();const result=(await execute({target:{tabId:id},func:pointerTarget,args:[token]}))[0]?.result;if(!result)throw Error('Không đọc được vị trí mục tiêu chuột.');return result;};
+ const read=async(id,token,exactScroller=false,point)=>{active();const result=(await execute({target:{tabId:id},func:pointerTarget,args:exactScroller?[token,true,...(point?[point]:[])]:[token]}))[0]?.result;if(!result)throw Error('Không đọc được vị trí mục tiêu chuột.');return result;};
  async function move(id,point){
   const start=positions.get(id)||{x:Math.max(1,point.x-90),y:Math.max(1,point.y-65)},duration=450+random()*350,steps=10;
   for(let i=1;i<=steps;i++){const t=i/steps,ease=t*t*(3-2*t);await send(id,{type:'mouseMoved',x:start.x+(point.x-start.x)*ease,y:start.y+(point.y-start.y)*ease});await pause(duration/steps);}
   positions.set(id,point);
  }
- async function wheel(id,point,deltaY){
+ async function wheel(id,point,deltaY,exactToken){
+  if(!point||Math.abs(deltaY)<=0.5)return;
   await move(id,point);let remaining=deltaY;
-  while(Math.abs(remaining)>0.5){const delta=Math.sign(remaining)*Math.min(Math.abs(remaining),90+random()*70);await send(id,{type:'mouseWheel',...point,deltaX:0,deltaY:delta});remaining-=delta;await pause(140+random()*140);}
+  while(Math.abs(remaining)>0.5){
+   let available=Infinity;
+   if(exactToken){
+    const t=await read(id,exactToken,true,point);if(!t.scrollPoint)return;
+    available=remaining>0?t.scrollMax-t.scrollTop:t.scrollTop;
+    if(available<=0.5)return;
+   }
+   const delta=Math.sign(remaining)*Math.min(Math.abs(remaining),90+random()*70,available);await send(id,{type:'mouseWheel',...point,deltaX:0,deltaY:delta});remaining-=delta;await pause(140+random()*140);
+  }
  }
  async function reveal(id,token){
   for(let i=0;i<12;i++){const target=await read(id,token);if(target.inView)return target;
@@ -47,7 +76,7 @@ export function installNativePointer(api,{shouldContinue=()=>true,random=Math.ra
  async function perform(id,input){
   for(const step of Array.isArray(input)?input:[input]){
    active();if(step.kind==='click')await click(id,{token:step.token});else if(step.kind==='reveal')await reveal(id,step.token);
-   else if(step.kind==='wheel'){const t=await read(id,step.token);await wheel(id,t.scrollPoint,step.top===undefined?step.deltaY:step.top-t.scrollTop);}
+   else if(step.kind==='wheel'){const t=await read(id,step.token,step.exactScroller);await wheel(id,t.scrollPoint,step.top===undefined?step.deltaY:step.top-t.scrollTop,step.exactScroller?step.token:undefined);}
    else throw Error('Thao tác chuột không hợp lệ.');
    if(step.pauseMs)await pause(step.pauseMs);
   }

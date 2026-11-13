@@ -7,17 +7,41 @@ export async function autoPage(action,options={}){
  if(!profile)throw Error('Không xác nhận được đăng nhập Threads.');
  if([...document.querySelectorAll('[role="dialog"]')].some(visible))throw Error('Tab nguồn đang có hộp thoại.');
  if(action==='scroll'||action==='idle-scroll'){
-  const candidates=[...document.querySelectorAll('div,main')].filter(e=>visible(e)&&e.clientHeight>200&&e.scrollHeight>e.clientHeight+100&&/auto|scroll/.test(getComputedStyle(e).overflowY));
-  const scroller=candidates.sort((a,b)=>b.clientHeight-a.clientHeight)[0]||document.scrollingElement;
+  const self=new URL(profile.href).pathname.split('/')[1]?.slice(1);
+  const root=document.scrollingElement,landmarks='main,[role="main"],[role="feed"]',peripheral='aside,nav,[role="complementary"],[role="navigation"],[hidden],[aria-hidden="true"],[inert]';
+  const scrollable=e=>e.clientHeight>0&&e.scrollHeight>e.clientHeight+1&&(e===root||/^(auto|scroll|overlay)$/.test(getComputedStyle(e).overflowY));
+  const scrollHost=e=>{for(let n=e;n&&n!==root;n=n.parentElement)if(scrollable(n))return n;return root;};
+  const bounds=e=>e===root?{left:0,right:innerWidth,top:0,bottom:innerHeight}:e.getBoundingClientRect();
+  const candidates=new Map();
+  const consider=(e,post=false)=>{
+   if(!visible(e)||e.closest(peripheral))return;
+   const scroller=scrollHost(e);if(!scroller||!scrollable(scroller)||scroller.closest(peripheral))return;
+   const region=scroller===root?(e.closest(landmarks)||root):scroller;
+   const r=bounds(region),left=Math.max(0,r.left),right=Math.min(innerWidth,r.right),middle=innerWidth/2;
+   // A separate side pane can have posts too. Require its visible column to be central.
+   if(right-left<Math.min(140,innerWidth*.35)||r.bottom<=0||r.top>=innerHeight||left>middle+innerWidth*.06||right<middle-innerWidth*.06)return;
+   const offset=Math.abs((left+right)/2-middle);if(offset>innerWidth*.22)return;
+   const score=(e.closest(landmarks)?2:0)-offset/innerWidth;
+   const old=candidates.get(scroller);
+   if(!old||score>old.score||score===old.score&&post&&!old.post)candidates.set(scroller,{scroller,region,score,post});
+  };
+  for(const anchor of document.querySelectorAll('a[href*="/post/"]'))if(anchor.querySelector('time'))consider(anchor,true);
+  // While posts are loading, only a recognizable central feed landmark is a safe fallback.
+  for(const landmark of document.querySelectorAll(landmarks))consider(landmark);
+  const selected=[...candidates.values()].sort((a,b)=>Number(b.post)-Number(a.post)||b.score-a.score)[0];
+  if(!selected)return {self,scrolled:false,reason:'Chưa xác định được bảng tin ở giữa trang.'};
+  const {scroller,region}=selected;
   if(options.__nativeInput){
    const token='hx'+crypto.randomUUID().replace(/-/g,'');scroller.setAttribute('data-hoanxu-pointer',token);
-   const self=new URL(profile.href).pathname.split('/')[1]?.slice(1),initial=scroller.scrollTop;
+   region.setAttribute('data-hoanxu-scroll-region',token);
+   const initial=scroller.scrollTop;
+   const wheel={kind:'wheel',token,exactScroller:true};
    if(action==='idle-scroll'){
     const distance=Math.min(280,scroller.clientHeight*(.12+Math.random()*.2)),direction=initial>distance&&Math.random()<.7?-1:1;
-    return {__input:[{kind:'wheel',token,deltaY:direction*distance,pauseMs:650+Math.random()*951},{kind:'wheel',token,top:initial,pauseMs:650+Math.random()*951}],result:{self}};
+    return {__input:[{...wheel,deltaY:direction*distance,pauseMs:650+Math.random()*951},{...wheel,top:initial,pauseMs:650+Math.random()*951}],result:{self}};
    }
    const distance=Math.max(300,scroller.clientHeight*(.55+Math.random()*.55)),first=.45+Math.random()*.25;
-   return {__input:[{kind:'wheel',token,deltaY:distance*first,pauseMs:400+Math.random()*501},{kind:'wheel',token,deltaY:distance*(1-first)}],result:{self}};
+   return {__input:[{...wheel,deltaY:distance*first,pauseMs:400+Math.random()*501},{...wheel,deltaY:distance*(1-first)}],result:{self}};
   }
   if(action==='idle-scroll'){
    const initial=scroller.scrollTop;

@@ -24,3 +24,11 @@ test('scroll emits paced mouse-wheel events and mouse movement instead of changi
  installNativePointer(api,{random:()=>0,wait:async()=>{}});function autoPage(){};assert.equal((await api.scripting.executeScript({target:{tabId:1},func:autoPage,args:['scroll']}))[0].result.scrolled,true);
  assert.ok(events.slice(0,10).every(e=>e.type==='mouseMoved'));const wheel=events.filter(e=>e.type==='mouseWheel');assert.equal(wheel.length,4);assert.equal(wheel.reduce((sum,e)=>sum+e.deltaY,0),360);assert.ok(wheel.every(e=>e.deltaX===0));
 });
+
+test('feed wheel rechecks the target after moving and stops if another pane covers it',async()=>{
+ const events=[],point={x:300,y:200};let reads=0;
+ const api={debugger:{async attach(){},async detach(){},async sendCommand(t,m,p){events.push(p);}},scripting:{async executeScript({func}){return [{frameId:0,result:func.name==='pointerTarget'?{scrollPoint:++reads===1?point:null,scrollTop:0,scrollMax:1000}:{__input:{kind:'wheel',token:'feed',deltaY:300,exactScroller:true},result:{}}}];}}};
+ installNativePointer(api,{random:()=>0,wait:async()=>{}});function autoPage(){};
+ await api.scripting.executeScript({target:{tabId:1},func:autoPage,args:['scroll']});
+ assert.ok(events.some(e=>e.type==='mouseMoved'));assert.equal(events.some(e=>e.type==='mouseWheel'),false);
+});

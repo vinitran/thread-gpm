@@ -38,6 +38,11 @@ test('real MV3 extension loads automatically and performs native tab, DOM, Like 
   const initialScroll=await page.evaluate(()=>scrollY);await browser.evaluate(tab.id,autoPage,['scroll']);assert.ok(await page.evaluate(()=>scrollY)>initialScroll);
   const beforeIdle=await page.evaluate(()=>scrollY);await browser.evaluate(tab.id,autoPage,['idle-scroll']);assert.ok(Math.abs((await page.evaluate(()=>scrollY))-beforeIdle)<3);
   const nativeEvents=await page.evaluate(()=>window.pointerEvents);assert.ok(nativeEvents.some(e=>e.type==='wheel'&&e.trusted));assert.ok(nativeEvents.some(e=>e.type==='mousemove'&&e.trusted));
+  await page.setContent(`<style>body{margin:0;overflow:hidden}#feed{position:fixed;left:20%;width:55%;height:65vh;overflow-y:auto}#right{position:fixed;right:0;width:23%;height:95vh;overflow-y:auto}.space{height:2500px}</style><a href="/@me" aria-label="Profile">Me</a><main id="feed"><a href="/@demo/post/feed"><time>now</time></a><div class="space"></div></main><div id="right"><a href="/@other/post/side"><time>now</time></a><div class="space"></div></div>`);
+  const scrollPositions=()=>page.evaluate(()=>[document.querySelector('#feed').scrollTop,document.querySelector('#right').scrollTop,scrollY]);
+  await browser.evaluate(tab.id,autoPage,['scroll']);const [feedTop,rightTop,pageTop]=await scrollPositions();assert.ok(feedTop>0);assert.equal(rightTop,0);assert.equal(pageTop,0);
+  await browser.evaluate(tab.id,autoPage,['idle-scroll']);const afterIdle=await scrollPositions();assert.ok(Math.abs(afterIdle[0]-feedTop)<3);assert.deepEqual(afterIdle.slice(1),[0,0]);
+  await page.locator('#feed').evaluate(e=>e.style.display='none');const skipped=await browser.evaluate(tab.id,autoPage,['scroll']);assert.equal(skipped.scrolled,false);assert.deepEqual((await scrollPositions()).slice(1),[0,0]);
   await page.setContent(markup);
   await page.evaluate(()=>{window.likes=1;window.reposts=0;});
   await page.focus('#editor');await globalThis.chrome.debugger.attach({tabId:tab.id},'1.3');
