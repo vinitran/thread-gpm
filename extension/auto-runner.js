@@ -1,3 +1,4 @@
+import {MIN_SCORE} from './ai.js';
 const COMMENT_REST_MIN=120,COMMENT_REST_MAX=180;
 const LEGACY_TOPICS='mua sắm, mua đồ, mua quà, shopping, shopee, săn sale, đồ ăn, ăn gì, đặt đồ ăn, quán ăn, nhà hàng, trà sữa, thời trang, quần áo, outfit, phối đồ, váy, giày, túi xách';
 export const AUTO_DEFAULTS={minRestSeconds:COMMENT_REST_MIN,maxRestSeconds:COMMENT_REST_MAX,searchDelaySeconds:30,stepSeconds:2,idleScroll:true,tagHoanxu:false,typingDelayMs:60,keywords:'mua sắm online, hỏi mua đồ, xin review, đánh giá sản phẩm, so sánh sản phẩm, săn sale, mã giảm giá, voucher, freeship, giỏ hàng, chốt đơn, shopee, sàn S, tiktok shop, tíc tóc, lazada, mua quà, đồ gia dụng, đồ dùng học tập, phụ kiện điện thoại, mỹ phẩm, skincare, quần áo, thời trang, outfit, váy, giày, túi xách, đồ ăn đặt online'};
@@ -221,6 +222,10 @@ export class AutoRunner{
     return await this.settle(await this.d.check(s.current.post.url));
    }
    if(!s.current){
+    const slotKind=s.commentCycle.slots[s.commentCycle.index]?.kind==='regular'?'regular':'promotion',minScore=MIN_SCORE[slotKind];
+    // A post queued for an ordinary reply is never reused for a promotion slot.
+    const weak=(s.queue||[]).filter(p=>(p.aiScore??100)<minScore);
+    if(weak.length){for(const p of weak)s.history[p.url]={state:'ai-skipped',score:p.aiScore};s.queue=s.queue.filter(p=>!weak.includes(p));}
     if(!s.queue.length){
      if(s.needsScroll){
       await this.activity('searching','Đã xử lý hết nhóm bài · đang cuộn tìm nhóm mới');await this.d.scroll(s.source);s.needsScroll=false;s.nextAt=this.d.now()+searchWaitMs(s.config.searchDelaySeconds,this.d.random);
@@ -241,13 +246,19 @@ export class AutoRunner{
      let selected=[];
      if(pending.posts.length){
       await this.activity('filtering',`Đang gọi AI lọc ${pending.posts.length} bài mới theo chủ đề`);
-      const urls=await this.d.classify(pending.posts,s.config.keywords);
+      const rated=await this.d.classify(pending.posts,s.config.keywords);
       const allowed=new Set(pending.posts.map(p=>p.url));
-      if(!Array.isArray(urls)||urls.some(url=>!allowed.has(url)))throw Error('AI lọc bài trả URL không thuộc nhóm đang xét.');
-      const chosen=new Set(urls),byURL=new Map(pending.posts.map(p=>[p.url,p]));selected=[...chosen].map(url=>byURL.get(url));
-      for(const p of pending.posts)s.history[p.url]={state:chosen.has(p.url)?'queued':'ai-skipped'};
+      if(!Array.isArray(rated))throw Error('AI lọc bài trả URL không thuộc nhóm đang xét.');
+      const picks=rated.map(p=>typeof p==='string'?{url:p,score:100,topic:''}:p);
+      if(picks.some(p=>!allowed.has(p?.url)||!Number.isFinite(p.score)))throw Error('AI lọc bài trả URL không thuộc nhóm đang xét.');
+      const scores=new Map(picks.map(p=>[p.url,p])),byURL=new Map(pending.posts.map(p=>[p.url,p]));
+      const fit=[...scores.values()].filter(p=>p.score>=minScore).sort((a,b)=>b.score-a.score);
+      selected=fit.map(p=>({...byURL.get(p.url),aiScore:p.score,aiTopic:p.topic||''}));
+      const chosen=new Set(fit.map(p=>p.url));
+      for(const p of pending.posts)s.history[p.url]={state:chosen.has(p.url)?'queued':'ai-skipped',...(scores.has(p.url)?{score:scores.get(p.url).score}:{})};
      }
-     s.queue=selected;s.stats.selected+=s.queue.length;this.event(`AI đã xét ${pending.posts.length} bài · chọn ${s.queue.length} bài phù hợp`);
+     s.queue=selected;s.stats.selected+=s.queue.length;const top=s.queue[0];
+     this.event(`AI đã xét ${pending.posts.length} bài · chọn ${s.queue.length} bài đạt từ ${minScore} điểm cho lượt ${slotKind==='regular'?'trả lời thường':'giới thiệu'}`+(top?` · ưu tiên @${top.author} ${top.aiScore} điểm${top.aiTopic?' · chủ đề '+top.aiTopic:''}`:''));
      s.selectionBatch=null;s.emptyScans=s.queue.length?0:s.emptyScans+1;await this.save();
      if(!this.active())return;
      if(!s.queue.length){

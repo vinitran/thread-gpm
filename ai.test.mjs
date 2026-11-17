@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {imageSources,collageLayout,allowedImage,requestBody,generate,signature,API_BASE,selectionBody,parseSelection,selectPosts} from './extension/ai.js';
+import {imageSources,collageLayout,allowedImage,requestBody,generate,signature,API_BASE,selectionBody,parseSelection,selectPosts,topicList,MIN_SCORE} from './extension/ai.js';
 const settings={apiKey:'test-secret',prompt:'Prompt exactly as supplied',model:'cx/gpt-5.6-luna'};
 const post={url:'https://www.threads.com/@demo/post/abc',text:'Bài test',images:[]};
 test('only first three unique images and approved Threads CDN hosts are used',()=>{
@@ -69,28 +69,30 @@ test('non-JSON server failure reports service error without blaming key',async()
 test('selection payload includes full post text and all metadata without key',()=>{
  const full={...post,text:'text '.repeat(1000),images:[{src:'https://scontent.fbcdn.net/a.png',alt:'outfit'}]};
  const body=selectionBody([full],settings,'mua sắm, ăn uống, thời trang');
- assert.deepEqual(JSON.parse(body.messages[1].content).posts,[full]);assert.ok(!JSON.stringify(body).includes(settings.apiKey));
+ assert.deepEqual(JSON.parse(body.messages[1].content).posts,[full]);assert.deepEqual(JSON.parse(body.messages[1].content).topics,['mua sắm','ăn uống','thời trang']);assert.ok(!JSON.stringify(body).includes(settings.apiKey));
+ assert.match(body.messages[0].content,/tiêu chí chính/);assert.match(body.messages[0].content,/đúng 5 khóa/);assert.doesNotMatch(body.messages[0].content,/topic_hints|điểm cao nhất/);
  assert.deepEqual(parseSelection(JSON.stringify({ratings:[{url:full.url,language:'other',eligible:true,score:99}]}),[full]),[]);
  assert.throws(()=>parseSelection(JSON.stringify({ratings:[{url:'https://evil.example/',language:'vi',eligible:true,score:80}]}),[full]),/ngoài nhóm/);
 });
 test('AI filter selects only returned in-batch URLs and deduplicates results',async()=>{
  const original=globalThis.fetch;
  globalThis.fetch=async(url,options)=>{assert.equal(url,API_BASE+'/chat/completions');assert.equal(options.headers.Authorization,'Bearer test-secret');return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({ratings:[{url:post.url,language:'vi',eligible:true,score:80}]})}}]})};};
- try{assert.deepEqual(await selectPosts([post],settings,'topics'),[post.url]);}finally{globalThis.fetch=original;}
+ try{assert.deepEqual(await selectPosts([post],settings,'topics'),[{url:post.url,score:80,topic:''}]);}finally{globalThis.fetch=original;}
 });
 
 test('large AI filter batches are split without truncating or dropping posts',async()=>{
  const original=globalThis.fetch,received=[];
  const posts=Array.from({length:12},(_,i)=>({...post,url:post.url+i,text:'full text '.repeat(100)+i}));
  globalThis.fetch=async(url,options)=>{const batch=JSON.parse(JSON.parse(options.body).messages[1].content).posts;received.push(...batch);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({ratings:batch.map(p=>({url:p.url,language:'vi',eligible:true,score:80}))})}}]})};};
- try{assert.deepEqual(await selectPosts(posts,settings,'topics'),posts.map(p=>p.url));assert.deepEqual(received,posts);}finally{globalThis.fetch=original;}
+ try{assert.deepEqual((await selectPosts(posts,settings,'topics')).map(p=>p.url),posts.map(p=>p.url));assert.deepEqual(received,posts);}finally{globalThis.fetch=original;}
 });
 
-test('Vietnamese scores exclude foreign posts and select the best low-score eligible post',()=>{
- const posts=[0,1,2].map(i=>({...post,url:post.url+i}));
- const ratings=[{url:posts[0].url,language:'other',eligible:true,score:100},{url:posts[1].url,language:'vi',eligible:true,score:20},{url:posts[2].url,language:'vi',eligible:true,score:40}];
- assert.deepEqual(parseSelection(JSON.stringify({ratings}),posts),[posts[2].url]);
- ratings[2].eligible=false;assert.deepEqual(parseSelection(JSON.stringify({ratings}),posts),[posts[1].url]);
- ratings[1].language='unknown';assert.deepEqual(parseSelection(JSON.stringify({ratings}),posts),[]);
+test('Vietnamese ratings keep score and topic, sort by score and never fall back to off-topic posts',()=>{
+ const posts=[0,1,2,3].map(i=>({...post,url:post.url+i}));
+ const ratings=[{url:posts[0].url,language:'other',eligible:true,score:100,topic:''},{url:posts[1].url,language:'vi',eligible:true,score:20,topic:''},{url:posts[2].url,language:'vi',eligible:true,score:55,topic:'ăn uống'},{url:posts[3].url,language:'vi',eligible:true,score:91,topic:' săn sale '}];
+ assert.deepEqual(parseSelection(JSON.stringify({ratings}),posts),[{url:posts[3].url,score:91,topic:'săn sale'},{url:posts[2].url,score:55,topic:'ăn uống'}]);
+ ratings[3].eligible=false;ratings[2].score=39;assert.deepEqual(parseSelection(JSON.stringify({ratings}),posts),[]);
+ delete ratings[2].topic;ratings[2].score=MIN_SCORE.regular;assert.deepEqual(parseSelection(JSON.stringify({ratings}),posts),[{url:posts[2].url,score:40,topic:''}]);
  assert.throws(()=>parseSelection(JSON.stringify({ratings:ratings.slice(1)}),posts),/đầy đủ/);
+ assert.deepEqual(topicList(' săn sale, voucher;\nvoucher ,, outfit '),['săn sale','voucher','outfit']);
 });

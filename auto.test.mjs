@@ -315,3 +315,24 @@ test('migration replaces an obsolete 40-minute wait and reserves an in-flight ol
  const g=fixture();state.current={post:p,phase:'posting'};g.setSaved(state);const inFlight=new AutoRunner(g.deps);await inFlight.load();assert.equal(inFlight.state.commentCycle.index,1);
  assert.equal(inFlight.state.current.phase,'posting');assert.ok(plan.slots.length>=10);
 });
+test('promotion slots need a buying post while ordinary replies accept topic-only posts',async()=>{
+ const f=fixture(),food={...p,url:p.url+'food',author:'foodie',text:'Bún chả hôm nay ngon xỉu'},kinds=[];let scrolls=0;
+ f.deps.capture=async()=>({posts:[food],self:'me'});f.deps.classify=async()=>[{url:food.url,score:55,topic:'ăn uống'}];f.deps.scroll=async()=>{scrolls++;};
+ f.deps.generate=async(post,images,tag,kind)=>{kinds.push(kind);return {text:'response'};};
+ await f.runner.start();assert.equal(f.saved().commentCycle.slots[0].kind,'promotion');f.advance();await f.runner.tick();
+ assert.equal(f.posts(),0);assert.equal(scrolls,1);assert.deepEqual(f.saved().history[food.url],{state:'ai-skipped',score:55});
+ assert.ok(f.saved().events.some(e=>/chọn 0 bài đạt từ 70 điểm cho lượt giới thiệu/.test(e.message)));
+ const regular={...food,url:food.url+'2'},s=f.runner.state;s.commentCycle.index=1;s.nextAt=0;assert.equal(s.commentCycle.slots[1].kind,'regular');
+ f.deps.capture=async()=>({posts:[regular],self:'me'});f.deps.classify=async()=>[{url:regular.url,score:55,topic:'ăn uống'}];
+ f.advance(s.commentCycle.slots[1].at-f.deps.now());await f.runner.tick();
+ assert.equal(f.posts(),1);assert.deepEqual(kinds,['regular']);assert.equal(f.saved().history[regular.url].state,'posted');
+ assert.ok(f.saved().events.some(e=>/chọn 1 bài đạt từ 40 điểm cho lượt trả lời thường · ưu tiên @foodie 55 điểm · chủ đề ăn uống/.test(e.message)));
+});
+test('a weak post queued for an ordinary reply is dropped when the slot is a promotion',async()=>{
+ const f=fixture(),weak={...p,url:p.url+'weak',aiScore:50,aiTopic:'ăn uống'},strong={...p,url:p.url+'strong',author:'buyer'};let target;
+ f.deps.capture=async()=>({posts:[strong],self:'me'});f.deps.classify=async()=>[{url:strong.url,score:92,topic:'săn sale'}];
+ const post=f.deps.post;f.deps.post=async url=>{target=url;return post(url);};
+ await f.runner.start();const s=f.runner.state;s.queue=[weak];s.history[weak.url]={state:'queued'};
+ f.advance();await f.runner.tick();
+ assert.equal(target,strong.url);assert.deepEqual(f.saved().history[weak.url],{state:'ai-skipped',score:50});
+});

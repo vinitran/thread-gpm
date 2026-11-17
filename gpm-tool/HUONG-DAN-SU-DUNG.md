@@ -99,6 +99,14 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 - **Lưu cài đặt chung** áp dụng model, API key, nhịp chạy, ảnh, tag/thả tim cho tất cả profile, giữ nguyên bộ prompt/chủ đề của từng profile.
 - Muốn xóa một bộ, đổi các profile đang dùng bộ đó sang bộ khác trước, rồi bấm **Xóa bộ**. Danh sách bộ và lựa chọn của profile được lưu trong SQLite trên máy.
 
+### Cách AI chọn bài theo chủ đề
+
+- Tool đọc các bài trên bảng tin trang chủ, rồi AI chấm từng bài 0–100 theo **Chủ đề muốn tìm** của bộ đang dùng. Chủ đề là tiêu chí chính, xét theo ý nghĩa bài viết, không khớp chữ: bài chỉ nhắc từ khóa nhưng nội dung là tin tức, drama, tuyển dụng hay rao bán vẫn bị loại.
+- Mỗi chủ đề cách nhau bằng dấu phẩy. Viết chủ đề cụ thể (ví dụ "hỏi mua đồ", "săn voucher", "homestay Đà Lạt") sẽ chọn bài sát hơn chủ đề quá chung.
+- Lượt **giới thiệu** chỉ nhận bài từ 70 điểm: bài thuộc chủ đề và có nhu cầu mua, xin review, so sánh, săn sale hoặc trải nghiệm mua hàng. Lượt **trả lời thường** nhận bài từ 40 điểm: bài thuộc chủ đề nhưng không cần có cửa giới thiệu.
+- Không có bài đạt điểm thì tool không bình luận bừa mà cuộn tìm tiếp. Nếu hết khung giờ của lượt mà vẫn chưa có bài phù hợp, lượt đó được bỏ qua.
+- Nhật ký ghi bài được chọn kèm điểm và chủ đề khớp, ví dụ "ưu tiên @abc 92 điểm · chủ đề săn sale". **Chạy thử · không đăng** cũng báo điểm, chủ đề và số bài đạt từng loại lượt.
+
 ## 6. Chạy tool
 
 Bấm thẻ để chọn profile, sau đó **Chạy tự động**. Tool mở profile nếu cần, bắt đầu tìm bài, gọi AI và đăng bình luận bằng cài đặt chung đã lưu. Nên chạy một profile trước để quan sát kết quả.

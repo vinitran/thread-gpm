@@ -24,13 +24,13 @@ test('GPM rating and generation tolerate responses beyond the former 25-second d
   const timer=setTimeout(()=>{options.signal.removeEventListener('abort',abort);const body=JSON.parse(options.body),isRating=body.max_tokens===1600;resolve({ok:true,json:async()=>({choices:[{message:{content:isRating?JSON.stringify({ratings:[{url:post.url,language:'vi',eligible:true,score:80}]}):'Response @hoanxu.app'}}]})});},20);
   options.signal.addEventListener('abort',abort,{once:true});
  });
- try{assert.deepEqual(await selectPosts([post],settings,'topics'),[post.url]);assert.equal((await generate(post,settings,false)).text,'Response');}finally{globalThis.fetch=originalFetch;AbortSignal.timeout=originalTimeout;}
+ try{assert.deepEqual((await selectPosts([post],settings,'topics')).map(p=>p.url),[post.url]);assert.equal((await generate(post,settings,false)).text,'Response');}finally{globalThis.fetch=originalFetch;AbortSignal.timeout=originalTimeout;}
 });
 
 test('GPM accepts partial and empty ratings across AI batches',async()=>{
  const original=globalThis.fetch,posts=Array.from({length:12},(_,i)=>({url:'https://www.threads.com/@demo/post/'+i,text:'Bài '+i}));let calls=0;
  globalThis.fetch=async(url,options)=>{const batch=JSON.parse(JSON.parse(options.body).messages[1].content).posts;calls++;return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({ratings:calls===1?[{url:batch[3].url,language:'vi',eligible:true,score:80},{url:batch[0].url,language:'vi',eligible:true,score:90}]:[]})}}]})};};
- try{assert.deepEqual(await selectPosts(posts,{apiKey:'test',model:'m'},'topics'),[posts[0].url,posts[3].url]);assert.equal(calls,2);}finally{globalThis.fetch=original;}
+ try{assert.deepEqual((await selectPosts(posts,{apiKey:'test',model:'m'},'topics')).map(p=>p.url),[posts[0].url,posts[3].url]);assert.equal(calls,2);}finally{globalThis.fetch=original;}
 });
 
 test('GPM still rejects malformed ratings, outside URLs, duplicates and invalid scores',async()=>{
