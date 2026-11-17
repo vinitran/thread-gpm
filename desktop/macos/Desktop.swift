@@ -125,7 +125,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         addWide(scroll(table),to:page)
         addWide(row([selection,button("Mở trình duyệt","open-selected",#selector(openSelected)),button("Chạy thử · không đăng","dry-run-selected",#selector(dryRunSelected)),button("Dừng & đóng","stop-selected",#selector(stopSelected))]),to:page)
         addWide(row([button("Chạy tự động","start-selected",#selector(startSelected)),button("Chạy bằng extension","start-extension",#selector(startExtensionSelected)),label("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")]),to:page)
-        addWide(row([button("Đổi bộ cài đặt…","assign-preset",#selector(assignPreset)),button("Sửa tên / proxy…","edit-profile",#selector(editProfile)),button("Xóa khỏi GPM…","delete-profile",#selector(deleteProfile)),label("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")]),to:page)
+        addWide(row([button("Đổi bộ cài đặt…","assign-preset",#selector(assignPreset)),button("Sửa tên / proxy…","edit-profile",#selector(editProfile)),button("Gán proxy hàng loạt…","bulk-proxy",#selector(bulkProxy)),button("Xóa khỏi GPM…","delete-profile",#selector(deleteProfile)),label("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")]),to:page)
         table.setContentHuggingPriority(.defaultLow,for:.vertical)
     }
     func field(_ title: String, _ key: String, value: String = "", secure: Bool = false, width: CGFloat = 200) -> NSView {
@@ -170,7 +170,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     func setBusy(_ delta: Int) { busy += delta; if busy > 0 { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }; controls() }
     func controls() {
         let any = !selected.isEmpty, one = selected.count == 1, ready = api != nil && loadedSettings
-        for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected","start-extension"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","dry-run-selected"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
+        for (key,b) in buttons { b.isEnabled = ready && busy == 0; if ["open-selected","start-selected","start-extension","bulk-proxy"].contains(key) { b.isEnabled = ready && any && busy == 0 }; if key == "stop-selected" { b.isEnabled = ready && any }; if ["edit-profile","delete-profile","dry-run-selected"].contains(key) { b.isEnabled = ready && one && busy == 0 } }
         for key in ["install-update","install-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && (updater["available"] as? Bool == true) && (updater["installSupported"] as? Bool == true) }
         for key in ["check-update","check-update-top"] { buttons[key]?.isEnabled = ready && busy == 0 && !updateChecking && !string(updater["repository"]).isEmpty }
         presetPicker.isEnabled = ready && busy == 0; buttons["delete-preset"]?.isEnabled = ready && busy == 0 && presetID != "default"; buttons["assign-preset"]?.isEnabled = ready && any && busy == 0
@@ -307,6 +307,51 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     }
     @objc func createProfile() { showForm("Tạo profile GPM mới",values:[("Tên profile",""),("Proxy · IP:port:user:pass (trống = không dùng)",""),("Chrome · để trống tự chọn","")],choosePreset:true) { [weak self] values in self?.perform("Đang tạo profile GPM…") { api in let r = try await api.request("profile-create",["name":values[0],"proxy":values[1],"browserVersion":values[2],"settingPresetId":values[3]]); self?.selected = [string(object(r["profile"])["id"])]; return "Đã tạo profile. Chọn Mở trình duyệt để kiểm tra đăng nhập." } } }
     @objc func editProfile() { guard let id = selected.first, let p = profiles.first(where:{string($0["id"]) == id}) else { return }; showForm("Sửa profile",values:[("Tên",string(p["name"])),("Proxy",string(p["proxy"]))]) { [weak self] values in self?.perform("Đang cập nhật GPM…") { api in _ = try await api.request("profile-edit",["id":id,"name":values[0],"proxy":values[1]]); return "Đã cập nhật tên và proxy." } } }
+    func proxyLines(_ text: String) -> [String] { text.components(separatedBy:.newlines).map { $0.trimmingCharacters(in:.whitespaces) }.filter { !$0.isEmpty } }
+    func proxyPreview(_ names: [String], _ lines: [String]) -> String {
+        (0..<max(names.count,lines.count)).map { i in "\(i+1). " + (i < names.count ? names[i] : "(thừa)") + "  ←  " + (i < lines.count ? lines[i] : "— thiếu proxy") }.joined(separator:"\n")
+    }
+    func proxyCount(_ lines: [String], _ total: Int) -> (String,Bool) {
+        let duplicates = lines.count - Set(lines).count, ok = lines.count == total
+        let state = ok ? "khớp số profile" : lines.count < total ? "thiếu \(total-lines.count)" : "thừa \(lines.count-total)"
+        return ("Đã nhập \(lines.count)/\(total) proxy · " + state + (duplicates > 0 ? " · \(duplicates) dòng trùng" : ""),ok)
+    }
+    // Lines map to the checked profiles in table order; the checks stay after closing.
+    @objc func bulkProxy() {
+        let chosen = profiles.filter { selected.contains(string($0["id"])) }; guard !chosen.isEmpty, let window = view.window else { return }
+        let ids = chosen.map { string($0["id"]) }, names = chosen.map { string($0["name"]).isEmpty ? string($0["id"]) : string($0["name"]) }
+        editingProfileForm = true
+        let alert = NSAlert(); alert.messageText = "Gán proxy cho \(ids.count) profile"; alert.addButton(withTitle:"Gán proxy"); alert.addButton(withTitle:"Hủy")
+        alert.informativeText = "Dán đúng \(ids.count) proxy, mỗi dòng một proxy (IP:port:user:pass). Dòng 1 gán cho profile 1 theo thứ tự trong bảng. Profile đang mở trong GPM sẽ được đóng để đổi proxy; profile đang chạy tự động cần Dừng trước."
+        let width: CGFloat = 560, content = column(); content.spacing = 8
+        let input = NSTextView(); input.isRichText = false; input.font = .monospacedSystemFont(ofSize:12,weight:.regular); input.allowsUndo = true
+        input.isAutomaticQuoteSubstitutionEnabled = false; input.isAutomaticDashSubstitutionEnabled = false; input.isAutomaticTextReplacementEnabled = false; input.isAutomaticSpellingCorrectionEnabled = false; input.isContinuousSpellCheckingEnabled = false; input.isAutomaticLinkDetectionEnabled = false
+        let preview = NSTextView(); preview.isEditable = false; preview.isRichText = false; preview.font = .monospacedSystemFont(ofSize:11,weight:.regular)
+        let count = NSTextField(labelWithString:""); count.font = .systemFont(ofSize:12,weight:.semibold)
+        let inputScroll = scroll(input,height:170), previewScroll = scroll(preview,height:150)
+        for item in [inputScroll,previewScroll] { item.widthAnchor.constraint(equalToConstant:width).isActive = true }
+        content.addArrangedSubview(label("Danh sách proxy")); content.addArrangedSubview(inputScroll); content.addArrangedSubview(count)
+        content.addArrangedSubview(label("Xem trước · profile ← proxy")); content.addArrangedSubview(previewScroll)
+        let update = { [weak self, weak alert] in
+            guard let self = self else { return }; let lines = self.proxyLines(input.string), (text,ok) = self.proxyCount(lines,ids.count)
+            count.stringValue = text; count.textColor = ok ? .systemGreen : .systemRed; alert?.buttons.first?.isEnabled = ok
+            preview.string = self.proxyPreview(names,lines)
+        }
+        let observer = NotificationCenter.default.addObserver(forName:NSText.didChangeNotification,object:input,queue:.main) { _ in update() }
+        update(); content.layoutSubtreeIfNeeded(); content.frame = NSRect(x:0,y:0,width:width,height:430); alert.accessoryView = content
+        alert.window.initialFirstResponder = input
+        alert.beginSheetModal(for:window) { [weak self] response in
+            NotificationCenter.default.removeObserver(observer); guard let self = self else { return }; self.editingProfileForm = false
+            let lines = self.proxyLines(input.string); guard response == .alertFirstButtonReturn, lines.count == ids.count else { return }
+            let assignments: [JSONObject] = zip(ids,lines).map { ["id":$0.0,"proxy":$0.1] }
+            self.perform("Đang gán proxy cho \(ids.count) profile…") { [weak self] api in
+                let r = try await api.request("profiles-proxy",["assignments":assignments]), rows = objects(r["results"]), failed = rows.filter { $0["ok"] as? Bool != true }
+                let name = { (id: String) in self.flatMap { s in s.profiles.first { string($0["id"]) == id } }.map { string($0["name"]) } ?? id }
+                if !failed.isEmpty { throw failure("Đã gán proxy \(rows.count-failed.count)/\(rows.count) profile. Chưa gán: " + failed.map { name(string($0["id"])) + ": " + string($0["error"]) }.joined(separator:" · ")) }
+                return "Đã gán proxy cho \(rows.count) profile · vẫn giữ chọn, có thể bấm Chạy tự động."
+            }
+        }
+    }
     @objc func deleteProfile() { guard let id = selected.first else { return }; let alert = NSAlert(); alert.messageText = "Chuyển profile vào thùng rác GPM?"; alert.informativeText = "Profile sẽ được xóa khỏi bảng tool. Lịch sử trên máy vẫn được giữ."; alert.addButton(withTitle:"Xóa"); alert.addButton(withTitle:"Hủy"); alert.beginSheetModal(for:view.window!) { [weak self] result in if result == .alertFirstButtonReturn { self?.perform("Đang xóa profile…") { api in _ = try await api.request("profile-delete",["id":id]); return "Đã chuyển profile vào thùng rác GPM." } } } }
     @objc func pickGpm() { picker = ProfilePicker(owner:self); picker?.show() }
     @objc func importFile() {

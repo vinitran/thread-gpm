@@ -95,13 +95,15 @@ export class GpmApi{
  }
  async edit(id,{name,rawProxy=''}){
   if(typeof id!=='string'||!/^[-\w]{1,100}$/.test(id))throw Error('Profile ID không hợp lệ.');
-  if(typeof name!=='string'||!name.trim()||name.trim().length>100||/[\x00-\x1f]/.test(name))throw Error('Tên profile cần 1–100 ký tự.');
+  // name undefined keeps GPM's current name (bulk proxy assignment).
+  if(name!==undefined&&(typeof name!=='string'||!name.trim()||name.trim().length>100||/[\x00-\x1f]/.test(name)))throw Error('Tên profile cần 1–100 ký tự.');
   if(typeof rawProxy!=='string')throw Error('Proxy không hợp lệ.');const raw=rawProxy.trim()?proxy(rawProxy):'';
   const old=await this.call('/profiles/'+encodeURIComponent(id));if(old?.id!==id)throw Error('Profile không khớp ID.');
+  const target=name===undefined?String(old.name??''):name.trim();
   if((old.raw_proxy||'')!==raw)await this.call('/profiles/stop/'+encodeURIComponent(id));
-  await this.call('/profiles/update/'+encodeURIComponent(id),{name:name.trim(),raw_proxy:raw});
+  await this.call('/profiles/update/'+encodeURIComponent(id),{name:target,raw_proxy:raw});
   const updated=await this.call('/profiles/'+encodeURIComponent(id));
-  if(updated?.id!==id||updated.name!==name.trim()||(updated.raw_proxy||'')!==raw)throw Error('GPM chưa lưu đúng tên/proxy; kiểm tra lại trước khi mở.');
+  if(updated?.id!==id||updated.name!==target||(updated.raw_proxy||'')!==raw)throw Error('GPM chưa lưu đúng tên/proxy; kiểm tra lại trước khi mở.');
   return {id,name:updated.name,proxy:raw};
  }
  async remove(id){

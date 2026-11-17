@@ -119,7 +119,7 @@ sealed class MainWindow : Window
         progress.Visibility = busy > 0 ? Visibility.Visible : Visibility.Collapsed;
         var ready = api != null && loaded;
         foreach (var (id, b) in buttons) b.IsEnabled = ready && busy == 0;
-        foreach (var id in new[] { "open-selected", "start-selected", "start-extension" }) buttons[id].IsEnabled &= Selected.Any();
+        foreach (var id in new[] { "open-selected", "start-selected", "start-extension", "bulk-proxy" }) buttons[id].IsEnabled &= Selected.Any();
         buttons["stop-selected"].IsEnabled = ready && Selected.Any();
         foreach (var id in new[] { "edit-profile", "delete-profile", "dry-run-selected" }) buttons[id].IsEnabled &= Selected.Count() == 1;
         foreach (var id in new[] { "install-update", "install-update-top" }) buttons[id].IsEnabled = api != null && busy == 0 && !updateChecking && J.B(update["available"]) && J.B(update["installSupported"]);
@@ -142,7 +142,7 @@ sealed class MainWindow : Window
         var bottom = new StackPanel { Margin = new(0, 12, 0, 0) }; selection.Width = 170; selection.VerticalAlignment = VerticalAlignment.Center;
         bottom.Children.Add(Row(selection, Action("Mở trình duyệt", "open-selected", OpenSelected), Action("Chạy thử · không đăng", "dry-run-selected", DryRunSelected), Action("Dừng & đóng", "stop-selected", () => { openEpoch++; Batch("close"); })));
         bottom.Children.Add(Row(Action("Chạy tự động", "start-selected", () => Batch("start")), Action("Chạy bằng extension", "start-extension", () => Batch("start-extension")), Note("Extension tự được nạp vào profile · dùng cùng cài đặt và lịch sử")));
-        bottom.Children.Add(Row(Action("Đổi bộ cài đặt…", "assign-preset", AssignPreset), Action("Sửa tên / proxy…", "edit-profile", EditProfile), Action("Xóa khỏi GPM…", "delete-profile", DeleteProfile), Note("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")));
+        bottom.Children.Add(Row(Action("Đổi bộ cài đặt…", "assign-preset", AssignPreset), Action("Sửa tên / proxy…", "edit-profile", EditProfile), Action("Gán proxy hàng loạt…", "bulk-proxy", BulkProxy), Action("Xóa khỏi GPM…", "delete-profile", DeleteProfile), Note("Bấm dòng để chọn/bỏ chọn · Mở chỉ mở GPM, chưa chạy tự động")));
         DockPanel.SetDock(bottom, Dock.Bottom); page.Children.Add(bottom);
         profiles.Name = "ProfilesTable"; profiles.ItemsSource = rows; profiles.IsReadOnly = false; profiles.CanUserAddRows = false; profiles.CanUserDeleteRows = false; profiles.AutoGenerateColumns = false; profiles.HeadersVisibility = DataGridHeadersVisibility.Column; profiles.RowHeight = 46; profiles.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal; profiles.AlternatingRowBackground = Brushes.White; profiles.Background = Brushes.WhiteSmoke;
         profiles.Columns.Add(new DataGridCheckBoxColumn { Header = "✓", Binding = new Binding("Selected") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 40 });
@@ -293,6 +293,19 @@ sealed class MainWindow : Window
         var row = Selected.Single(); var values = FormDialog.Ask(this, "Sửa profile", ("Tên", row.Name), ("Proxy", J.S(row.Data["proxy"]))); if (values == null) return;
         Perform("Đang cập nhật GPM…", async api => { await api.Request("profile-edit", new() { ["id"] = row.Id, ["name"] = values[0], ["proxy"] = values[1] }); return "Đã cập nhật tên và proxy."; });
     }
+    // Lines map to the checked profiles in table order; the checks stay after closing.
+    void BulkProxy()
+    {
+        var chosen = Selected.ToArray(); if (chosen.Length == 0) return;
+        var lines = ProxyListDialog.Ask(this, chosen.Select(p => p.Name.Length > 0 ? p.Name : p.Id).ToArray()); if (lines == null || lines.Length != chosen.Length) return;
+        Perform($"Đang gán proxy cho {chosen.Length} profile…", async api =>
+        {
+            var assignments = new JsonArray(chosen.Zip(lines).Select(p => (JsonNode)new JsonObject { ["id"] = p.First.Id, ["proxy"] = p.Second }).ToArray());
+            var r = await api.Request("profiles-proxy", new() { ["assignments"] = assignments }); var results = J.Rows(r["results"]).ToArray(); var failed = results.Where(p => !J.B(p["ok"])).ToArray();
+            if (failed.Length > 0) throw new Exception($"Đã gán proxy {results.Length - failed.Length}/{results.Length} profile. Chưa gán: " + string.Join(" · ", failed.Select(p => (allRows.TryGetValue(J.S(p["id"]), out var row) ? row.Name : J.S(p["id"])) + ": " + J.S(p["error"]))));
+            return $"Đã gán proxy cho {results.Length} profile · vẫn giữ chọn, có thể bấm Chạy tự động.";
+        });
+    }
     void DeleteProfile()
     {
         var id = Ids.Single(); if (MessageBox.Show(this, "Chuyển profile vào thùng rác GPM và xóa khỏi bảng tool? Lịch sử trên máy được giữ.", "Xóa profile", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
@@ -389,5 +402,33 @@ sealed class FormDialog : Window
         }
         var choice = new ComboBox { DisplayMemberPath = "Value", SelectedValuePath = "Key", MinHeight = 30 }; if (presets != null) { page.Children.Add(MainWindow.Note("Bộ prompt / chủ đề")); foreach (var p in presets) choice.Items.Add(new KeyValuePair<string, string>(J.S(p["id"]), J.S(p["name"]))); choice.SelectedIndex = 0; page.Children.Add(choice); }
         var ok = new Button { Content = "Lưu", IsDefault = true, Margin = new(0, 20, 10, 0), Padding = new(18, 6, 18, 6) }; ok.Click += (_, _) => { if (!parsing) dialog.DialogResult = true; }; var cancel = new Button { Content = "Hủy", IsCancel = true, Margin = new(0, 20, 0, 0), Padding = new(18, 6, 18, 6) }; page.Children.Add(MainWindow.Row(ok, cancel)); if (owner is MainWindow editing) editing.EditingProfileForm = true; try { return dialog.ShowDialog() == true ? inputs.Select(i => i.Text).Concat(presets == null ? Array.Empty<string>() : new[] { choice.SelectedValue?.ToString() ?? "default" }).ToArray() : null; } finally { if (owner is MainWindow finished) finished.EditingProfileForm = false; }
+    }
+}
+
+sealed class ProxyListDialog : Window
+{
+    internal static string[] Lines(string text) => text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+    public static string[]? Ask(MainWindow owner, string[] names)
+    {
+        var dialog = new ProxyListDialog { Owner = owner, Title = $"Gán proxy cho {names.Length} profile", Width = 640, Height = 640, MinWidth = 520, MinHeight = 480, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var page = new DockPanel { Margin = new(20) }; dialog.Content = page;
+        var top = new StackPanel(); top.Children.Add(MainWindow.Note($"Dán đúng {names.Length} proxy, mỗi dòng một proxy (IP:port:user:pass). Dòng 1 gán cho profile 1 theo thứ tự trong bảng. Profile đang mở trong GPM sẽ được đóng để đổi proxy; profile đang chạy tự động cần Dừng trước."));
+        var input = new TextBox { AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, FontFamily = new("Consolas"), FontSize = 12, Height = 180, Padding = new(6), Name = "ProxyList" };
+        var count = new TextBlock { Margin = new(0, 8, 0, 0), FontWeight = FontWeights.SemiBold };
+        top.Children.Add(input); top.Children.Add(count); top.Children.Add(MainWindow.Note("Xem trước · profile ← proxy")); DockPanel.SetDock(top, Dock.Top); page.Children.Add(top);
+        var ok = new Button { Content = "Gán proxy", Margin = new(0, 14, 10, 0), Padding = new(18, 6, 18, 6) }; var cancel = new Button { Content = "Hủy", IsCancel = true, Margin = new(0, 14, 0, 0), Padding = new(18, 6, 18, 6) };
+        var bottom = MainWindow.Row(ok, cancel); DockPanel.SetDock(bottom, Dock.Bottom); page.Children.Add(bottom);
+        var preview = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, FontFamily = new("Consolas"), FontSize = 12, Padding = new(6), Background = Brushes.WhiteSmoke };
+        page.Children.Add(preview);
+        void Update()
+        {
+            var lines = Lines(input.Text); var duplicates = lines.Length - lines.Distinct().Count(); var match = lines.Length == names.Length;
+            count.Text = $"Đã nhập {lines.Length}/{names.Length} proxy · " + (match ? "khớp số profile" : lines.Length < names.Length ? $"thiếu {names.Length - lines.Length}" : $"thừa {lines.Length - names.Length}") + (duplicates > 0 ? $" · {duplicates} dòng trùng" : "");
+            count.Foreground = match ? Brushes.SeaGreen : Brushes.Firebrick; ok.IsEnabled = match;
+            preview.Text = string.Join("\n", Enumerable.Range(0, Math.Max(names.Length, lines.Length)).Select(i => $"{i + 1}. " + (i < names.Length ? names[i] : "(thừa)") + "  ←  " + (i < lines.Length ? lines[i] : "— thiếu proxy")));
+        }
+        input.TextChanged += (_, _) => Update(); ok.Click += (_, _) => { if (Lines(input.Text).Length == names.Length) dialog.DialogResult = true; };
+        dialog.Loaded += (_, _) => input.Focus(); Update();
+        owner.EditingProfileForm = true; try { return dialog.ShowDialog() == true ? Lines(input.Text) : null; } finally { owner.EditingProfileForm = false; }
     }
 }

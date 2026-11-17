@@ -143,7 +143,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='POST'){
    if(req.headers['x-tool-token']!==token||req.headers.origin!==`http://${req.headers.host}`)return json(res,{error:'Invalid origin/token'},403);
    pendingPosts++;trackedPost=true;
-   const input=await body(req,['/api/settings','/api/settings-preset-save'].includes(url.pathname)?220000:['/api/profiles-import-preview','/api/profile-session-import'].includes(url.pathname)?6*1024*1024:100000);
+   const input=await body(req,['/api/settings','/api/settings-preset-save','/api/profiles-proxy'].includes(url.pathname)?220000:['/api/profiles-import-preview','/api/profile-session-import'].includes(url.pathname)?6*1024*1024:100000);
    if(operation==='cài bản cập nhật'&&!['/api/stop','/api/profile-close','/api/profiles-stop','/api/profiles-close'].includes(url.pathname))throw Error('Đang cài cập nhật. Đợi tool mở lại trước khi thao tác.');
    if(url.pathname==='/api/proxy-parse')return json(res,parseProxy(input.proxy));
    if(updater&&url.pathname==='/api/update-check')return json(res,await updater.check());
@@ -192,6 +192,7 @@ const server=http.createServer(async(req,res)=>{
     }));
    }
    if(manager&&url.pathname==='/api/profile-edit')return json(res,await manager.edit(input.id,input));
+   if(manager&&url.pathname==='/api/profiles-proxy')return json(res,await exclusive('gán proxy hàng loạt',()=>manager.assignProxies(input.assignments)));
    if(manager&&url.pathname==='/api/profile-delete')return json(res,await manager.remove(input.id));
    if(manager&&url.pathname==='/api/profile-create'){
     return json(res,await exclusive('tạo profile mới',async()=>{

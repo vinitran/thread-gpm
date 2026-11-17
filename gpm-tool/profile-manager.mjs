@@ -1,6 +1,6 @@
 import path from 'node:path';
 import {fork} from 'node:child_process';
-import {GpmApi} from './gpm-api.mjs';
+import {GpmApi,proxy as checkProxy} from './gpm-api.mjs';
 import {Store} from './store.mjs';
 import {dashboard,profileLogs} from './dashboard.mjs';
 import {redact,sharedProfileSettings,validateSettings,assertLiveSettings} from './settings.mjs';
@@ -159,11 +159,28 @@ export class ProfileManager{
   if(busy(this.views.get(id)))throw Error('Dừng profile trước khi sửa.');
   const worker=this.workers.get(id);if(worker){await worker.close();this.workers.delete(id);}
   const data=await this.profileStore(id),old=data.value.settings;
-  const result=await new GpmApi(old.gpmApi).edit(id,{name:input.name,rawProxy:input.proxy});
+  const result=await this.gpmFactory(old.gpmApi).edit(id,{name:input.name,rawProxy:input.proxy});
   const settings={...old,profileName:result.name,proxy:result.proxy};await data.set({settings});
   await this.register(settings,'sửa tên/proxy');this.views.set(id,dashboard(data.value,false));
   if(this.store.value.settings.profileId===id)await this.store.set({settings});this.onChange();return {ok:true,profile:result};
  });}
+ // Pairs come from the UI in table order; validate every line before touching GPM.
+ async assignProxies(assignments){
+  if(!Array.isArray(assignments)||!assignments.length||assignments.length>500)throw Error('Chọn 1–500 profile để gán proxy.');
+  const registry=this.store.value.profileRegistry||{},ids=assignments.map(a=>a?.id);
+  if(ids.some(id=>!valid(id)||!Object.hasOwn(registry,id)))throw Error('Có profile chưa được thêm vào tool.');
+  if(new Set(ids).size!==ids.length)throw Error('Mỗi profile chỉ nhận một proxy.');
+  const proxies=assignments.map((a,index)=>{try{return checkProxy(a.proxy);}catch(e){throw Error('Dòng '+(index+1)+': '+e.message);}});
+  const order=new Map(ids.map(id=>[id,registry[id].lastUsedAt])),results=[];
+  for(const [index,id] of ids.entries()){
+   try{const r=await this.edit(id,{proxy:proxies[index]});results.push({id,ok:true,proxy:r.profile.proxy});}
+   catch(e){results.push({id,ok:false,error:redact(e.message,{proxy:proxies[index]})});}
+  }
+  // Keep the table order so the list still matches what the user pasted.
+  const current=this.store.value.profileRegistry||{};for(const [id,at] of order)if(current[id])current[id]={...current[id],lastUsedAt:at};
+  await this.store.set({profileRegistry:current});this.onChange();
+  return {ok:results.every(r=>r.ok),results};
+ }
  async remove(id){return this.locked(id,async()=>{
   if(!this.store.value.profileRegistry?.[id])throw Error('Profile chưa có trong bảng.');
   if(busy(this.views.get(id)))throw Error('Dừng profile trước khi xoá.');

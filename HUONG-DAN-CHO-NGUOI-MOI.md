@@ -70,6 +70,14 @@ http://USERNAME:PASSWORD@192.0.2.10:8080
 
 Để trống để mở không proxy. Dừng profile trước khi thay proxy. Tool dùng proxy hiện có trong GPM khi mở profile.
 
+### Gán proxy hàng loạt
+
+1. Tích các profile cần đổi proxy (hoặc **Chọn tất cả**).
+2. Bấm **Gán proxy hàng loạt…**, dán danh sách proxy, mỗi dòng một proxy. Số dòng phải bằng số profile đã tích; nút **Gán proxy** chỉ bật khi khớp.
+3. Dòng 1 gán cho profile thứ 1 theo thứ tự trong bảng, dòng 2 cho profile thứ 2… Phần xem trước hiện rõ profile nào nhận proxy nào.
+4. Nếu có dòng sai định dạng, tool báo số dòng và không đổi profile nào. Tên profile và thứ tự trong bảng được giữ nguyên.
+5. Sau khi gán xong, các profile vẫn được tích; bấm **Chạy tự động** ngay. Profile đang chạy tự động cần **Dừng & đóng** trước khi gán.
+
 ## 5. Mở và chạy
 
 1. Bấm vào dòng profile để chọn; bấm lại để bỏ chọn.

@@ -199,3 +199,25 @@ test('opening selected profiles targets only their IDs and rejects a duplicate p
   assert.equal(manager.workers.has('unselected'),false);assert.equal(calls.some(c=>c.route==='start'),false);
  }finally{release();await manager.close();await store.pending;await fs.rm(dir,{recursive:true,force:true});}
 });
+test('bulk proxy assignment validates every line first, keeps names and table order',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gpm-bulk-proxy-'));const store=await new Store(dir).load();
+ const remote={a:{id:'a',name:'Live A',raw_proxy:''},b:{id:'b',name:'Live B',raw_proxy:'old.test:80'},c:{id:'c',name:'Live C',raw_proxy:''}},calls=[];
+ const {GpmApi}=await import('./gpm-api.mjs');
+ const gpm=new GpmApi('http://localhost:9495',async(url,opts)=>{const route=new URL(url).pathname,id=route.split('/').at(-1);calls.push(route);if(route.includes('/update/'))Object.assign(remote[id],JSON.parse(opts.body));return {ok:true,json:async()=>({success:true,data:route.includes('/stop/')?null:remote[id]})};});
+ const manager=new ProfileManager(store,{workerFactory:fakeFactory([]),gpmFactory:()=>gpm});
+ try{
+  await store.set({settings:settings('a')});
+  for(const id of ['a','b','c']){await manager.register(settings(id));await new Promise(r=>setTimeout(r,5));}
+  const before=manager.rows().map(r=>r.id);
+  await assert.rejects(()=>manager.assignProxies([{id:'a',proxy:'host.test:80:u:p'},{id:'b',proxy:'bad proxy'}]),/Dòng 2/);
+  assert.equal(calls.length,0);
+  await assert.rejects(()=>manager.assignProxies([{id:'a',proxy:'host.test:80'},{id:'a',proxy:'host.test:81'}]),/một proxy/);
+  await assert.rejects(()=>manager.assignProxies([{id:'missing',proxy:'host.test:80'}]),/chưa được thêm/);
+  manager.views.set('c',{state:{status:'running'}});
+  const result=await manager.assignProxies([{id:'a',proxy:'proxy05163.vproxy.id.vn:59263:william627:secretpass'},{id:'b',proxy:' proxy10201.gproxy.id.vn:19605:william627:secretpass '},{id:'c',proxy:'proxy13140.uproxy.id.vn:36650:isabella868:secretpass'}]);
+  assert.equal(result.ok,false);assert.deepEqual(result.results.map(r=>r.ok),[true,true,false]);assert.match(result.results[2].error,/Dừng profile/);assert.doesNotMatch(result.results[2].error,/secretpass/);
+  assert.equal(remote.a.raw_proxy,'proxy05163.vproxy.id.vn:59263:william627:secretpass');assert.equal(remote.a.name,'Live A');assert.equal(remote.b.raw_proxy,'proxy10201.gproxy.id.vn:19605:william627:secretpass');assert.equal(remote.b.name,'Live B');assert.equal(remote.c.raw_proxy,'');
+  assert.equal(store.value.profileRegistry.a.proxy,remote.a.raw_proxy);assert.equal((await manager.profileStore('b')).value.settings.proxy,remote.b.raw_proxy);
+  assert.deepEqual(manager.rows().map(r=>r.id),before);
+ }finally{await manager.close();await store.pending;await fs.rm(dir,{recursive:true,force:true});}
+});
