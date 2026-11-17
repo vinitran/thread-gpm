@@ -309,12 +309,20 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     @objc func editProfile() { guard let id = selected.first, let p = profiles.first(where:{string($0["id"]) == id}) else { return }; showForm("Sửa profile",values:[("Tên",string(p["name"])),("Proxy",string(p["proxy"]))]) { [weak self] values in self?.perform("Đang cập nhật GPM…") { api in _ = try await api.request("profile-edit",["id":id,"name":values[0],"proxy":values[1]]); return "Đã cập nhật tên và proxy." } } }
     func proxyLines(_ text: String) -> [String] { text.components(separatedBy:.newlines).map { $0.trimmingCharacters(in:.whitespaces) }.filter { !$0.isEmpty } }
     func proxyPreview(_ names: [String], _ lines: [String]) -> String {
-        (0..<max(names.count,lines.count)).map { i in "\(i+1). " + (i < names.count ? names[i] : "(thừa)") + "  ←  " + (i < lines.count ? lines[i] : "— thiếu proxy") }.joined(separator:"\n")
+        var rows: [String] = []
+        for i in 0..<max(names.count,lines.count) {
+            let name: String = i < names.count ? names[i] : "(thừa)"
+            let proxy: String = i < lines.count ? lines[i] : "— thiếu proxy"
+            rows.append("\(i+1). \(name)  ←  \(proxy)")
+        }
+        return rows.joined(separator:"\n")
     }
     func proxyCount(_ lines: [String], _ total: Int) -> (String,Bool) {
-        let duplicates = lines.count - Set(lines).count, ok = lines.count == total
-        let state = ok ? "khớp số profile" : lines.count < total ? "thiếu \(total-lines.count)" : "thừa \(lines.count-total)"
-        return ("Đã nhập \(lines.count)/\(total) proxy · " + state + (duplicates > 0 ? " · \(duplicates) dòng trùng" : ""),ok)
+        let duplicates: Int = lines.count - Set(lines).count
+        var state = "khớp số profile"
+        if lines.count < total { state = "thiếu \(total-lines.count)" } else if lines.count > total { state = "thừa \(lines.count-total)" }
+        let suffix: String = duplicates > 0 ? " · \(duplicates) dòng trùng" : ""
+        return ("Đã nhập \(lines.count)/\(total) proxy · \(state)\(suffix)",lines.count == total)
     }
     // Lines map to the checked profiles in table order; the checks stay after closing.
     @objc func bulkProxy() {
@@ -343,11 +351,13 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
         alert.beginSheetModal(for:window) { [weak self] response in
             NotificationCenter.default.removeObserver(observer); guard let self = self else { return }; self.editingProfileForm = false
             let lines = self.proxyLines(input.string); guard response == .alertFirstButtonReturn, lines.count == ids.count else { return }
-            let assignments: [JSONObject] = zip(ids,lines).map { ["id":$0.0,"proxy":$0.1] }
-            self.perform("Đang gán proxy cho \(ids.count) profile…") { [weak self] api in
+            var assignments: [JSONObject] = []; for (id,proxy) in zip(ids,lines) { assignments.append(["id":id,"proxy":proxy]) }
+            var nameByID: [String:String] = [:]; for (id,name) in zip(ids,names) { nameByID[id] = name }
+            self.perform("Đang gán proxy cho \(ids.count) profile…") { api in
                 let r = try await api.request("profiles-proxy",["assignments":assignments]), rows = objects(r["results"]), failed = rows.filter { $0["ok"] as? Bool != true }
-                let name = { (id: String) in self.flatMap { s in s.profiles.first { string($0["id"]) == id } }.map { string($0["name"]) } ?? id }
-                if !failed.isEmpty { throw failure("Đã gán proxy \(rows.count-failed.count)/\(rows.count) profile. Chưa gán: " + failed.map { name(string($0["id"])) + ": " + string($0["error"]) }.joined(separator:" · ")) }
+                var errors: [String] = []
+                for row in failed { let id = string(row["id"]); errors.append("\(nameByID[id] ?? id): \(string(row["error"]))") }
+                if !errors.isEmpty { throw failure("Đã gán proxy \(rows.count-failed.count)/\(rows.count) profile. Chưa gán: \(errors.joined(separator:" · "))") }
                 return "Đã gán proxy cho \(rows.count) profile · vẫn giữ chọn, có thể bấm Chạy tự động."
             }
         }
