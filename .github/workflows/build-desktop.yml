@@ -52,7 +52,9 @@ jobs:
       tag: ${{ needs.prepare.outputs.tag }}
       publish: ${{ needs.prepare.outputs.publish == 'true' }}
 
+  # Tạm dừng build Windows; chỉ build/phát hành macOS. Bỏ dòng `if: false` để bật lại.
   windows:
+    if: false
     needs: prepare
     permissions:
       contents: write
