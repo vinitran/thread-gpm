@@ -5,7 +5,7 @@ import {AutoRunner} from './auto-runner.js';
 import {autoPage} from './auto-dom.js';
 import {DEFAULT_API_KEY} from './ai-defaults.js';
 import {extractPosts} from './extract.js';
-import {DEFAULT_MODEL,models,generate,signature,selectPosts,replySettings,finalizeReply} from './ai.js';
+import {DEFAULT_MODEL,MODEL_REVISION,models,generate,signature,selectPosts,replySettings,finalizeReply} from './ai.js';
 import {readFolder,selectReplyAssets,makeReplyAttachments} from './reply-assets.js';
 import {postReply,checkReply,returnToFeed,verifyAfterPost} from './post-reply.js';
 let busy=false;
@@ -15,7 +15,7 @@ const isThreads=url=>{try{return new URL(url).origin==='https://www.threads.com'
 async function listTabs(){return (await chrome.tabs.query({url:'https://www.threads.com/*'})).map(t=>({id:t.id,title:t.title||'Threads',url:t.url,active:t.active}));}
 const PROMPT_REVISION='2026-10-06-user-rewrite-v3-voucher';
 async function resolveAISettings(saved={},withPrompt=false){
-  const settings={...saved,apiKey:saved.apiKey||DEFAULT_API_KEY,model:saved.model||DEFAULT_MODEL};
+  const settings={...saved,apiKey:saved.apiKey||DEFAULT_API_KEY,model:saved.modelRevision===MODEL_REVISION&&saved.model?saved.model:DEFAULT_MODEL,modelRevision:MODEL_REVISION};
   if(withPrompt&&(!settings.prompt?.trim()||saved.promptRevision!==PROMPT_REVISION)){
     const response=await fetch(chrome.runtime.getURL('default-prompt.txt'));
     if(!response.ok)throw Error('Không đọc được prompt mặc định.');
@@ -59,7 +59,7 @@ async function handle(m,internal=false){
     const apiKey=typeof m.apiKey==='string'&&m.apiKey.trim()?m.apiKey.trim():(aiSettings.apiKey||DEFAULT_API_KEY);
     if(!apiKey||apiKey.length>512)throw Error('Nhập API key hợp lệ.');
     if(typeof m.model!=='string'||!/^[-\w/.]{1,100}$/.test(m.model)||typeof m.prompt!=='string'||!m.prompt.trim()||m.prompt.length>50000)throw Error('Model/prompt không hợp lệ.');
-    await chrome.storage.local.set({aiSettings:{apiKey,model:m.model,prompt:m.prompt,promptRevision:PROMPT_REVISION}});return {};
+    await chrome.storage.local.set({aiSettings:{apiKey,model:m.model,prompt:m.prompt,promptRevision:PROMPT_REVISION,modelRevision:MODEL_REVISION}});return {};
   }
   if(m.type==='ai-models'){const {aiSettings={}}=await chrome.storage.local.get('aiSettings');return {models:await models(await resolveAISettings(aiSettings))};}
   if(m.type==='generate-response'){

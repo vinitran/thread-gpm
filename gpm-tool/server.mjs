@@ -9,7 +9,7 @@ import {dryRunProfile} from './dry-run.mjs';
 import {GpmApi,checkGpmConnection,parseProxy} from './gpm-api.mjs';
 import {AUTO_DEFAULTS,autoConfig} from '../extension/auto-runner.js';
 import {autoPage} from '../extension/auto-dom.js';
-import {models} from '../extension/ai.js';
+import {models,DEFAULT_MODEL,MODEL_REVISION} from '../extension/ai.js';
 import {assetSummary,listAssets} from './assets.mjs';
 import {validateSettings,publicSettings,redact,assertLiveSettings,applyRunnerSettings} from './settings.mjs';
 import {dashboard} from './dashboard.mjs';
@@ -27,7 +27,7 @@ const lockPath=path.join(dataDir,'process.lock');
 try{const existing=JSON.parse(await fs.readFile(lockPath,'utf8'));try{process.kill(existing.pid,0);throw Error('Tool đang chạy với data folder này (PID '+existing.pid+').');}catch(e){if(e.code!=='ESRCH')throw e;}await fs.unlink(lockPath);}catch(e){if(e.code!=='ENOENT')throw e;}
 const lock=await fs.open(lockPath,'wx',0o600);await lock.writeFile(JSON.stringify({pid:process.pid}));await lock.close();
 const store=await new Store(dataDir).load();
-if(!store.value.settings)await store.set({settings:{gpmApi:process.platform==='win32'?'http://127.0.0.1:19995/api/v3':'http://127.0.0.1:9495/api/v1',cdp:'http://127.0.0.1:9222',apiKey:'',model:'cx/gpt-5.6-luna',prompt:await fs.readFile(path.join(root,'../extension/default-prompt.txt'),'utf8'),runConfig:AUTO_DEFAULTS}});
+if(!store.value.settings)await store.set({settings:{gpmApi:process.platform==='win32'?'http://127.0.0.1:19995/api/v3':'http://127.0.0.1:9495/api/v1',cdp:'http://127.0.0.1:9222',apiKey:'',model:DEFAULT_MODEL,prompt:await fs.readFile(path.join(root,'../extension/default-prompt.txt'),'utf8'),runConfig:AUTO_DEFAULTS}});
 if(!store.value.settings.gpmApi&&process.platform==='win32')await store.set({settings:{...store.value.settings,gpmApi:'http://127.0.0.1:19995/api/v3'}});
 const environmentKey=process.env.HOANXU_API_KEY?.trim();
 if(environmentKey){
@@ -35,6 +35,11 @@ if(environmentKey){
  const patch={};if(!store.value.settings.apiKey)patch.settings={...store.value.settings,apiKey:environmentKey};
  if(store.value.sharedSettings&&!store.value.sharedSettings.apiKey)patch.sharedSettings={...store.value.sharedSettings,apiKey:environmentKey};
  if(Object.keys(patch).length)await store.set(patch);
+}
+// Chuyển model 1 lần cho máy đã cài; manager.init() sau đó áp model dùng chung xuống mọi profile.
+if(!isWorker&&store.value.modelRevision!==MODEL_REVISION){
+ const shared=store.value.sharedSettings;
+ await store.set({settings:{...store.value.settings,model:DEFAULT_MODEL},...(shared?{sharedSettings:{...shared,model:DEFAULT_MODEL}}:{}),modelRevision:MODEL_REVISION});
 }
 // Key AI đi kèm app: chỉ bộ chạy chính kiểm tra; worker nhận key qua cài đặt dùng chung.
 let bundledKey=null,unlockFailures=0,unlocking=false;
