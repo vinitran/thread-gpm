@@ -4,7 +4,7 @@ Tải app, mở GPM, nhập key AI, thêm profile, mở Threads kiểm tra đăn
 
 ## 1. Chuẩn bị và tải app
 
-Bạn cần GPM đã cài trên máy, tài khoản Threads của mình và API key dùng được tại `https://ai.hoanxu.com/v1`. Nhập key được cấp riêng cho bạn hoặc key của bạn; file app không có key sẵn.
+Bạn cần GPM đã cài trên máy, tài khoản Threads của mình và mật khẩu mở app. App có sẵn key AI đã mã hoá cho `https://vps.hoanxu.com/v1`; lần đầu mở app, nhập mật khẩu được cấp để mở khoá key, các lần sau không hỏi lại.
 
 Mở [trang tải bản mới nhất](https://github.com/vinitran/thread-gpm/releases/latest), chọn file phù hợp trong **Assets**:
 

@@ -18,7 +18,7 @@ async function run(command,args,cwd=root){await new Promise((resolve,reject)=>{c
 async function copy(relative){const dest=path.join(payload,relative);await fs.mkdir(path.dirname(dest),{recursive:true});await fs.copyFile(path.join(root,relative),dest);}
 await fs.mkdir(work,{recursive:true});await fs.mkdir(out,{recursive:true});await fs.rm(app,{recursive:true,force:true});await fs.mkdir(path.join(contents,'MacOS'),{recursive:true});await fs.mkdir(payload,{recursive:true});
 for(const name of await fs.readdir(path.join(root,'gpm-tool')))if(name.endsWith('.mjs')&&!/test|smoke/.test(name))await copy('gpm-tool/'+name);
-for(const name of ['package.json','package-lock.json','HUONG-DAN-SU-DUNG.md'])await copy('gpm-tool/'+name);
+for(const name of ['package.json','package-lock.json','HUONG-DAN-SU-DUNG.md','bundled-key.enc.json'])await copy('gpm-tool/'+name);
 await fs.writeFile(path.join(payload,'package.json'),JSON.stringify({private:true,type:'module'}));
 await fs.writeFile(path.join(payload,'release-config.json'),JSON.stringify({repository:repo,updatesEnabled:process.env.GPM_UPDATES_ENABLED!=='0'}));
 await fs.cp(path.join(root,'gpm-tool/public'),path.join(payload,'gpm-tool/public'),{recursive:true});
@@ -49,5 +49,5 @@ let notarized=false;if(process.env.MAC_NOTARY_PROFILE){if(identity==='-')throw E
 const artifactBytes=await fs.readFile(artifact),sha256=createHash('sha256').update(artifactBytes).digest('hex');
 const manifest={format:'hoanxu-macos-update',bundleId:APP_ID,version,platform:'darwin',arch,bytes:artifactBytes.length,sha256,url:`https://github.com/${repo}/releases/download/v${version}/${path.basename(artifact)}`};
 await fs.writeFile(path.join(out,`hoanxu-macos-${arch}.json`),JSON.stringify(manifest,null,2)+'\n');await fs.writeFile(artifact+'.sha256',sha256+'  '+path.basename(artifact)+'\n');
-await fs.writeFile(path.join(out,`macos-${arch}-build-manifest.json`),JSON.stringify({...manifest,nodeArchive:name,nodeArchiveSha256:expected,embeddedApiKey:false,developerIdSigned:identity!=='-',notarized},null,2));
+await fs.writeFile(path.join(out,`macos-${arch}-build-manifest.json`),JSON.stringify({...manifest,nodeArchive:name,nodeArchiveSha256:expected,embeddedApiKey:false,bundledEncryptedKey:true,developerIdSigned:identity!=='-',notarized},null,2));
 console.log('Built '+artifact+' · '+Math.round(artifactBytes.length/1048576)+' MB');

@@ -54,7 +54,7 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
     var inputs: [String: NSTextField] = [:], checks: [String: NSButton] = [:], buttons: [String: NSButton] = [:]
     let updateBanner = NSStackView(), updateWarning = NSTextField(wrappingLabelWithString:""), versionText = NSTextField(labelWithString:"Phiên bản…")
     var updateChecking = false, lastUpdateCheck = Date.distantPast
-    var tableSignature = "", editingProfileForm = false
+    var tableSignature = "", editingProfileForm = false, quittingLocked = false
     let presetPicker = NSPopUpButton(), presetNote = NSTextField(wrappingLabelWithString:"")
     var presetIDs:[String] = [], presetID = "default", presetSignature = "", presetDirty = false
     var settingPresets:[JSONObject] { objects(snapshot["settingsPresets"]) }
@@ -185,9 +185,25 @@ final class DesktopController: NSViewController, NSTableViewDataSource, NSTableV
             setBusy(-1)
         }
     }
+    // App có key AI đã mã hoá đi kèm: lần đầu mở trên máy này phải nhập mật khẩu, sai thì không dùng được app.
+    func unlockBundledKey(_ api: ToolAPI) async -> Bool {
+        var note = "App có sẵn key AI đã mã hoá. Nhập mật khẩu 1 lần, key sẽ được lưu trên máy này."
+        while true {
+            let alert = NSAlert(); alert.messageText = "Nhập mật khẩu mở app"; alert.informativeText = note
+            alert.addButton(withTitle: "Mở khoá"); alert.addButton(withTitle: "Thoát app")
+            let input = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24)); input.placeholderString = "Mật khẩu"
+            alert.accessoryView = input; alert.window.initialFirstResponder = input
+            guard alert.runModal() == .alertFirstButtonReturn else { quittingLocked = true; poll?.invalidate(); NSApp.terminate(nil); return false }
+            let password = input.stringValue
+            if password.isEmpty { note = "Chưa nhập mật khẩu."; continue }
+            showMessage("Đang kiểm tra mật khẩu…")
+            do { _ = try await api.request("unlock-key", ["password": password]); showMessage("Đã mở khoá key AI · lưu trên máy này"); return true }
+            catch { note = error.localizedDescription }
+        }
+    }
     func refresh() async {
-        guard let api = api, !refreshing, !editingProfileForm else { return }; refreshing = true; defer { refreshing = false }
-        do { snapshot = try await api.request("state"); if editingProfileForm { return }; profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; syncPresets(); renderProfiles(); renderLogs(); renderVersion(); controls()
+        guard let api = api, !refreshing, !editingProfileForm, !quittingLocked else { return }; refreshing = true; defer { refreshing = false }
+        do { snapshot = try await api.request("state"); if snapshot["keyLocked"] as? Bool == true { guard await unlockBundledKey(api) else { return }; snapshot = try await api.request("state") }; if editingProfileForm { return }; profiles = objects(snapshot["profiles"]); if !loadedSettings { loadSettings(object(snapshot["settings"])); loadedSettings = true; showMessage("Sẵn sàng · dữ liệu được lưu trên máy") }; syncPresets(); renderProfiles(); renderLogs(); renderVersion(); controls()
             let download = object(snapshot["updateDownload"])
             if ["downloading","verifying","ready"].contains(string(download["phase"])) { let text = string(download["message"]); showMessage(text); updateText.stringValue = text; updateWarning.stringValue = text }
         }

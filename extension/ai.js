@@ -1,4 +1,4 @@
-export const API_BASE='https://ai.hoanxu.com/v1';
+export const API_BASE='https://vps.hoanxu.com/v1';
 export const DEFAULT_MODEL='cx/gpt-5.6-luna';
 export function replySettings(settings,kind='promotion',tag=false){
  if(!['promotion','regular'].includes(kind))throw Error('Loại bình luận không hợp lệ.');

@@ -20,6 +20,7 @@ import {ProfileImporter} from './profile-import.mjs';
 import {Updater,VERSION,updateRepository,assertUpdateIdle} from './updates.mjs';
 import {ExtensionBridge} from './extension-bridge.mjs';
 import {stageManagedExtension,extensionArguments,connectManagedExtension,MANAGED_EXTENSION_ID} from './managed-extension.mjs';
+import {loadBundledKey,decryptKey} from './bundled-key.mjs';
 let port=Number(process.env.PORT||4317);const isWorker=process.env.GPM_TOOL_WORKER==='1',dataDir=path.resolve(process.env.GPM_TOOL_DATA||path.join(root,'data'));
 await fs.mkdir(dataDir,{recursive:true});
 const lockPath=path.join(dataDir,'process.lock');
@@ -35,13 +36,34 @@ if(environmentKey){
  if(store.value.sharedSettings&&!store.value.sharedSettings.apiKey)patch.sharedSettings={...store.value.sharedSettings,apiKey:environmentKey};
  if(Object.keys(patch).length)await store.set(patch);
 }
+// Key AI đi kèm app: chỉ bộ chạy chính kiểm tra; worker nhận key qua cài đặt dùng chung.
+let bundledKey=null,unlockFailures=0,unlocking=false;
+if(!isWorker){try{bundledKey=await loadBundledKey();}catch(e){console.error('Không đọc được key AI đi kèm: '+e.message);}}
+const keyLocked=()=>!!bundledKey&&store.value.bundledKeyId!==bundledKey.id;
+const LOCKED_ROUTES=new Set(['/api/start','/api/profiles-start','/api/profiles-start-extension','/api/dry-run','/api/profile-dry-run','/api/models']);
+async function unlockBundledKey(password){
+ if(!bundledKey)throw Error('Bản app này không có key AI đi kèm.');
+ if(unlocking)throw Error('Đang kiểm tra mật khẩu, đợi một chút.');
+ unlocking=true;
+ try{
+  if(unlockFailures)await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1000*unlockFailures)));
+  let apiKey;try{apiKey=await decryptKey(bundledKey,password);}catch(e){unlockFailures++;throw e;}
+  unlockFailures=0;
+  return await exclusive('mở khoá key AI',async()=>{
+   const shared=store.value.sharedSettings;
+   await store.set({settings:{...store.value.settings,apiKey},...(shared?{sharedSettings:{...shared,apiKey}}:{}),bundledKeyId:bundledKey.id});
+   const results=manager?await manager.resyncSharedSettings():[];
+   return {ok:true,results};
+  });
+ }finally{unlocking=false;}
+}
 const browser=new GpmBrowser(store),runner=createRunner(store,browser,{closeSession:closeRestingProfile,openSession:openRestingProfile}),clients=new Set();
 const token=randomBytes(24).toString('hex');let operation=null,startEpoch=0,publishing,shuttingDown=false,manager,importer,pendingPosts=0;
 let extensionBridge,openedProfile;
 const updater=isWorker?null:new Updater({dir:dataDir,repo:await updateRepository()});
 const active=()=>['running','stopping'].includes(runner.state?.status);
 function idleOnly(){if(operation||active())throw Error('Stop và đợi thao tác hiện tại hoàn tất trước khi chỉnh cài đặt.');}
-function view(){const profiles=manager?.rows();const selected=profiles?.find(p=>p.id===store.value.settings.profileId);return {...(selected?.view||dashboard(store.value,!!browser.browser?.isConnected())),operation,...(manager?{settingsPresets:store.value.settingsPresets||[]}:{}),version:VERSION,updateDownload:updater?.status().download,...(manager?{profiles,selectedProfileId:store.value.settings.profileId}:{})};}
+function view(){const profiles=manager?.rows();const selected=profiles?.find(p=>p.id===store.value.settings.profileId);return {...(selected?.view||dashboard(store.value,!!browser.browser?.isConnected())),operation,...(manager?{settingsPresets:store.value.settingsPresets||[]}:{}),version:VERSION,keyLocked:keyLocked(),updateDownload:updater?.status().download,...(manager?{profiles,selectedProfileId:store.value.settings.profileId}:{})};}
 browser.onDisconnected=()=>broadcast();
 function broadcast(){if(isWorker&&process.connected)process.send({type:'view',view:view()});const message='data: '+JSON.stringify(view())+'\n\n';for(const response of clients){if(response.writableLength>1024*1024){response.destroy();clients.delete(response);}else response.write(message);}}
 store.subscribe(()=>{clearTimeout(publishing);publishing=setTimeout(broadcast,150);});
@@ -145,6 +167,8 @@ const server=http.createServer(async(req,res)=>{
    pendingPosts++;trackedPost=true;
    const input=await body(req,['/api/settings','/api/settings-preset-save','/api/profiles-proxy'].includes(url.pathname)?220000:['/api/profiles-import-preview','/api/profile-session-import'].includes(url.pathname)?6*1024*1024:100000);
    if(operation==='cài bản cập nhật'&&!['/api/stop','/api/profile-close','/api/profiles-stop','/api/profiles-close'].includes(url.pathname))throw Error('Đang cài cập nhật. Đợi tool mở lại trước khi thao tác.');
+   if(!isWorker&&url.pathname==='/api/unlock-key')return json(res,await unlockBundledKey(input.password));
+   if(keyLocked()&&LOCKED_ROUTES.has(url.pathname))throw Error('App chưa mở khoá key AI. Nhập mật khẩu mở app trước.');
    if(url.pathname==='/api/proxy-parse')return json(res,parseProxy(input.proxy));
    if(updater&&url.pathname==='/api/update-check')return json(res,await updater.check());
    if(!isWorker&&url.pathname==='/api/app-quit'){json(res,{ok:true});setTimeout(()=>shutdown(),100);return;}
@@ -272,7 +296,7 @@ const server=http.createServer(async(req,res)=>{
    }
    return json(res,{error:'Not found'},404);
   }
-  const files={'/':'index.html','/app.js':'app.js','/profile-list.js':'profile-list.js','/updates.js':'updates.js','/style.css':'style.css'};
+  const files={'/':'index.html','/app.js':'app.js','/profile-list.js':'profile-list.js','/updates.js':'updates.js','/unlock.js':'unlock.js','/style.css':'style.css'};
   if(req.method==='GET'&&files[url.pathname]){res.writeHead(200,{'Content-Type':url.pathname.endsWith('.js')?'text/javascript':url.pathname.endsWith('.css')?'text/css':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'"});return res.end(await fs.readFile(path.join(root,'public',files[url.pathname])));}
   json(res,{error:'Not found'},404);
  }catch(e){json(res,{error:redact(e.message,store.value.settings)},400);}finally{if(trackedPost)pendingPosts--;}

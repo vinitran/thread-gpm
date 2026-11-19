@@ -97,6 +97,15 @@ export class ProfileManager{
   for(const target of targets){try{await this.locked(target.id,()=>this.updateSettings(target.settings));results.push({id:target.id,name:target.name,ok:true});}catch(e){results.push({id:target.id,name:target.name,ok:false,error:redact(e.message,target.settings)});}}
   return results;
  }
+ // Áp lại cài đặt dùng chung (ví dụ key vừa mở khoá) cho mọi profile đã có cấu hình; lỗi từng profile không chặn profile khác.
+ async resyncSharedSettings(){
+  const results=[];
+  for(const row of this.rows()){
+   try{await this.locked(row.id,async()=>{const data=await this.profileStore(row.id);if(data.value.settings)await this.updateSettings(this.effectiveSettings({...data.value.settings,settingPresetId:row.settingPresetId||data.value.settings.settingPresetId}));});results.push({id:row.id,name:row.name,ok:true});}
+   catch(e){results.push({id:row.id,name:row.name,ok:false,error:redact(e.message,this.store.value.sharedSettings||this.store.value.settings)});}
+  }
+  return results;
+ }
  effectiveSettings(profile){return sharedProfileSettings(this.store.value.sharedSettings||this.store.value.settings||profile,profile,this.store.value.settingsPresets);}
  async savePreset(input){
   await ensurePresetCatalog(this.store,input);const presets=this.store.value.settingsPresets,preset=validatePreset(input);

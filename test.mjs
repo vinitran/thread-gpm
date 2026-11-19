@@ -18,7 +18,8 @@ test('posting enables debugger but still needs no local bridge',async()=>{
   const manifest=JSON.parse(await readFile(new URL('./extension/manifest.json',import.meta.url)));
   assert.deepEqual(manifest.permissions,['storage','scripting','debugger','alarms']);
   assert.ok(manifest.host_permissions.includes('https://www.threads.com/*'));
-  assert.ok(manifest.host_permissions.includes('https://ai.hoanxu.com/*'));
+  assert.ok(manifest.host_permissions.includes('https://vps.hoanxu.com/*'));
+  assert.ok(!manifest.host_permissions.includes('https://ai.hoanxu.com/*'));
   assert.ok(!manifest.host_permissions.some(p=>p.includes('127.0.0.1')));
 });
 test('UI lists Threads tabs and reads data without MCP',async()=>{

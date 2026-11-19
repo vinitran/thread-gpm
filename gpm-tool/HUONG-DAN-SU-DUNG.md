@@ -79,7 +79,7 @@ Nút **Mở** và **Mở trình duyệt** chỉ mở/kết nối profile GPM, kh
 ## 5. Cài đặt AI và nhịp chạy
 
 1. Mở phần **Cài đặt**; phần cài đặt chung áp dụng cho tất cả profile.
-2. Điền API key của dịch vụ AI mà tool đang dùng: `https://ai.hoanxu.com/v1`. Không tự thay bằng key của một dịch vụ khác.
+2. App có sẵn key AI đã mã hoá cho dịch vụ `https://vps.hoanxu.com/v1`. Lần đầu mở app trên máy, nhập mật khẩu mở app được cấp; key được giải mã và lưu trên máy, các lần sau không hỏi lại. Ô API key chỉ dùng khi muốn đổi sang key khác của cùng dịch vụ.
 3. Chọn model được key đó hỗ trợ; có thể dùng **Tải danh sách model**. Khi đổi key, lưu trước rồi tải danh sách vì nút tải dùng key đã lưu.
 4. Chọn hoặc tạo bộ **prompt / chủ đề**, sửa nội dung phù hợp rồi bấm **Lưu bộ**.
 5. Người mới có thể giữ mặc định: gõ 60ms, chờ giữa bước 2 giây, nghỉ tìm bài 30 giây, lịch ngẫu nhiên theo chu kỳ 3 giờ, 5 lượt giới thiệu xen kẽ trả lời thông thường.
