@@ -1,7 +1,7 @@
 export const API_BASE='https://vps.hoanxu.com/v1';
-export const DEFAULT_MODEL='cx/gpt-6.1-sol';
+export const DEFAULT_MODEL='cx/gpt-6-luna';
 // Đổi giá trị này khi muốn chuyển mọi máy sang DEFAULT_MODEL một lần; sau đó người dùng vẫn tự đổi model được.
-export const MODEL_REVISION='2026-11-19-gpt-6.1-sol';
+export const MODEL_REVISION='2026-11-19-gpt-6-luna';
 export function replySettings(settings,kind='promotion',tag=false){
  if(!['promotion','regular'].includes(kind))throw Error('Loại bình luận không hợp lệ.');
  const prompt=kind==='regular'?
