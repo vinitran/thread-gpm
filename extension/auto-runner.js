@@ -17,16 +17,18 @@ export function eligible(post,config,self,history,receipts){
 }
 export function searchWaitMs(seconds,random=Math.random){return Math.round(Math.max(1,Math.min(180,seconds*(.7+random()*.6)))*1000);}
 export const CYCLE_ACTIVE_MS=3*60*60*1000;
-export const CYCLE_REST_MS=4*60*60*1000;
-export const PROMOTIONS_PER_CYCLE=5;
+export const CYCLE_REST_MS=3*60*60*1000;
+// Mỗi chu kỳ 3 giờ chọn ngẫu nhiên 5–7 lượt giới thiệu; mỗi lượt kèm 1–2 trả lời thông thường.
+export const PROMOTIONS_MIN=5,PROMOTIONS_MAX=7;
+export function promotionsForCycle(random=Math.random){return PROMOTIONS_MIN+Math.min(PROMOTIONS_MAX-PROMOTIONS_MIN,Math.floor(random()*(PROMOTIONS_MAX-PROMOTIONS_MIN+1)));}
 export function createCommentCycle(now,random=Math.random){
- const slots=[],groupMs=CYCLE_ACTIVE_MS/PROMOTIONS_PER_CYCLE;
- for(let group=0;group<PROMOTIONS_PER_CYCLE;group++){
+ const promotions=promotionsForCycle(random),slots=[],groupMs=CYCLE_ACTIVE_MS/promotions;
+ for(let group=0;group<promotions;group++){
   const replies=1+Math.min(1,Math.floor(random()*2));
   for(let i=0;i<=replies;i++)slots.push({kind:i===0?'promotion':'regular',at:Math.round(now+group*groupMs+(i+.08+random()*.35)*groupMs/(replies+1))});
  }
  for(let i=0;i<slots.length;i++)slots[i].expiresAt=slots[i+1]?.at||now+CYCLE_ACTIVE_MS;
- return {version:1,startedAt:now,endsAt:now+CYCLE_ACTIVE_MS,index:0,slots};
+ return {version:1,startedAt:now,endsAt:now+CYCLE_ACTIVE_MS,index:0,promotions,slots};
 }
 export const sessionSendCount=stats=>(stats?.posted||0)+Math.max(stats?.sent||0,stats?.unknown||0);
 export class AutoRunner{
@@ -40,8 +42,10 @@ export class AutoRunner{
     if(this.state.sessionRest)this.state.sessionRest.until=Math.max(this.state.sessionRest.until,this.d.now()+CYCLE_REST_MS);
     else if(this.state.current?.phase==='posting'){this.state.commentCycle.slots[0].attemptedAt=this.d.now();this.state.commentCycle.index=1;}
     else if(!this.state.current&&!this.state.selectionBatch)this.state.nextAt=Math.max(this.d.now()+15000,this.state.commentCycle.slots[0].at);
-    this.event('Đã chuyển sang lịch 5 bình luận giới thiệu / 3 giờ, xen kẽ trả lời thông thường, nghỉ 4 giờ');await this.save();
+    this.event('Đã chuyển sang lịch 5–7 bình luận giới thiệu / 3 giờ, xen kẽ trả lời thông thường, nghỉ 3 giờ');await this.save();
    }
+   // Phiên đang nghỉ theo lịch cũ (4 giờ) được rút về nghỉ 3 giờ tính từ lúc hết chu kỳ.
+   if(this.state.sessionRest&&this.state.commentCycle?.endsAt&&this.state.sessionRest.until>this.state.commentCycle.endsAt+CYCLE_REST_MS){this.state.sessionRest.until=this.state.commentCycle.endsAt+CYCLE_REST_MS;this.state.nextAt=this.state.sessionRest.until;await this.save();}
   }
   return this.state;
  }
@@ -110,7 +114,7 @@ export class AutoRunner{
   const epoch=this.stopEpoch;await this.load();if(epoch!==this.stopEpoch)return this.state;if(this.starting||this.running||['running','stopping'].includes(this.state.status))throw Error('Phiên tự động đang chạy.');
   const config=autoConfig(input);this.starting=true;try{await this.d.prepare();if(epoch!==this.stopEpoch)return this.state;const source=await this.d.source();if(epoch!==this.stopEpoch)return this.state;
   this.state={commentCycle:createCommentCycle(this.d.now(),this.d.random),imageRepliesSinceTag:this.state.imageRepliesSinceTag||0,status:'running',config,source,current:null,queue:[],selectionBatch:null,needsScroll:false,idleEngagementHistory:this.state.idleEngagementHistory||{},history:Object.fromEntries(Object.entries(this.state.history||{}).filter(([,v])=>v.state!=='queued')),events:[],stats:{scanned:0,selected:0,posted:0,failed:0,unknown:0},authors:[],emptyScans:0,nextAt:this.d.now()+15000,startedAt:new Date(this.d.now()).toISOString()};
-  this.event('Bắt đầu chu kỳ 3 giờ · 5 lượt giới thiệu, sau mỗi lượt là 1–2 trả lời thông thường · sau đó nghỉ 4 giờ');await this.activity('waiting','Đang chờ trang chủ Threads tải xong');await this.scheduleNext();return this.state;}finally{this.starting=false;}
+  this.event('Bắt đầu chu kỳ 3 giờ · '+this.state.commentCycle.promotions+' lượt giới thiệu, sau mỗi lượt là 1–2 trả lời thông thường · sau đó nghỉ 3 giờ');await this.activity('waiting','Đang chờ trang chủ Threads tải xong');await this.scheduleNext();return this.state;}finally{this.starting=false;}
  }
  async stop(){this.stopEpoch++;await this.load();this.state.status=this.running?'stopping':'stopped';await this.activity(this.running?'stopping':'stopped',this.running?'Đã yêu cầu dừng · đang kết thúc thao tác hiện tại':'Đã dừng');await this.d.clear();return this.state;}
  async finish(status,message){this.state.status=status;this.state.nextAt=null;await this.activity(status,message);await this.d.clear();}
@@ -120,7 +124,7 @@ export class AutoRunner{
    s.current=null;s.queue=[];s.selectionBatch=null;
    s.sessionRest={until:(s.commentCycle?.endsAt||this.d.now())+CYCLE_REST_MS,oldTabId:s.source,closed:false};s.nextAt=s.sessionRest.until;
    s.sessionHistory=[...(s.sessionHistory||[]),{startedAt:s.startedAt,endedAt:new Date(this.d.now()).toISOString(),stats:{...s.stats}}].slice(-100);
-   await this.activity('session-rest','Đã hết chu kỳ 3 giờ · nghỉ 4 giờ, sau đó tự mở '+(this.d.openSession?'profile GPM':'tab mới')+' và chạy tiếp');
+   await this.activity('session-rest','Đã hết chu kỳ 3 giờ · nghỉ 3 giờ, sau đó tự mở '+(this.d.openSession?'profile GPM':'tab mới')+' và chạy tiếp');
    await this.scheduleNext();
   }
   if(!s.sessionRest.closed||(this.d.closeSession&&!s.sessionRest.profileClosed)){
@@ -140,7 +144,7 @@ export class AutoRunner{
   s.commentCycle=createCommentCycle(this.d.now(),this.d.random);s.sessionRest=null;s.current=null;s.queue=[];s.selectionBatch=null;s.recovery=null;s.recoveryAttempts=0;s.browserRetries=0;s.nextImageAt=null;s.nextCommentAt=null;s.needsScroll=false;s.emptyScans=0;s.authors=[];
   s.history=Object.fromEntries(Object.entries(s.history).filter(([,v])=>v.state!=='queued'));
   s.stats={scanned:0,selected:0,posted:0,sent:0,failed:0,unknown:0};s.startedAt=new Date(this.d.now()).toISOString();s.nextAt=this.d.now()+15000;s.nextIdleAt=s.nextAt+15000;
-  await this.activity('waiting','Đã nghỉ đủ 4 giờ · mở '+(this.d.openSession?'profile GPM':'tab mới')+', bắt đầu chu kỳ 3 giờ với 5 lượt giới thiệu tiếp theo');await this.scheduleNext();
+  await this.activity('waiting','Đã nghỉ đủ 3 giờ · mở '+(this.d.openSession?'profile GPM':'tab mới')+', bắt đầu chu kỳ 3 giờ với '+s.commentCycle.promotions+' lượt giới thiệu tiếp theo');await this.scheduleNext();
  }
  async recover(reason){
   const s=this.state;
@@ -192,7 +196,7 @@ export class AutoRunner{
   const restSeconds=Math.floor(s.config.minRestSeconds+this.d.random()*(s.config.maxRestSeconds-s.config.minRestSeconds+1));
   const slot=s.commentCycle.slots[s.commentCycle.index];
   s.nextAt=slot?Math.min(s.commentCycle.endsAt,Math.max(slot.at,this.d.now()+Math.min(restSeconds,s.config.maxRestSeconds)*1000)):s.commentCycle.endsAt;
-  await this.activity('resting',slot?'Đã về trang chủ · chờ lượt '+(slot.kind==='promotion'?'giới thiệu':'trả lời thông thường')+' lúc '+new Date(s.nextAt).toLocaleTimeString('vi-VN'):'Đã hoàn tất các lượt dự kiến · chờ hết chu kỳ 3 giờ rồi nghỉ 4 giờ');await this.scheduleNext();
+  await this.activity('resting',slot?'Đã về trang chủ · chờ lượt '+(slot.kind==='promotion'?'giới thiệu':'trả lời thông thường')+' lúc '+new Date(s.nextAt).toLocaleTimeString('vi-VN'):'Đã hoàn tất các lượt dự kiến · chờ hết chu kỳ 3 giờ rồi nghỉ 3 giờ');await this.scheduleNext();
  }
  async tick(){
   await this.load();if(this.running||!this.active())return;

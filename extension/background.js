@@ -140,7 +140,7 @@ const runner=new AutoRunner({
  prepare:async()=>{selectReplyAssets(await readFolder());const {aiSettings={}}=await chrome.storage.local.get('aiSettings');await resolveAISettings(aiSettings,true);},
  source:async()=>{const tabs=await listTabs();const existing=tabs.find(t=>new URL(t.url).pathname==='/');const tab=existing?await activateTab(existing.id):tabs.length?await retryTabEdit(()=>chrome.tabs.update(tabs[0].id,{url:'https://www.threads.com/',active:true})):await chrome.tabs.create({url:'https://www.threads.com/',active:true});return tab.id;},
  newSource:async()=>{const t=await retryTabEdit(()=>chrome.tabs.create({url:'https://www.threads.com/',active:true}),{shouldContinue:()=>runner.active()});return t.id;},
- closeSource:async id=>{if(!id)return;let t;try{t=await chrome.tabs.get(id);}catch{return;}if(isThreads(t.url))await closeTabPreservingWindow(id,'nghỉ giữa phiên 4 giờ');},
+ closeSource:async id=>{if(!id)return;let t;try{t=await chrome.tabs.get(id);}catch{return;}if(isThreads(t.url))await closeTabPreservingWindow(id,'nghỉ giữa phiên 3 giờ');},
  replaceSource:async(oldTabId,options)=>replaceSourceTab(oldTabId,options),
  receipts:async()=> (await chrome.storage.local.get('replyReceipts')).replyReceipts||{},
  capture:async(tabId,excludeURLs=[])=>{

@@ -203,13 +203,13 @@ test('random search interval varies around setting with bounded extremes',()=>{
  assert.equal(searchWaitMs(1,()=>0),1000);assert.equal(searchWaitMs(180,()=>1),180000);
 });
 
-test('five promotions with one or two regular replies fill a three-hour cycle, then rest four hours',async()=>{
+test('five to seven promotions with one or two regular replies fill a three-hour cycle, then rest three hours',async()=>{
  for(const random of [()=>0,()=>.99]){
   const f=fixture(),modes=[];let index=0,opened=0;const closed=[];f.deps.random=random;
   f.deps.capture=async()=>({posts:[{...p,url:p.url+(index++)}],self:'me'});f.deps.generate=async(post,images,tag,kind)=>modes.push({images,tag,kind});f.deps.closeSource=async id=>closed.push(id);f.deps.newSource=async()=>{opened++;return 9;};
   await f.runner.start();const plan=structuredClone(f.saved().commentCycle);
   for(let i=0;i<plan.slots.length;i++){f.advance();await f.runner.tick();}
-  assert.equal(f.saved().stats.promotions,5);assert.equal(f.saved().stats.regular,random()===0?5:10);assert.equal(f.saved().sessionRest,undefined);assert.deepEqual(modes.map(m=>m.kind),plan.slots.map(s=>s.kind));assert.ok(modes.every(m=>m.images===(m.kind==='promotion')&&!m.tag));
+  assert.equal(f.saved().stats.promotions,random()===0?5:7);assert.equal(f.saved().stats.regular,random()===0?5:14);assert.equal(f.saved().sessionRest,undefined);assert.deepEqual(modes.map(m=>m.kind),plan.slots.map(s=>s.kind));assert.ok(modes.every(m=>m.images===(m.kind==='promotion')&&!m.tag));
   const history=Object.keys(f.saved().history);f.advance(plan.endsAt-f.deps.now());await f.runner.tick();assert.deepEqual(closed,[1]);assert.equal(f.saved().source,null);assert.equal(f.saved().sessionRest.until,plan.endsAt+CYCLE_REST_MS);
   const until=f.saved().sessionRest.until;const resumed=new AutoRunner(f.deps);f.advance(CYCLE_REST_MS-1);await resumed.tick();assert.equal(opened,0);assert.equal(f.saved().sessionRest.until,until);
   f.advance(1);await resumed.tick();assert.equal(opened,1);assert.equal(f.saved().source,9);assert.equal(f.saved().stats.posted,0);assert.equal(f.saved().sessionRest,null);assert.ok(history.every(url=>f.saved().history[url]));assert.equal(f.saved().commentCycle.endsAt,f.deps.now()+CYCLE_ACTIVE_MS);
@@ -226,8 +226,8 @@ test('random schedule persists on restart and ordinary replies never carry image
  f.advance();await f.runner.tick();assert.deepEqual(modes.at(-1),{images:false,tag:true,kind:'promotion'});assert.equal(f.saved().imageRepliesSinceTag,0);
  f.advance();await f.runner.tick();assert.deepEqual(modes.at(-1),{images:false,tag:false,kind:'regular'});
 });
-test('cycle schedule is ordered, randomized and bounded, with exactly five promotion groups',()=>{
- const plans=[];for(const value of [0,.25,.7,.99]){const plan=createCommentCycle(12345,()=>value);plans.push(plan.slots.map(s=>s.at));assert.equal(plan.slots.filter(s=>s.kind==='promotion').length,5);let regular=0;for(const [i,slot] of plan.slots.entries()){assert.ok(slot.at>plan.startedAt&&slot.at<plan.endsAt);assert.ok(slot.expiresAt>slot.at);if(i)assert.ok(slot.at>plan.slots[i-1].at);if(slot.kind==='promotion'){if(i)assert.ok(regular===1||regular===2);regular=0;}else regular++;}assert.ok(regular===1||regular===2);}
+test('cycle schedule is ordered, randomized and bounded, with five to seven promotion groups',()=>{
+ const plans=[];for(const value of [0,.25,.7,.99]){const plan=createCommentCycle(12345,()=>value);plans.push(plan.slots.map(s=>s.at));assert.equal(plan.slots.filter(s=>s.kind==='promotion').length,plan.promotions);assert.equal(plan.promotions,value<1/3?5:value<2/3?6:7);let regular=0;for(const [i,slot] of plan.slots.entries()){assert.ok(slot.at>plan.startedAt&&slot.at<plan.endsAt);assert.ok(slot.expiresAt>slot.at);if(i)assert.ok(slot.at>plan.slots[i-1].at);if(slot.kind==='promotion'){if(i)assert.ok(regular===1||regular===2);regular=0;}else regular++;}assert.ok(regular===1||regular===2);}
  assert.equal(new Set(plans.map(p=>JSON.stringify(p))).size,4);
 });
 test('offline gaps skip expired slots instead of catching up, and an AI call crossing the cutoff never posts',async()=>{
@@ -335,4 +335,10 @@ test('a weak post queued for an ordinary reply is dropped when the slot is a pro
  await f.runner.start();const s=f.runner.state;s.queue=[weak];s.history[weak.url]={state:'queued'};
  f.advance();await f.runner.tick();
  assert.equal(target,strong.url);assert.deepEqual(f.saved().history[weak.url],{state:'ai-skipped',score:50});
+});
+test('a rest started under the old four-hour schedule is shortened to three hours after update',async()=>{
+ const f=fixture();await f.runner.start();const plan=f.saved().commentCycle;f.advance(plan.endsAt-f.deps.now());await f.runner.tick();
+ const old=plan.endsAt+4*60*60*1000;await f.deps.write({...f.saved(),sessionRest:{...f.saved().sessionRest,until:old},nextAt:old});
+ const resumed=new AutoRunner(f.deps);await resumed.load();
+ assert.equal(f.saved().sessionRest.until,plan.endsAt+CYCLE_REST_MS);assert.equal(f.saved().nextAt,plan.endsAt+CYCLE_REST_MS);
 });
