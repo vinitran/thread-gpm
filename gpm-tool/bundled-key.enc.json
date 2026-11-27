@@ -1,18 +1,18 @@
 {
   "format": "hoanxu-bundled-key",
   "version": 1,
-  "id": "dbb9eb3a193844f0",
+  "id": "d16ff5c3cc689651",
   "kdf": {
     "name": "scrypt",
     "N": 262144,
     "r": 8,
     "p": 1,
-    "salt": "IF561vyQetqK3jijCpY18w=="
+    "salt": "AHVJ7hTzJ/XlErWoBYerhQ=="
   },
   "cipher": {
     "name": "aes-256-gcm",
-    "iv": "dWOaEdgvsfrHK9pW",
-    "tag": "r8FIwfi+Ao1pYYiTNSvvNQ==",
-    "data": "h73SOR61owDrIJ32MkGGS+vYW4ZWBqRINztOCX9pldt8xT4="
+    "iv": "MU06+Lwx/lQ0Pzn8",
+    "tag": "IqXBQawUT10sguIvOLkkFg==",
+    "data": "od8WMGZr4Q3WM8v7Ii/qCpzZwjN+OREbSCTv7T4QHSqAWWs="
   }
 }
